@@ -7,6 +7,8 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-24
+
 ### Segurança
 
 - **Allowlist em `POST /integrations/function` (CVE-2026-115931, crítico, upstream `9383f5be`).** A rota executava **qualquer** método do provider pelo nome enviado pelo cliente, com o token do canal como primeiro argumento — inclusive helpers internos como `readOrFetch` (que faz `readFileSync`): um usuário com um canal cujo token é um caminho de arquivo lia qualquer arquivo do backend (ambiente com `JWT_SECRET`, banco, Redis) e podia forjar sessão de qualquer usuário; outros helpers derrubavam o processo. Agora só métodos `@Tool` ou marcados com o novo decorator `@DashboardFunction()` podem ser chamados (`IntegrationManager.isDashboardCallable`); `/integrations/mentions` passa a chamar sempre `mention`, ignorando o nome do cliente. As duas rotas também passam a validar o perfil do canal (`validateIntegrationProfile`), como as rotas irmãs — um membro restrito ao perfil A não opera mais o canal do perfil B por elas.
