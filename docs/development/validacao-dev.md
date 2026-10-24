@@ -18,7 +18,7 @@
 
 | Ferramenta    | Versao Requerida         | Motivo                                      |
 |---------------|--------------------------|---------------------------------------------|
-| **Node.js**   | `>=22.12.0 <23.0.0`     | Runtime do projeto (definido em `engines`)   |
+| **Node.js**   | `>=22.23.4 <23.0.0`     | Runtime do projeto (definido em `engines`)   |
 | **pnpm**      | `10.6.1`                 | Gerenciador de pacotes (definido em `packageManager`) |
 | **Docker**    | Ultima versao estavel    | Para PostgreSQL, Redis, Temporal e servicos  |
 | **Docker Compose** | v2+               | Orquestracao dos containers                  |

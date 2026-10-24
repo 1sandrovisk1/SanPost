@@ -17,7 +17,7 @@
 
 O projeto usa um unico Dockerfile (`Dockerfile.dev`) que faz tudo:
 
-1. Base: `node:22.20-bookworm-slim`
+1. Base: `node:22.23.4-bookworm-slim` (patch fixado; subir junto com `engines`, `volta` e `build.yml` a cada security release do Node)
 2. Instala dependencias do sistema (g++, make, python3, nginx)
 3. Instala `pnpm@10.6.1` e `pm2` globalmente
 4. Copia o codigo fonte
