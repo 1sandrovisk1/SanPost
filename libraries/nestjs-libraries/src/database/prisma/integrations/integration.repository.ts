@@ -465,6 +465,9 @@ export class IntegrationRepository {
         ...(name ? { name } : {}),
         ...(url ? { picture: url } : {}),
       },
+      // O resultado volta na resposta do dashboard: nunca a linha inteira
+      // (token/refreshToken/customInstanceDetails) — CVE-2026-107761.
+      select: { id: true, name: true, picture: true },
     });
   }
 
@@ -578,6 +581,7 @@ export class IntegrationRepository {
               },
             },
       },
+      select: { id: true, customerId: true },
     });
   }
 
@@ -600,6 +604,7 @@ export class IntegrationRepository {
               },
             },
           },
+      select: { id: true, customerId: true },
     });
   }
 
@@ -698,6 +703,9 @@ export class IntegrationRepository {
   }
 
   deleteChannel(org: string, id: string) {
+    // O resultado volta na resposta da API publica e do dashboard: devolver a
+    // linha inteira expunha token/refreshToken/customInstanceDetails do canal
+    // (CVE-2026-107761).
     return this._integration.model.integration.update({
       where: {
         id,
@@ -705,6 +713,9 @@ export class IntegrationRepository {
       },
       data: {
         deletedAt: new Date(),
+      },
+      select: {
+        id: true,
       },
     });
   }

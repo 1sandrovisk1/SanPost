@@ -1,3 +1,4 @@
+import { DashboardFunction } from '@gitroom/nestjs-libraries/integrations/dashboard.function.decorator';
 import { timer } from '@gitroom/helpers/utils/timer';
 import { Integration } from '@prisma/client';
 import { ApplicationFailure } from '@temporalio/activity';
@@ -130,6 +131,7 @@ export abstract class SocialAbstract {
     return undefined;
   }
 
+  @DashboardFunction()
   public async mention(
     token: string,
     d: { query: string },

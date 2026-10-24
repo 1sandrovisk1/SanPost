@@ -100,6 +100,7 @@ The company fully rebranded Late/getlate.dev → Zernio (same company, new brand
 | File | Purpose |
 |---|---|
 | `../social.abstract.ts` | Base class + error classes (`RefreshToken`, `BadBody`, `NotEnoughScopes`); `fetch()` para publicação e `analyticsFetch()` para métricas |
+| `../dashboard.function.decorator.ts` | `@DashboardFunction()` / `isDashboardFunction()` — marks provider methods that `POST /integrations/function` may run for the dashboard without making them `@Tool`; enforced by `IntegrationManager.isDashboardCallable` ("Add a new provider" step 7) |
 | `social.integrations.interface.ts` | Interfaces (`SocialProvider`, `ClientInformation`, `AuthTokenDetails`, `PostDetails`, `PostResponse`) |
 | `facebook.provider.ts` | FB Page via Facebook Login (Page Access Token, host `graph.facebook.com`). `post()` ramifica por `settings.post_type`: feed/reel (`/photos`+`/feed`, `/videos`) **ou** Story — foto via `/photo_stories` (upload unpublished → `photo_id`) e vídeo via `/video_stories` (upload resumável 3 fases: `start`→rupload com header `file_url`→`finish`). Story não tem carrossel: cada mídia vira um story separado. Scopes de Story já estão nos `scopes` do provider (sem reconexão) |
 | `instagram.provider.ts` | IG via Facebook Login (Page Access Token, host `graph.facebook.com`); includes `getMediaMetadata(mediaId, token, host?)` for inbox/dark-post enrichment |
@@ -123,11 +124,14 @@ The company fully rebranded Late/getlate.dev → Zernio (same company, new brand
 3. **OAuth**:
    - `generateAuthUrl(clientInformation?: ClientInformation)` — ALWAYS use `clientInformation.clientId/clientSecret/instanceUrl` (with `process.env` fallback only for legacy, ideally not at all).
    - `authenticate(...)` — same rule.
+   - `state` / `codeVerifier` / `nonce` — CSPRNG only (step 8).
 4. **Post**: `post(...)` with error handling that throws `RefreshToken`/`BadBody`/`NotEnoughScopes` when applicable.
 5. **Refresh** (if expiration applies): the refresh method also propagates `ClientInformation`.
-6. Register in `IntegrationManager` (`database/prisma/integrations/integration.manager.ts`) with a unique identifier.
-7. **Frontend**: icon in `apps/frontend/public/icons/platforms/<provider>.svg`. Settings in `apps/frontend/src/components/launches/providers/<provider>/`.
-8. **CHANGELOG.md** under `[Unreleased]`.
+6. Register in `IntegrationManager` (`libraries/nestjs-libraries/src/integrations/integration.manager.ts`) with a unique identifier.
+7. **Dashboard-callable methods**: `POST /integrations/function` runs a provider method by name with the channel token as first argument, but only if the method is a `@Tool` **or** is marked with `@DashboardFunction()` (`integrations/dashboard.function.decorator.ts`, checked by `IntegrationManager.isDashboardCallable`). Any helper the frontend calls through `useCustomProviderFunction` / the continue-provider `endpoint` (`pages`, `companies`, `company`, `tags`, ...) that is not a `@Tool` needs the decorator, otherwise the route answers 500 (`Function not found` in the backend log) and the picker/connect step breaks. Prefer `@DashboardFunction()` over `@Tool` for dashboard-only helpers: `@Tool` also exposes the method to the public API (`public.integrations.controller.ts`) and the MCP agent (`integration.trigger.tool.ts`). Overrides inherit the marker (`mention` is decorated only on `SocialAbstract`), so do not re-decorate them. Never make internal helpers (`readOrFetch`, `fetch`, `post`) callable this way (CVE-2026-115931). Add the pair to the `dashboardCalls` table in `integration.manager.spec.ts`.
+8. **OAuth secrets**: `state`, `codeVerifier` and `nonce` MUST come from a CSPRNG: `makeSecureId` (`services/make.secure.id.ts`), or `randomBytes(n).toString('base64url')` when PKCE needs a long verifier (`vk`, `whop`, `kick`). `makeId` is `Math.random()` and is only acceptable for non-secret ids (post/message ids). `oauth.state.entropy.spec.ts` fails the build when a `*.provider.ts` assigns `state`/`nonce`/`codeVerifier` from `makeId(`/`Math.random` (regex scan; other shapes are not seen) (CVE-2026-94456).
+9. **Frontend**: icon in `apps/frontend/public/icons/platforms/<provider>.png`. Composer settings/pickers in `apps/frontend/src/components/new-launch/providers/<provider>/` (registered in `show.all.providers.tsx`); a post-connect page/company picker lives in `new-launch/providers/continue-provider/<provider>/` and calls the step-7 method through `with-continue-provider.tsx` (`endpoint`).
+10. **CHANGELOG.md** under `[Unreleased]`.
 
 ### Add a provider via Zernio
 

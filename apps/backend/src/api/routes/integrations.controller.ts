@@ -75,9 +75,16 @@ export class IntegrationsController {
   @Put('/:id/group')
   async updateIntegrationGroup(
     @GetOrgFromRequest() org: Organization,
+    @GetProfileFromRequest() profile: Profile | null,
     @Param('id') id: string,
     @Body() body: { group: string }
   ) {
+    await this._integrationService.validateIntegrationProfile(
+      org.id,
+      id,
+      profile?.id,
+      { requireProfile: getOrgRole(org) === 'USER' }
+    );
     return this._integrationService.updateIntegrationGroup(
       org.id,
       id,
@@ -88,9 +95,16 @@ export class IntegrationsController {
   @Put('/:id/customer-name')
   async updateOnCustomerName(
     @GetOrgFromRequest() org: Organization,
+    @GetProfileFromRequest() profile: Profile | null,
     @Param('id') id: string,
     @Body() body: { name: string }
   ) {
+    await this._integrationService.validateIntegrationProfile(
+      org.id,
+      id,
+      profile?.id,
+      { requireProfile: getOrgRole(org) === 'USER' }
+    );
     return this._integrationService.updateOnCustomerName(org.id, id, body.name);
   }
 
@@ -384,8 +398,15 @@ export class IntegrationsController {
   @Post('/mentions')
   async mentions(
     @GetOrgFromRequest() org: Organization,
+    @GetProfileFromRequest() profile: Profile | null,
     @Body() body: IntegrationFunctionDto
   ) {
+    await this._integrationService.validateIntegrationProfile(
+      org.id,
+      body.id,
+      profile?.id,
+      { requireProfile: getOrgRole(org) === 'USER' }
+    );
     const getIntegration = await this._integrationService.getIntegrationById(
       org.id,
       body.id
@@ -396,7 +417,13 @@ export class IntegrationsController {
 
     let newList: any[] | { none: true } = [];
     try {
-      newList = (await this.functionIntegration(org, body)) || [];
+      // Esta rota so busca mencoes: o nome do metodo e fixo, nunca o do
+      // cliente (CVE-2026-115931).
+      newList =
+        (await this.functionIntegration(org, profile, {
+          ...body,
+          name: 'mention',
+        })) || [];
     } catch (err) {
       console.log(err);
     }
@@ -440,8 +467,15 @@ export class IntegrationsController {
   @Post('/function')
   async functionIntegration(
     @GetOrgFromRequest() org: Organization,
+    @GetProfileFromRequest() profile: Profile | null,
     @Body() body: IntegrationFunctionDto
   ): Promise<any> {
+    await this._integrationService.validateIntegrationProfile(
+      org.id,
+      body.id,
+      profile?.id,
+      { requireProfile: getOrgRole(org) === 'USER' }
+    );
     const getIntegration = await this._integrationService.getIntegrationById(
       org.id,
       body.id
@@ -461,11 +495,17 @@ export class IntegrationsController {
       throw new Error('Invalid provider');
     }
 
-    // @ts-ignore
-    if (integrationProvider[body.name]) {
+    // Allowlist: so metodos @Tool ou @DashboardFunction podem ser executados
+    // pelo nome vindo do cliente (CVE-2026-115931 — leitura arbitraria de
+    // arquivo / crash via helpers internos do provider).
+    if (
+      this._integrationManager.isDashboardCallable(
+        integrationProvider,
+        body.name
+      )
+    ) {
       try {
-        // @ts-ignore
-        const load = await integrationProvider[body.name](
+        const load = await (integrationProvider as any)[body.name](
           getIntegration.token,
           body.data,
           getIntegration.internalId,
@@ -489,7 +529,7 @@ export class IntegrationsController {
             if (integrationProvider.refreshWait) {
               await timer(10000);
             }
-            return this.functionIntegration(org, body);
+            return this.functionIntegration(org, profile, body);
           }
 
           return false;

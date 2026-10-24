@@ -173,9 +173,22 @@ export class OrganizationService {
     }
     const timeLimit = dayjs().add(1, 'hour').format('YYYY-MM-DD HH:mm:ss');
     const id = makeId(5);
+    // O convite e assinado com o JWT_SECRET compartilhado por todos os tokens
+    // da instancia. So campos conhecidos entram: espalhar o body deixava um
+    // admin carimbar claims extras (ex.: `billing`) que rotas publicas como
+    // /public/modify-subscription aceitam de qualquer token assinado.
+    const invitePayload = {
+      email: body.email,
+      role: body.role,
+      ...(body.profileIds?.length ? { profileIds: body.profileIds } : {}),
+      ...(body.profileRole ? { profileRole: body.profileRole } : {}),
+      orgId,
+      timeLimit,
+      id,
+    };
     const url =
       process.env.FRONTEND_URL +
-      `/?org=${AuthService.signJWT({ ...body, orgId, timeLimit, id })}`;
+      `/?org=${AuthService.signJWT(invitePayload)}`;
     if (body.sendEmail) {
       const lang = resolveOrgLang(
         await this._organizationRepository.getLanguage(orgId)

@@ -37,3 +37,35 @@ export function ThirdParty(params: ThirdPartyParams) {
     Reflect.defineMetadata('third:party', existingMetadata, ThirdPartyAbstract);
   };
 }
+
+/**
+ * `POST /third-party/function/:id/:functionName` executa um metodo do provider
+ * pelo nome vindo da URL, com a API key decifrada como primeiro argumento. Sem
+ * allowlist e a mesma classe de falha de `/integrations/function`
+ * (CVE-2026-115931): so metodos declarados na propria classe do provider
+ * podem ser chamados — nada herdado de `Object` nem `constructor`.
+ */
+export function isThirdPartyFunctionCallable(
+  instance: ThirdPartyAbstract | undefined,
+  functionName: unknown
+): functionName is string {
+  if (
+    !instance ||
+    typeof functionName !== 'string' ||
+    !functionName ||
+    functionName === 'constructor'
+  ) {
+    return false;
+  }
+
+  const prototype = Object.getPrototypeOf(instance);
+  if (!prototype || prototype === Object.prototype) {
+    return false;
+  }
+
+  if (!Object.prototype.hasOwnProperty.call(prototype, functionName)) {
+    return false;
+  }
+
+  return typeof (instance as any)[functionName] === 'function';
+}

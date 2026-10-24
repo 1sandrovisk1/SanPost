@@ -57,7 +57,7 @@ export class OrganizationRepository {
                   : `${saasName}+` + makeId(10) + '@postiz.com',
                 name: name ? `${name}###${id}` : `Unnamed User###${id}`,
                 providerName: 'LOCAL',
-                password: AuthService.hashPassword(makeId(500)),
+                password: AuthService.hashPassword(makeSecureId(500)),
                 timezone: 0,
               },
             },

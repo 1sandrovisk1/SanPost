@@ -1,3 +1,4 @@
+import { encryptExtensionCookiesForStorage } from '@gitroom/nestjs-libraries/integrations/extension.cookies';
 import {
   Body,
   Controller,
@@ -268,9 +269,9 @@ export class NoAuthIntegrationsController {
               Buffer.from(body.code, 'base64').toString()
             )
           : integrationProvider.isChromeExtension
-          ? AuthService.fixedEncryption(
-              Buffer.from(body.code, 'base64').toString()
-            )
+          ? // so os cookies declarados pelo provider (mesma whitelist do
+            // extension-refresh)
+            encryptExtensionCookiesForStorage(integrationProvider, body.code)
           : undefined,
         profileId
       );
@@ -450,9 +451,9 @@ export class NoAuthIntegrationsController {
       false,
       undefined,
       undefined,
-      AuthService.signJWT(
-        JSON.parse(Buffer.from(body.cookies, 'base64').toString())
-      ),
+      // Cookies declarados pelo provider, cifrados em AES. Antes, o JSON vindo
+      // do cliente era ASSINADO com JWT_SECRET — oraculo para forjar tokens.
+      encryptExtensionCookiesForStorage(integrationProvider, body.cookies),
       integration.profileId || undefined
     );
 

@@ -211,6 +211,36 @@ describe('OrganizationService', () => {
       expect(subject).toContain('organização');
     });
 
+    it('assina somente campos conhecidos do convite (sem claims extras do body)', async () => {
+      profiles.getProfileById.mockResolvedValue({ id: 'prof-1' });
+
+      await service.inviteTeamMember('org-1', {
+        email: 'a@b.com',
+        role: 'USER',
+        sendEmail: false,
+        profileIds: ['prof-1'],
+        profileRole: 'EDITOR',
+        // campos que um admin poderia injetar no body e que outras rotas
+        // aceitam de qualquer token assinado com o mesmo JWT_SECRET
+        billing: 'ULTIMATE',
+        providerName: 'LOCAL',
+      } as any);
+
+      const payload = signSpy.mock.calls[0][0] as Record<string, unknown>;
+      expect(Object.keys(payload).sort()).toEqual(
+        ['email', 'id', 'orgId', 'profileIds', 'profileRole', 'role', 'timeLimit'].sort()
+      );
+      expect(payload).toMatchObject({
+        email: 'a@b.com',
+        role: 'USER',
+        orgId: 'org-1',
+        profileIds: ['prof-1'],
+        profileRole: 'EDITOR',
+      });
+      expect(payload).not.toHaveProperty('billing');
+      expect(payload).not.toHaveProperty('sendEmail');
+    });
+
     it('nao exige perfis para role ADMIN', async () => {
       const result = await service.inviteTeamMember('org-1', {
         email: 'a@b.com',

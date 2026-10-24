@@ -1,4 +1,5 @@
 import { OrganizationRepository } from './organization.repository';
+import { AuthService } from '@gitroom/helpers/auth/auth.service';
 
 const mockOrgCreate = jest.fn();
 const mockOrgFindUnique = jest.fn();
@@ -74,6 +75,23 @@ describe('OrganizationRepository', () => {
 
       const callArgs = mockOrgCreate.mock.calls[0][0];
       expect(callArgs.data.profilesBootstrappedAt).toBeInstanceOf(Date);
+    });
+  });
+
+  describe('createMaxUser', () => {
+    it('gera a senha placeholder com CSPRNG de 500 caracteres base62', async () => {
+      const hashSpy = jest
+        .spyOn(AuthService, 'hashPassword')
+        .mockReturnValue('HASH');
+      mockOrgCreate.mockResolvedValue({ id: 'org-max', apiKey: 'k' });
+
+      await repository.createMaxUser('ext-1', 'Cliente', 'parceiro', 'c@exemplo.com');
+
+      expect(hashSpy.mock.calls[0][0]).toMatch(/^[A-Za-z0-9]{500}$/);
+      const data = mockOrgCreate.mock.calls[0][0].data;
+      expect(data.users.create.user.create.password).toBe('HASH');
+      expect(data.users.create.user.create.email).toBe('c+parceiro@exemplo.com');
+      hashSpy.mockRestore();
     });
   });
 

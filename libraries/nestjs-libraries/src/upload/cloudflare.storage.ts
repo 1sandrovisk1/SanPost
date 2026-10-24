@@ -5,7 +5,7 @@ import {
   DeleteObjectCommand,
 } from '@aws-sdk/client-s3';
 import 'multer';
-import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
+import { makeSecureId } from '@gitroom/nestjs-libraries/services/make.secure.id';
 import mime from 'mime-types';
 import { IUploadProvider } from './upload.interface';
 import axios from 'axios';
@@ -72,7 +72,7 @@ class CloudflareStorage implements IUploadProvider {
     const { buffer, contentType, extension } = await loadFromUrlOrDataUrl(
       path
     );
-    const id = makeId(10);
+    const id = makeSecureId(10);
 
     const params = {
       Bucket: this._bucketName,
@@ -90,7 +90,7 @@ class CloudflareStorage implements IUploadProvider {
 
   async uploadFile(file: Express.Multer.File): Promise<any> {
     try {
-      const id = makeId(10);
+      const id = makeSecureId(10);
       const extension = mime.extension(file.mimetype) || '';
 
       // Create the PutObjectCommand to upload the file to Cloudflare R2

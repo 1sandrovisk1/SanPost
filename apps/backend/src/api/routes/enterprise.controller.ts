@@ -1,6 +1,6 @@
 import { Body, Controller, Param, Post, Res } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { AuthService } from '@gitroom/helpers/auth/auth.service';
+import { verifyEnterpriseToken } from '@gitroom/nestjs-libraries/services/enterprise.token';
 import { ioRedis } from '@gitroom/nestjs-libraries/redis/redis.service';
 import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
 import { OrganizationService } from '@gitroom/nestjs-libraries/database/prisma/organizations/organization.service';
@@ -20,12 +20,18 @@ export class EnterpriseController {
   @Post('/create-user')
   async createUser(@Body('params') params: string) {
     try {
-      const { id, name, saasName, email } = AuthService.verifyJWT(params) as {
+      // Token de login/convite/reset usa o mesmo JWT_SECRET; so a assinatura
+      // nao basta (CVE-2026-94455).
+      const { id, name, saasName, email } = verifyEnterpriseToken<{
         id: string;
         name: string;
         email: string;
         saasName: string;
-      };
+      }>(params);
+
+      if (!id || !saasName) {
+        return { success: false };
+      }
 
       try {
         return await this._organizationService.createMaxUser(
@@ -45,13 +51,13 @@ export class EnterpriseController {
   @Post('/url')
   async redirectParams(@Body('params') params: string) {
     try {
-      const load = AuthService.verifyJWT(params) as {
+      const load = verifyEnterpriseToken<{
         redirectUrl: string;
         apiKey: string;
         refreshId?: string;
         provider: string;
         webhookUrl: string;
-      };
+      }>(params);
 
       if (!load || !load.redirectUrl || !load.apiKey || !load.provider) {
         return;
@@ -94,10 +100,10 @@ export class EnterpriseController {
   @Post('/delete-channel')
   async deleteChannel(@Body('params') params: string) {
     try {
-      const load = AuthService.verifyJWT(params) as {
+      const load = verifyEnterpriseToken<{
         apiKey: string;
         id: string;
-      };
+      }>(params);
 
       if (!load || !load.apiKey || !load.id) {
         return { success: false };

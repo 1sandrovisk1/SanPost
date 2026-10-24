@@ -15,6 +15,7 @@
 | Shared UI | React libraries | [`libraries/react-shared-libraries/CLAUDE.md`](libraries/react-shared-libraries/CLAUDE.md) |
 | ORM | Prisma + PostgreSQL 17 | — |
 | Package manager | **PNPM** (monorepo) — never npm/yarn | — |
+| Runtime | Node.js **22.x only** — pinned in `package.json` (`engines`, `volta`), `Dockerfile.dev` and `.github/workflows/build.yml`; bump the patch in all of them together on each Node security release. Node 26 crash-looped backend/orchestrator (`@sentry/profiling-node` has no native binding for ABI 147); Dependabot ignores the `node` major | `Dockerfile.dev` header comment |
 | AI | Mastra + MCP | [`libraries/nestjs-libraries/src/ai/CLAUDE.md`](libraries/nestjs-libraries/src/ai/CLAUDE.md) |
 
 ## Monorepo Map
@@ -57,6 +58,7 @@
 - **Never** hardcode `graph.facebook.com` in Instagram comment activities — use `FlowActivity.resolveIgRoute` (see [`apps/orchestrator/CLAUDE.md`](apps/orchestrator/CLAUDE.md)).
 - **Never** hardcode `process.env` in OAuth providers — propagate `ClientInformation` (see [`libraries/nestjs-libraries/src/integrations/social/CLAUDE.md`](libraries/nestjs-libraries/src/integrations/social/CLAUDE.md)).
 - **Never** throw/extend `HttpForbiddenException` for a generic 403 — the global `HttpExceptionFilter` (`libraries/nestjs-libraries/src/services/exception.filter.ts`) always converts it into a 401 + auth-cookie clear (forced logout). For a real 403 that keeps the session, use `new HttpException(body, 403)` or a dedicated exception class (e.g. `NoProfileAssignedException`, `AdminRoleRequiredException`) — see [`apps/backend/CLAUDE.md`](apps/backend/CLAUDE.md).
+- **Never** generate a secret (OAuth `state`/`codeVerifier`/`nonce`, API keys, anything that acts as an access token) with `makeId`/`Math.random()` — use `makeSecureId` (see [`libraries/nestjs-libraries/CLAUDE.md`](libraries/nestjs-libraries/CLAUDE.md)); **never** sign client-supplied JSON with `JWT_SECRET` or treat a bare `verifyJWT` as proof of token purpose (see [`apps/backend/CLAUDE.md`](apps/backend/CLAUDE.md)).
 - **Never** touch `.context/` — managed by dotcontext via MCP, has its own lifecycle.
 - **Never** run `gh pr <create|edit|merge|close|ready|review|comment|reopen>` without `--repo maiconramos/robo-multipost` — this repo is a fork of `gitroomhq/postiz-app`, and `gh` defaults to the upstream public repo. Enforced by hook `.claude/hooks/gh-pr-fork-guard.sh` (blocks the command with exit 2). Always use `gh pr <subcommand> --repo maiconramos/robo-multipost --base main --head <branch> ...`. Read-only `gh pr view|list|diff|checks|status` are not blocked.
 - Linting runs **only from the repo root** with `pnpm lint`.

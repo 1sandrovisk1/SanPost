@@ -16,7 +16,8 @@ import { RealIP } from 'nestjs-real-ip';
 import { UserAgent } from '@gitroom/nestjs-libraries/user/user.agent';
 import { TrackEnum } from '@gitroom/nestjs-libraries/user/track.enum';
 import { Request, Response } from 'express';
-import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
+import { makeSecureId } from '@gitroom/nestjs-libraries/services/make.secure.id';
+import { timingSafeEqual } from 'crypto';
 import { getCookieUrlFromDomain } from '@gitroom/helpers/subdomain/subdomain.management';
 import { AgentGraphInsertService } from '@gitroom/nestjs-libraries/agent/agent.graph.insert.service';
 import { Nowpayments } from '@gitroom/nestjs-libraries/crypto/nowpayments';
@@ -34,6 +35,14 @@ import { buildAgentSkillMarkdown } from '@gitroom/nestjs-libraries/agent/agent.s
 import { SkipProfileAccess } from '@gitroom/nestjs-libraries/services/auth/profile-access/profile-access.decorators';
 
 const pump = promisify(pipeline);
+
+// Comparacao de segredo em tempo constante: `!==` curto-circuita no primeiro
+// byte diferente e vaza o prefixo correto por timing.
+const constantTimeEquals = (provided: string, expected: string): boolean => {
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+};
 
 @ApiTags('Public')
 @SkipProfileAccess()
@@ -67,7 +76,7 @@ export class PublicController {
     if (
       !body.apiKey ||
       !process.env.AGENT_API_KEY ||
-      body.apiKey !== process.env.AGENT_API_KEY
+      !constantTimeEquals(String(body.apiKey), process.env.AGENT_API_KEY)
     ) {
       return;
     }
@@ -181,7 +190,8 @@ export class PublicController {
     @Body()
     body: { fbclid?: string; tt: TrackEnum; additional: Record<string, any> }
   ) {
-    const uniqueId = req?.cookies?.track || makeId(10);
+    // Devolvido ao cliente sem autenticacao: makeId vazaria saidas do PRNG.
+    const uniqueId = req?.cookies?.track || makeSecureId(10);
     const fbclid = req?.cookies?.fbclid || body.fbclid;
     await this._trackService.track(
       uniqueId,
@@ -252,7 +262,7 @@ export class PublicController {
 
   @Post('/crypto/:path')
   async cryptoPost(@Body() body: any, @Param('path') path: string) {
-    console.log('cryptoPost', body, path);
+    // `path` e o JWT portador do pedido: nunca logar.
     return this._nowpayments.processPayment(path, body);
   }
 
