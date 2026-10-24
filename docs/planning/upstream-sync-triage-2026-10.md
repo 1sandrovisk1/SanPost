@@ -288,8 +288,9 @@ Os 21 CVEs de 2026 anteriores do nginx já estão resolvidos no Debian
    `node:22.23.4-trixie-slim` (nginx 1.26.3 já corrigido; exige um
    `docker build` local de validação porque muda glibc/python/gcc do
    toolchain nativo); (c) instalar nginx do repositório oficial nginx.org
-   (1.30.6) sobre bookworm. Recomendação: **(b)** na próxima release, com
-   build local antes de taggear; esta branch fica em (a).
+   (1.30.6) sobre bookworm. **Decisão do mantenedor (23/10): (b)** — a
+   branch passou para `node:22.23.4-trixie-slim`; a validação da imagem
+   fica a cargo do build de release (`build-containers.yml`).
 2. **Proxy do host (VPS):** o `docker-compose.yaml` não tem serviço de proxy —
    o TLS termina **fora** do repositório. É esse nginx que fica exposto a
    CVE-2026-97629 (se usar `ssl_session_cache` + `ssl_verify_client`) e aos
@@ -373,7 +374,12 @@ Os 21 CVEs de 2026 anteriores do nginx já estão resolvidos no Debian
    Operação recomendada: listar integrações `skool` cujo
    `customInstanceDetails` começa com `eyJ` (JWT) e pedir reconexão; rotacionar
    `JWT_SECRET` invalidaria tudo, mas também quebra o que foi cifrado com
-   `fixedEncryption` (chave derivada do mesmo segredo).
+   `fixedEncryption` (chave derivada do mesmo segredo). **Resolvido em código
+   (23/10):** `StartupMigrationService.migrateSkoolExtensionCookies` converte
+   as linhas no boot e loga `warn` com as claims extras encontradas — após o
+   deploy, procurar `carried unexpected claims in legacy JWT cookies` no log
+   do backend; se aparecer, tratar como incidente (o token exfiltrado continua
+   válido até rotacionar `JWT_SECRET`).
 6. Confinamento de `path` de mídia é lexical (`resolve` + prefixo); a rota
    `/uploads` usa `realpath`. Reutilizar `safe.upload.path.ts` se algum dia
    `UPLOAD_DIRECTORY` contiver symlinks criados fora do app.
