@@ -1,3 +1,4 @@
+import { DashboardFunction } from '@gitroom/nestjs-libraries/integrations/dashboard.function.decorator';
 import {
   AuthTokenDetails,
   PostDetails,
@@ -10,7 +11,7 @@ import { jsonToGraphQLQuery } from 'json-to-graphql-query';
 import { HashnodeSettingsDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/hashnode.settings.dto';
 import dayjs from 'dayjs';
 import { Integration } from '@prisma/client';
-import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
+import { makeSecureId } from '@gitroom/nestjs-libraries/services/make.secure.id';
 import { Tool } from '@gitroom/nestjs-libraries/integrations/tool.decorator';
 
 export class HashnodeProvider extends SocialAbstract implements SocialProvider {
@@ -26,10 +27,10 @@ export class HashnodeProvider extends SocialAbstract implements SocialProvider {
   dto = HashnodeSettingsDto;
 
   async generateAuthUrl() {
-    const state = makeId(6);
+    const state = makeSecureId(6);
     return {
       url: state,
-      codeVerifier: makeId(10),
+      codeVerifier: makeSecureId(10),
       state,
     };
   }
@@ -104,6 +105,7 @@ export class HashnodeProvider extends SocialAbstract implements SocialProvider {
     }
   }
 
+  @DashboardFunction()
   async tags() {
     return tags.map((tag) => ({ value: tag.objectID, label: tag.name }));
   }

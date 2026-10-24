@@ -1,3 +1,4 @@
+import { makeSecureId } from '@gitroom/nestjs-libraries/services/make.secure.id';
 import {
   AnalyticsData,
   AuthTokenDetails,
@@ -285,7 +286,7 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
   }
 
   async generateAuthUrl(clientInformation?: ClientInformation) {
-    const state = Math.random().toString(36).substring(2);
+    const state = makeSecureId(32);
     const clientKey =
       clientInformation?.client_id || process.env.TIKTOK_CLIENT_ID;
 

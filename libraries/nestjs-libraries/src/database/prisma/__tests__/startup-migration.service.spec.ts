@@ -192,3 +192,125 @@ describe('StartupMigrationService.reconcileRefreshTokensCron', () => {
     await expect(buildService(ensure).onModuleInit()).resolves.toBeUndefined();
   });
 });
+
+// Linhas Skool gravadas antes de 23/10/2026 sao JWTs assinados com o JSON que
+// o cliente enviou (oraculo de forja fechado no extension-refresh). A migracao
+// reescreve em AES so com os cookies esperados.
+describe('StartupMigrationService.migrateSkoolExtensionCookies', () => {
+  const ORIGINAL_SECRET = process.env.JWT_SECRET;
+  const secret = 'segredo-de-teste';
+  // eslint-free: jsonwebtoken e CJS; sign real para o verifyJWT do helper
+  const { sign } = jest.requireActual('jsonwebtoken') as typeof import('jsonwebtoken');
+  const { AuthService } = jest.requireActual(
+    '@gitroom/helpers/auth/auth.service'
+  ) as typeof import('@gitroom/helpers/auth/auth.service');
+
+  const build = () => {
+    const prisma = {
+      integration: {
+        count: jest.fn(),
+        findMany: jest.fn(),
+        update: jest.fn().mockResolvedValue({}),
+      },
+    };
+    const service = new StartupMigrationService(
+      prisma as any,
+      {} as any,
+      {} as any
+    );
+    const warn = jest
+      .spyOn((service as any).logger, 'warn')
+      .mockImplementation(() => undefined);
+    jest.spyOn((service as any).logger, 'log').mockImplementation(() => undefined);
+    const run = () => (service as any).migrateSkoolExtensionCookies();
+    return { prisma, run, warn };
+  };
+
+  const row = (customInstanceDetails: string, id = 'int-1') => ({
+    id,
+    organizationId: 'org-1',
+    customInstanceDetails,
+  });
+
+  beforeAll(() => {
+    process.env.JWT_SECRET = secret;
+  });
+
+  afterAll(() => {
+    if (ORIGINAL_SECRET === undefined) delete process.env.JWT_SECRET;
+    else process.env.JWT_SECRET = ORIGINAL_SECRET;
+  });
+
+  it('nao faz nada quando nenhuma linha esta no formato JWT (count guard)', async () => {
+    const { prisma, run } = build();
+    prisma.integration.count.mockResolvedValue(0);
+
+    await run();
+
+    expect(prisma.integration.findMany).not.toHaveBeenCalled();
+    expect(prisma.integration.count).toHaveBeenCalledWith({
+      where: {
+        providerIdentifier: 'skool',
+        customInstanceDetails: { startsWith: 'eyJ' },
+      },
+    });
+  });
+
+  it('converte um JWT legitimo para AES contendo apenas os cookies', async () => {
+    const { prisma, run, warn } = build();
+    prisma.integration.count.mockResolvedValue(1);
+    prisma.integration.findMany.mockResolvedValue([
+      row(sign({ client_id: 'cid', auth_token: 'tok' }, secret)),
+    ]);
+
+    await run();
+
+    const data = prisma.integration.update.mock.calls[0][0].data;
+    expect(
+      JSON.parse(AuthService.fixedDecryption(data.customInstanceDetails))
+    ).toEqual({ client_id: 'cid', auth_token: 'tok' });
+    expect(data.customInstanceDetails.startsWith('eyJ')).toBe(false);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('descarta claims extras (adulteracao) e registra aviso', async () => {
+    const { prisma, run, warn } = build();
+    prisma.integration.count.mockResolvedValue(1);
+    prisma.integration.findMany.mockResolvedValue([
+      row(
+        sign(
+          { client_id: 'cid', auth_token: 'tok', id: 'vitima', saasName: 'x' },
+          secret
+        )
+      ),
+    ]);
+
+    await run();
+
+    const data = prisma.integration.update.mock.calls[0][0].data;
+    expect(
+      JSON.parse(AuthService.fixedDecryption(data.customInstanceDetails))
+    ).toEqual({ client_id: 'cid', auth_token: 'tok' });
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('id, saasName'));
+  });
+
+  it('marca para reconexao quando o JWT nao tem os cookies ou nao verifica', async () => {
+    const { prisma, run } = build();
+    prisma.integration.count.mockResolvedValue(2);
+    prisma.integration.findMany.mockResolvedValue([
+      row(sign({ client_id: 'cid' }, secret), 'int-sem-token'),
+      row(sign({ client_id: 'cid', auth_token: 'tok' }, 'outro'), 'int-outro-segredo'),
+    ]);
+
+    await run();
+
+    expect(prisma.integration.update).toHaveBeenCalledWith({
+      where: { id: 'int-sem-token' },
+      data: { refreshNeeded: true },
+    });
+    expect(prisma.integration.update).toHaveBeenCalledWith({
+      where: { id: 'int-outro-segredo' },
+      data: { refreshNeeded: true },
+    });
+  });
+});

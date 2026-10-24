@@ -1,3 +1,4 @@
+import { DashboardFunction } from '@gitroom/nestjs-libraries/integrations/dashboard.function.decorator';
 import {
   AnalyticsData,
   AuthTokenDetails,
@@ -6,7 +7,7 @@ import {
   PostResponse,
   SocialProvider,
 } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
-import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
+import { makeSecureId } from '@gitroom/nestjs-libraries/services/make.secure.id';
 import { google } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library/build/src/auth/oauth2client';
 import {
@@ -141,7 +142,7 @@ export class GmbProvider extends SocialAbstract implements SocialProvider {
   }
 
   async generateAuthUrl(clientInformation?: ClientInformation) {
-    const state = makeId(7);
+    const state = makeSecureId(7);
     const { client } = clientAndGmb(clientInformation);
     return {
       url: client.generateAuthUrl({
@@ -152,7 +153,7 @@ export class GmbProvider extends SocialAbstract implements SocialProvider {
         redirect_uri: `${process.env.FRONTEND_URL}/integrations/social/gmb`,
         scope: this.scopes.slice(0),
       }),
-      codeVerifier: makeId(11),
+      codeVerifier: makeSecureId(11),
       state,
     };
   }
@@ -209,6 +210,7 @@ export class GmbProvider extends SocialAbstract implements SocialProvider {
     };
   }
 
+  @DashboardFunction()
   async pages(accessToken: string) {
     // Get all accounts with pagination
     const allAccounts: any[] = [];

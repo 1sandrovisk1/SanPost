@@ -349,3 +349,79 @@ describe('IntegrationRepository (B1 Etapa 2 - criptografia na escrita)', () => {
     });
   });
 });
+
+// CVE-2026-107761: a resposta do delete de canal voltava com a linha inteira
+// (token, refreshToken, customInstanceDetails).
+describe('IntegrationRepository.deleteChannel', () => {
+  it('marca deletedAt e devolve apenas o id do canal', async () => {
+    const prismaMock = createPrismaRepositoryMock('integration');
+    prismaMock.model.integration.update.mockResolvedValue({ id: 'int-1' } as any);
+    const repo = new IntegrationRepository(
+      prismaMock as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      createMock<EncryptionService>()
+    );
+
+    await expect(repo.deleteChannel('org-1', 'int-1')).resolves.toEqual({
+      id: 'int-1',
+    });
+
+    expect(prismaMock.model.integration.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'int-1', organizationId: 'org-1' },
+        data: { deletedAt: expect.any(Date) },
+        select: { id: true },
+      })
+    );
+  });
+});
+
+// CVE-2026-107761 (mesma classe): updates cujo resultado volta ao dashboard
+// nao podem ecoar a linha inteira do canal.
+describe('IntegrationRepository - updates devolvem apenas campos seguros', () => {
+  const build = () => {
+    const prismaMock = createPrismaRepositoryMock('integration');
+    prismaMock.model.integration.update.mockResolvedValue({ id: 'int-1' } as any);
+    const customers = {
+      model: {
+        customer: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'cust-1' }),
+          create: jest.fn(),
+        },
+      },
+    };
+    const repo = new IntegrationRepository(
+      prismaMock as any,
+      {} as any,
+      {} as any,
+      customers as any,
+      {} as any,
+      {} as any,
+      createMock<EncryptionService>()
+    );
+    return { repo, prismaMock };
+  };
+
+  it('updateNameAndUrl seleciona id, name e picture', async () => {
+    const { repo, prismaMock } = build();
+    await repo.updateNameAndUrl('int-1', 'Apelido', 'https://img/x.png');
+    expect(prismaMock.model.integration.update).toHaveBeenCalledWith(
+      expect.objectContaining({ select: { id: true, name: true, picture: true } })
+    );
+  });
+
+  it('updateIntegrationGroup seleciona id e customerId', async () => {
+    const { repo, prismaMock } = build();
+    await repo.updateIntegrationGroup('org-1', 'int-1', 'cust-1');
+    expect(prismaMock.model.integration.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'int-1', organizationId: 'org-1' },
+        select: { id: true, customerId: true },
+      })
+    );
+  });
+});

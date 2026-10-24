@@ -27,8 +27,13 @@ import { MediaService } from '@gitroom/nestjs-libraries/database/prisma/media/me
 import { ShortLinkService } from '@gitroom/nestjs-libraries/short-linking/short.link.service';
 import { CreateTagDto } from '@gitroom/nestjs-libraries/dtos/posts/create.tag.dto';
 import { minifyPostsList, minifyPosts } from '@gitroom/helpers/utils/posts.list.minify';
-import axios from 'axios';
 import sharp from 'sharp';
+import { readFileSync } from 'fs';
+import { getSsrfSafeAxios } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
+import {
+  filterAllowedMedia,
+  isRemoteMediaPath,
+} from '@gitroom/nestjs-libraries/database/prisma/posts/media.path.guard';
 import { UploadFactory } from '@gitroom/nestjs-libraries/upload/upload.factory';
 import { Readable } from 'stream';
 import { OpenaiService } from '@gitroom/nestjs-libraries/openai/openai.service';
@@ -356,12 +361,16 @@ export class PostsService {
   }
 
   async updateMedia(id: string, imagesList: any[], convertToJPEG = false) {
+    // Filtra ANTES do try: o catch devolve a lista ao chamador, e caminhos
+    // locais fora de UPLOAD_DIRECTORY viram leitura arbitraria de arquivo nos
+    // providers (readOrFetch/createReadStream).
+    const allowedList = filterAllowedMedia(imagesList);
     try {
       let imageUpdateNeeded = false;
       const getImageList = await Promise.all(
         (
           await Promise.all(
-            (imagesList || []).map(async (p: any) => {
+            allowedList.map(async (p: any) => {
               if (!p.path && p.id) {
                 imageUpdateNeeded = true;
                 return this._mediaService.getMediaById(p.id);
@@ -371,23 +380,7 @@ export class PostsService {
             })
           )
         )
-          .map((m) => {
-            return {
-              ...m,
-              url:
-                m.path.indexOf('http') === -1
-                  ? process.env.FRONTEND_URL +
-                    '/' +
-                    process.env.NEXT_PUBLIC_UPLOAD_STATIC_DIRECTORY +
-                    m.path
-                  : m.path,
-              type: 'image',
-              path:
-                m.path.indexOf('http') === -1
-                  ? process.env.UPLOAD_DIRECTORY + m.path
-                  : m.path,
-            };
-          })
+          .map((m) => this.toMediaRecord(m))
           .map(async (m) => {
             if (!convertToJPEG) {
               return m;
@@ -395,11 +388,20 @@ export class PostsService {
 
             if (m.path.indexOf('.png') > -1) {
               imageUpdateNeeded = true;
-              const response = await axios.get(m.url, {
-                responseType: 'arraybuffer',
-              });
-
-              const imageBuffer = Buffer.from(response.data);
+              // Caminho local ja confinado em UPLOAD_DIRECTORY: le do disco.
+              // Remoto: baixa pelo cliente SSRF-safe (DNS pinning, sem IP
+              // privado), nunca pelo axios global.
+              const imageBuffer = isRemoteMediaPath(m.path)
+                ? Buffer.from(
+                    (
+                      await getSsrfSafeAxios()({
+                        url: m.url,
+                        method: 'GET',
+                        responseType: 'arraybuffer',
+                      })
+                    ).data
+                  )
+                : readFileSync(m.path);
 
               // Use sharp to get the metadata of the image
               const buffer = await sharp(imageBuffer)
@@ -450,8 +452,33 @@ export class PostsService {
 
       return getImageList;
     } catch (err: any) {
-      return imagesList;
+      // Falha no meio do processamento: devolve so o que da para resolver sem
+      // IO, JA com o prefixo de UPLOAD_DIRECTORY. A lista crua tinha paths
+      // relativos que o guard validou como "dentro de UPLOAD_DIRECTORY" mas que
+      // chegariam ao provider como caminho absoluto (ex.: `/etc/passwd`).
+      return allowedList
+        .filter((m: any) => typeof m?.path === 'string')
+        .map((m: any) => this.toMediaRecord(m));
     }
+  }
+
+  // Um `path` local (sem http) e servido pelo frontend em /uploads e lido do
+  // disco em UPLOAD_DIRECTORY; remoto fica como esta. Puro: nunca lanca.
+  // `any` de proposito: a lista de midia e tipada como `any` em toda a cadeia
+  // (DTO -> updateMedia -> MediaContent[] no activity).
+  private toMediaRecord(m: any): any {
+    const isLocal = m.path.indexOf('http') === -1;
+    return {
+      ...m,
+      url: isLocal
+        ? process.env.FRONTEND_URL +
+          '/' +
+          process.env.NEXT_PUBLIC_UPLOAD_STATIC_DIRECTORY +
+          m.path
+        : m.path,
+      type: 'image',
+      path: isLocal ? process.env.UPLOAD_DIRECTORY + m.path : m.path,
+    };
   }
 
   async getPostGroupDebugExport(orgId: string, group: string) {

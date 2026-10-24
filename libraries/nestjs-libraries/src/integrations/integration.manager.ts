@@ -4,6 +4,7 @@ import { Injectable, Optional } from '@nestjs/common';
 import { CredentialService } from '@gitroom/nestjs-libraries/database/prisma/credentials/credential.service';
 import { XProvider } from '@gitroom/nestjs-libraries/integrations/social/x.provider';
 import { SocialProvider } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
+import { isDashboardFunction } from '@gitroom/nestjs-libraries/integrations/dashboard.function.decorator';
 import { LinkedinProvider } from '@gitroom/nestjs-libraries/integrations/social/linkedin.provider';
 import { RedditProvider } from '@gitroom/nestjs-libraries/integrations/social/reddit.provider';
 import { DevToProvider } from '@gitroom/nestjs-libraries/integrations/social/dev.to.provider';
@@ -246,6 +247,29 @@ export class IntegrationManager {
           [],
       }),
       {}
+    );
+  }
+
+  // POST /integrations/function executa um metodo do provider pelo nome, com o
+  // token do canal como primeiro argumento. Sem allowlist, qualquer helper
+  // interno (ex.: readOrFetch -> readFileSync) ficava acessivel a qualquer
+  // membro da org (CVE-2026-115931). So metodos @Tool e os marcados com
+  // @DashboardFunction podem ser chamados por essa rota.
+  isDashboardCallable(provider: SocialProvider, methodName: unknown): boolean {
+    if (typeof methodName !== 'string' || !methodName) {
+      return false;
+    }
+
+    if (typeof (provider as any)[methodName] !== 'function') {
+      return false;
+    }
+
+    const isTool = (this.getAllTools()[provider.identifier] || []).some(
+      (tool) => tool.methodName === methodName
+    );
+
+    return (
+      isTool || isDashboardFunction(Object.getPrototypeOf(provider), methodName)
     );
   }
 

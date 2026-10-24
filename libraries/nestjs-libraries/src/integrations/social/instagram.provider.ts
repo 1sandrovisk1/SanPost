@@ -1,3 +1,4 @@
+import { DashboardFunction } from '@gitroom/nestjs-libraries/integrations/dashboard.function.decorator';
 import {
   AnalyticsData,
   AuthTokenDetails,
@@ -6,7 +7,7 @@ import {
   PostResponse,
   SocialProvider,
 } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
-import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
+import { makeSecureId } from '@gitroom/nestjs-libraries/services/make.secure.id';
 import { timer } from '@gitroom/helpers/utils/timer';
 import dayjs from 'dayjs';
 import {
@@ -404,7 +405,7 @@ export class InstagramProvider
 
   async generateAuthUrl(clientInformation?: ClientInformation) {
     const clientId = clientInformation?.client_id || process.env.FACEBOOK_APP_ID;
-    const state = makeId(6);
+    const state = makeSecureId(6);
     return {
       url:
         `${META_FACEBOOK_OAUTH_URL}/dialog/oauth` +
@@ -414,7 +415,7 @@ export class InstagramProvider
         )}` +
         `&state=${state}` +
         `&scope=${encodeURIComponent(this.scopes.join(','))}`,
-      codeVerifier: makeId(10),
+      codeVerifier: makeSecureId(10),
       state,
     };
   }
@@ -516,6 +517,7 @@ export class InstagramProvider
     };
   }
 
+  @DashboardFunction()
   async pages(accessToken: string) {
     const seenPageIds = new Set<string>();
     const allFacebookPages: any[] = [];

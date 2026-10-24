@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { ThirdPartyManager } from '@gitroom/nestjs-libraries/3rdparties/thirdparty.manager';
+import { isThirdPartyFunctionCallable } from '@gitroom/nestjs-libraries/3rdparties/thirdparty.interface';
 import { GetOrgFromRequest } from '@gitroom/nestjs-libraries/user/org.from.request';
 import { Organization } from '@prisma/client';
 import { AuthService } from '@gitroom/helpers/auth/auth.service';
@@ -116,7 +117,15 @@ export class ThirdPartyController {
       throw new HttpException('Invalid identifier', 400);
     }
 
-    return thirdPartyInstance?.instance?.[functionName](
+    // Allowlist: so metodos declarados na classe do provider (mesma classe de
+    // falha de /integrations/function, CVE-2026-115931).
+    if (
+      !isThirdPartyFunctionCallable(thirdPartyInstance.instance, functionName)
+    ) {
+      throw new HttpException('Function not found', 400);
+    }
+
+    return thirdPartyInstance.instance[functionName]!(
       AuthService.fixedDecryption(thirdParty.apiKey),
       data
     );

@@ -1,3 +1,4 @@
+import { DashboardFunction } from '@gitroom/nestjs-libraries/integrations/dashboard.function.decorator';
 import {
   AnalyticsData,
   AuthTokenDetails,
@@ -6,7 +7,7 @@ import {
   PostResponse,
   SocialProvider,
 } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
-import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
+import { makeSecureId } from '@gitroom/nestjs-libraries/services/make.secure.id';
 import { LinkedinProvider } from '@gitroom/nestjs-libraries/integrations/social/linkedin.provider';
 import dayjs from 'dayjs';
 import { Integration } from '@prisma/client';
@@ -123,8 +124,8 @@ export class LinkedinPageProvider
   }
 
   override async generateAuthUrl(clientInformation?: ClientInformation) {
-    const state = makeId(6);
-    const codeVerifier = makeId(30);
+    const state = makeSecureId(6);
+    const codeVerifier = makeSecureId(30);
     const clientId =
       clientInformation?.client_id || process.env.LINKEDIN_CLIENT_ID;
     const url = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&prompt=none&client_id=${clientId}&redirect_uri=${encodeURIComponent(
@@ -137,6 +138,7 @@ export class LinkedinPageProvider
     };
   }
 
+  @DashboardFunction()
   async companies(accessToken: string) {
     const { elements, ...all } = await (
       await fetch(

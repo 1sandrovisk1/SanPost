@@ -71,3 +71,31 @@ describe('LocalStorage.removeFile', () => {
     ).resolves.toBeUndefined();
   });
 });
+
+describe('LocalStorage.uploadFile', () => {
+  it('nomeia o arquivo com 32 hex de CSPRNG (unico controle de acesso em /uploads)', async () => {
+    const ORIGINAL = process.env.FRONTEND_URL;
+    process.env.FRONTEND_URL = 'https://app.local';
+    const dir = join(tmpdir(), `robo-upload-${process.pid}-${process.hrtime()[1]}`);
+    const storage = new LocalStorage(dir);
+    const file = {
+      originalname: 'foto.png',
+      buffer: Buffer.from('x'),
+      mimetype: 'image/png',
+    } as any;
+
+    try {
+      const first = await storage.uploadFile(file);
+      const second = await storage.uploadFile(file);
+
+      expect(first.filename).toMatch(/^[0-9a-f]{32}\.png$/);
+      expect(first.path).toMatch(
+        /^https:\/\/app\.local\/uploads\/\d{4}\/\d{2}\/\d{2}\/[0-9a-f]{32}\.png$/
+      );
+      expect(second.filename).not.toBe(first.filename);
+    } finally {
+      if (ORIGINAL === undefined) delete process.env.FRONTEND_URL;
+      else process.env.FRONTEND_URL = ORIGINAL;
+    }
+  });
+});

@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
 import { RepostService } from './repost/repost.service';
 import { RefreshIntegrationService } from '@gitroom/nestjs-libraries/integrations/refresh.integration.service';
+import { AuthService } from '@gitroom/helpers/auth/auth.service';
 
 @Injectable()
 export class StartupMigrationService implements OnModuleInit {
@@ -16,6 +17,7 @@ export class StartupMigrationService implements OnModuleInit {
   async onModuleInit() {
     await this.migrateProfileScope();
     await this.migrateLateToZernio();
+    await this.migrateSkoolExtensionCookies();
     await this.backfillRepostDestinations();
     await this.cleanupExpiredUnmatchedComments();
     await this.cleanupExpiredStatusEvents();
@@ -307,6 +309,97 @@ export class StartupMigrationService implements OnModuleInit {
       this.logger.log('Late->Zernio migration completed successfully.');
     } catch (error) {
       this.logger.error('Late->Zernio migration failed:', error);
+    }
+  }
+
+  /**
+   * Converte `customInstanceDetails` de canais Skool gravados no formato
+   * legado (JWT assinado com JWT_SECRET) para o formato atual (JSON cifrado
+   * em AES, so com os cookies que o provider declara). Ate 23/10/2026 o
+   * `extension-refresh` ASSINAVA o JSON enviado pelo cliente, entao uma linha
+   * legada pode carregar claims arbitrarias (ex.: `id` de outro usuario) —
+   * um JWT valido para forjar sessao/enterprise/billing. Reescrever a linha
+   * descarta essas claims; a conversao e registrada com `warn` quando houve
+   * claims extras (sinal de adulteracao). Sem os dois cookies obrigatorios a
+   * linha e marcada para reconexao em vez de convertida.
+   *
+   * Idempotente: so JWT (prefixo `eyJ`); o AES e hex e nunca casa o guard.
+   */
+  private async migrateSkoolExtensionCookies() {
+    const where = {
+      providerIdentifier: 'skool',
+      customInstanceDetails: { startsWith: 'eyJ' },
+    };
+    try {
+      const pending = await this.prisma.integration.count({ where });
+      if (pending === 0) {
+        return;
+      }
+
+      this.logger.log(
+        `Skool legacy cookies migration pending: ${pending} integrations.`
+      );
+
+      const rows = await this.prisma.integration.findMany({
+        where,
+        select: { id: true, organizationId: true, customInstanceDetails: true },
+      });
+
+      let converted = 0;
+      let flagged = 0;
+      for (const row of rows) {
+        let payload: Record<string, unknown> | null = null;
+        try {
+          const verified = AuthService.verifyJWT(row.customInstanceDetails!);
+          payload =
+            verified && typeof verified === 'object' && !Array.isArray(verified)
+              ? (verified as Record<string, unknown>)
+              : null;
+        } catch {
+          payload = null;
+        }
+
+        const cookies =
+          payload &&
+          typeof payload.client_id === 'string' &&
+          typeof payload.auth_token === 'string'
+            ? { client_id: payload.client_id, auth_token: payload.auth_token }
+            : null;
+
+        if (!cookies) {
+          await this.prisma.integration.update({
+            where: { id: row.id },
+            data: { refreshNeeded: true },
+          });
+          flagged += 1;
+          continue;
+        }
+
+        const extraClaims = Object.keys(payload!).filter(
+          (key) => !['client_id', 'auth_token', 'iat'].includes(key)
+        );
+        if (extraClaims.length) {
+          this.logger.warn(
+            `Skool integration ${row.id} (org ${row.organizationId}) carried unexpected claims in legacy JWT cookies: ${extraClaims.join(', ')} — possible tampering; claims dropped on conversion.`
+          );
+        }
+
+        await this.prisma.integration.update({
+          where: { id: row.id },
+          data: {
+            customInstanceDetails: AuthService.fixedEncryption(
+              JSON.stringify(cookies)
+            ),
+          },
+        });
+        converted += 1;
+      }
+
+      this.logger.log(
+        `Skool legacy cookies migration completed: ${converted} converted, ${flagged} flagged for reconnection.`
+      );
+    } catch (error) {
+      this.logger.error('Skool legacy cookies migration failed:', error);
     }
   }
 

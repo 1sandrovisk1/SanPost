@@ -1,3 +1,4 @@
+import { DashboardFunction } from '@gitroom/nestjs-libraries/integrations/dashboard.function.decorator';
 import {
   AuthTokenDetails,
   ClientInformation,
@@ -6,6 +7,7 @@ import {
   SocialProvider,
 } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
 import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
+import { makeSecureId } from '@gitroom/nestjs-libraries/services/make.secure.id';
 import sharp from 'sharp';
 import { lookup } from 'mime-types';
 import {
@@ -132,8 +134,8 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
   }
 
   async generateAuthUrl(clientInformation?: ClientInformation) {
-    const state = makeId(6);
-    const codeVerifier = makeId(30);
+    const state = makeSecureId(6);
+    const codeVerifier = makeSecureId(30);
     const clientId =
       clientInformation?.client_id || process.env.LINKEDIN_CLIENT_ID;
     const url = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${clientId}&prompt=none&redirect_uri=${encodeURIComponent(
@@ -218,6 +220,7 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
     };
   }
 
+  @DashboardFunction()
   async company(token: string, data: { url: string }) {
     const { url } = data;
     const getCompanyVanity = url.match(

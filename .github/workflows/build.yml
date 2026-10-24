@@ -3,6 +3,14 @@ name: Build
 
 on:
   push:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+
+# Um push novo na mesma branch cancela o build anterior (economia de minutos).
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -10,7 +18,7 @@ jobs:
 
     strategy:
       matrix:
-        node-version: ['22.12.0']
+        node-version: ['22.23.4']
         # See supported Node.js release schedule at https://nodejs.org/en/about/releases/
 
     steps:

@@ -2,12 +2,33 @@
 
 import { useSearchParams } from 'next/navigation';
 import { FC, useCallback, useEffect } from 'react';
+
+// So um endereco deste app: o valor termina em `window.location.href` depois
+// do login, entao qualquer origem externa vira open redirect e `javascript:`
+// vira XSS. Validado na escrita E na leitura, porque o localStorage pode
+// guardar um valor salvo antes desta checagem.
+const sameOriginUrl = (url: string | null): string | null => {
+  if (!url) {
+    return null;
+  }
+  try {
+    const parsed = new URL(url);
+    return parsed.origin === window.location.origin &&
+      parsed.protocol === window.location.protocol
+      ? parsed.toString()
+      : null;
+  } catch {
+    return null;
+  }
+};
+
 const ReturnUrlComponent: FC = () => {
   const params = useSearchParams();
   const url = params.get('returnUrl');
   useEffect(() => {
-    if (url?.indexOf?.('http')! > -1) {
-      localStorage.setItem('returnUrl', url!);
+    const returnUrl = sameOriginUrl(url);
+    if (returnUrl) {
+      localStorage.setItem('returnUrl', returnUrl);
     }
   }, [url]);
   return null;
@@ -17,7 +38,7 @@ export const useReturnUrl = () => {
     getAndClear: useCallback(() => {
       const data = localStorage.getItem('returnUrl');
       localStorage.removeItem('returnUrl');
-      return data;
+      return sameOriginUrl(data);
     }, []),
   };
 };

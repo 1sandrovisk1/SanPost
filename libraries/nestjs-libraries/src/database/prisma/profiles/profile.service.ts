@@ -187,7 +187,9 @@ export class ProfileService {
   }
 
   async getAccessibleProfiles(orgId: string, userId: string, orgRole: Role) {
-    const profiles = await this._profileRepository.getProfilesByOrgId(orgId);
+    const profiles = (
+      await this._profileRepository.getProfilesByOrgId(orgId)
+    ).map((profile) => this.withoutProfileSecrets(profile));
     if (orgRole === 'ADMIN' || orgRole === 'SUPERADMIN') {
       return profiles;
     }
@@ -197,6 +199,16 @@ export class ProfileService {
     );
     const accessibleIds = new Set(memberships.map((m) => m.profileId));
     return profiles.filter((p) => accessibleIds.has(p.id));
+  }
+
+  // A listagem vai para qualquer membro (GET /user/profiles). As chaves de API
+  // por perfil dao acesso de escrita a /public/v1 e so sao reveladas a admins
+  // em /user/self (`profileApiKey`) — mesma classe do CVE-2026-107761.
+  private withoutProfileSecrets<
+    T extends { apiKey?: unknown; zernioApiKey?: unknown; lateApiKey?: unknown }
+  >(profile: T): Omit<T, 'apiKey' | 'zernioApiKey' | 'lateApiKey'> {
+    const { apiKey, zernioApiKey, lateApiKey, ...safe } = profile;
+    return safe;
   }
 
   async getEffectiveProfileRole(

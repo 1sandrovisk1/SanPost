@@ -33,7 +33,7 @@ import { RealIP } from 'nestjs-real-ip';
 import { UserAgent } from '@gitroom/nestjs-libraries/user/user.agent';
 import { TrackEnum } from '@gitroom/nestjs-libraries/user/track.enum';
 import { TrackService } from '@gitroom/nestjs-libraries/track/track.service';
-import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
+import { makeSecureId } from '@gitroom/nestjs-libraries/services/make.secure.id';
 import { AuthorizationActions, Sections } from '@gitroom/backend/services/auth/permissions/permission.exception.class';
 
 @ApiTags('User')
@@ -229,9 +229,16 @@ export class UsersController {
 
   @Get('/organizations')
   async getOrgs(@GetUserFromRequest() user: User) {
-    return (await this._orgService.getOrgsByUserId(user.id)).filter(
-      (f) => !f.users[0].disabled
-    );
+    // A linha inteira da organizacao inclui a apiKey (reservada a admins);
+    // qualquer membro recebia a chave de todas as suas orgs (CVE-2026-107761).
+    return (await this._orgService.getOrgsByUserId(user.id))
+      .filter((f) => !f.users[0].disabled)
+      .map((org) => ({
+        id: org.id,
+        name: org.name,
+        users: org.users,
+        subscription: org.subscription,
+      }));
   }
 
   @Post('/change-org')
@@ -349,7 +356,7 @@ export class UsersController {
     @Body()
     body: { tt: TrackEnum; fbclid: string; additional: Record<string, any> }
   ) {
-    const uniqueId = req?.cookies?.track || makeId(10);
+    const uniqueId = req?.cookies?.track || makeSecureId(10);
     const fbclid = req?.cookies?.fbclid || body.fbclid;
     await this._trackService.track(
       uniqueId,

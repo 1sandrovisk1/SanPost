@@ -2,6 +2,7 @@ import { IUploadProvider } from './upload.interface';
 import { constants, mkdirSync, writeFileSync } from 'fs';
 import { access, mkdir, unlink } from 'fs/promises';
 import { extname } from 'path';
+import { randomBytes } from 'crypto';
 import { loadFromUrlOrDataUrl } from './storage.helpers';
 import {
   extractUploadPathSegments,
@@ -33,10 +34,7 @@ export class LocalStorage implements IUploadProvider {
     const dir = `${this.uploadDirectory}${innerPath}`;
     mkdirSync(dir, { recursive: true });
 
-    const randomName = Array(32)
-      .fill(null)
-      .map(() => Math.round(Math.random() * 16).toString(16))
-      .join('');
+    const randomName = randomBytes(16).toString('hex');
 
     const filePath = `${dir}/${randomName}.${extension}`;
     const publicPath = `${innerPath}/${randomName}.${extension}`;
@@ -56,10 +54,7 @@ export class LocalStorage implements IUploadProvider {
       const dir = `${this.uploadDirectory}${innerPath}`;
       mkdirSync(dir, { recursive: true });
 
-      const randomName = Array(32)
-        .fill(null)
-        .map(() => Math.round(Math.random() * 16).toString(16))
-        .join('');
+      const randomName = randomBytes(16).toString('hex');
 
       const filePath = `${dir}/${randomName}${extname(file.originalname)}`;
       const publicPath = `${innerPath}/${randomName}${extname(

@@ -496,3 +496,38 @@ describe('ProfileService', () => {
     });
   });
 });
+
+// Mesma classe do CVE-2026-107761: a listagem de perfis vai para qualquer
+// membro, e a apiKey por perfil da acesso de escrita a /public/v1.
+describe('ProfileService.getAccessibleProfiles - sem segredos por perfil', () => {
+  const row = {
+    id: 'p1',
+    name: 'Cliente A',
+    isDefault: false,
+    apiKey: 'CHAVE-SECRETA',
+    zernioApiKey: 'ZERNIO-SECRETA',
+    lateApiKey: 'LATE-SECRETA',
+    members: [] as unknown[],
+  };
+  const build = () => {
+    const repo = {
+      getProfilesByOrgId: jest.fn().mockResolvedValue([row]),
+      getUserProfileIds: jest.fn().mockResolvedValue([{ profileId: 'p1' }]),
+    };
+    return { service: new ProfileService(repo as any, {} as any), repo };
+  };
+
+  it.each(['ADMIN', 'SUPERADMIN', 'USER'])(
+    'remove apiKey/zernioApiKey/lateApiKey para %s',
+    async (role) => {
+      const { service } = build();
+
+      const result = await service.getAccessibleProfiles('org-1', 'u-1', role as any);
+
+      expect(result).toEqual([
+        { id: 'p1', name: 'Cliente A', isDefault: false, members: [] as unknown[] },
+      ]);
+      expect(JSON.stringify(result)).not.toContain('SECRETA');
+    }
+  );
+});
