@@ -7,6 +7,14 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 
 ## [Unreleased]
 
+### Segurança
+
+- **Paridade com o Postiz `v2.25.3` (24/10/2026)**, que publicou os advisories PSA-2026-E9AHFV (CVE-2026-115932, path traversal em mídia de post) e PSA-2026-YT2HMH (CVE-2026-115933, forja de JWT via `extension-refresh`/convite). A 0.6.0 já fechava as duas rotas principais; esta versão porta o que o upstream fez a mais:
+  - **Confinamento no sink:** `SocialAbstract.localMediaPath` garante que `readOrFetch`, o `statSync`/`createReadStream` do LinkedIn e o envio de mídia do Telegram (que faz upload de qualquer caminho local existente) só abrem arquivo dentro de `UPLOAD_DIRECTORY`, mesmo que o caminho chegue ao provider sem passar por `updateMedia` (ex.: settings). Fora do diretório, o post falha com `BadBody` em vez de ler o arquivo.
+  - **`updateTags` deixa de substituir `(post:ID)` no JSON inteiro dos posts:** a release URL respondida pela plataforma entra só em `content` e `settings` (escapada para JSON), nunca na lista de mídia — a substituição global permitia injetar um caminho de arquivo na mídia (CWE-74).
+  - **`POST /media/save-media` exige `CLOUDFLARE_BUCKET_URL` e rejeita `.`/`..`:** sem bucket (storage local) o path registrado viraria um caminho local lido pelo worker.
+  - **Checagens de tipo e formato nos consumidores de JWT:** `AuthMiddleware` (id string), `getOrgFromCookie` (orgId/id string, role USER/ADMIN, `timeLimit` obrigatório), reset de senha (id string), `/public/modify-subscription` e `extension-refresh` rejeitam os formatos de convite/login/reset e exigem strings; `extension-refresh` também confere `providerIdentifier` do canal; `/enterprise/*` exige strings em `id`, `saasName`, `apiKey`, `redirectUrl` e `provider`.
+
 ## [0.6.0] - 2026-10-24
 
 ### Segurança

@@ -143,6 +143,12 @@ export class TelegramProvider extends SocialAbstract implements SocialProvider {
       if (mediaStorage === 'local' && mediaUrl.startsWith(frontendURL)) {
         mediaUrl = mediaUrl.replace(frontendURL, '');
       }
+      // node-telegram-bot-api faz upload de QUALQUER caminho local existente
+      // que receber: tudo que nao e URL precisa ser arquivo do diretorio de
+      // uploads (CVE-2026-115932).
+      if (mediaUrl.indexOf('http') !== 0) {
+        mediaUrl = this.localMediaPath(mediaUrl);
+      }
       //get mime type to pass contentType to telegram api.
       //some photos and videos might not pass telegram api restrictions, so they are sent as documents instead of returning errors
       const mimeType = mime.getType(mediaUrl); // Detect MIME type

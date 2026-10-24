@@ -554,7 +554,7 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
         size = Number.NaN;
       }
     } else {
-      size = statSync(path).size;
+      size = statSync(this.localMediaPath(path)).size;
     }
 
     if (!Number.isSafeInteger(size) || size <= 0) {
@@ -596,7 +596,9 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
 
       chunk = Buffer.from(await response.arrayBuffer());
     } else {
-      chunk = await this.streamToBuffer(createReadStream(path, { start, end }));
+      chunk = await this.streamToBuffer(
+        createReadStream(this.localMediaPath(path), { start, end })
+      );
     }
 
     if (chunk.length !== expectedLength) {

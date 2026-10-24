@@ -29,7 +29,7 @@ export class EnterpriseController {
         saasName: string;
       }>(params);
 
-      if (!id || !saasName) {
+      if (typeof id !== 'string' || !id || typeof saasName !== 'string' || !saasName) {
         return { success: false };
       }
 
@@ -59,7 +59,15 @@ export class EnterpriseController {
         webhookUrl: string;
       }>(params);
 
-      if (!load || !load.redirectUrl || !load.apiKey || !load.provider) {
+      if (
+        !load ||
+        typeof load.redirectUrl !== 'string' ||
+        !load.redirectUrl ||
+        typeof load.apiKey !== 'string' ||
+        !load.apiKey ||
+        typeof load.provider !== 'string' ||
+        !load.provider
+      ) {
         return;
       }
 
@@ -105,7 +113,13 @@ export class EnterpriseController {
         id: string;
       }>(params);
 
-      if (!load || !load.apiKey || !load.id) {
+      if (
+        !load ||
+        typeof load.apiKey !== 'string' ||
+        !load.apiKey ||
+        typeof load.id !== 'string' ||
+        !load.id
+      ) {
         return { success: false };
       }
 

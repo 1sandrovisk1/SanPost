@@ -46,6 +46,8 @@ Trilhas desta rodada:
 | `v2.24.0` | 22/09 | **PSA-2026-P8W1J0 / CVE-2026-94455** (alto 7.1): `/enterprise/create-user` aceita qualquer JWT assinado | **vulnerável** (código idêntico ao upstream pré-fix) |
 | `v2.25.1` | 11/10 | **PSA-2026-4QX1WG / CVE-2026-107761** (médio 5.3): apiKey em `GET /user/organizations`, tokens no delete de canal | **vulnerável** nos dois pontos |
 | `v2.25.2` | 23/10 | **PSA-2026-JNXM56 / CVE-2026-115931** (crítico 9.9): `/integrations/function` executa qualquer método do provider → leitura arbitrária de arquivo / crash | **vulnerável** (afeta ≥ 2.23.0; nosso espelho é 2.23.0+) |
+| `v2.25.3` | 24/10 | **PSA-2026-E9AHFV / CVE-2026-115932** (crítico 9.6): path traversal em mídia de post → o worker lê qualquer arquivo e o envia como anexo (Discord); rotas secundárias via validação (Dribbble/TikTok/Pinterest) e `save-media` sem bucket | **coberto na 0.6.0** (`media.path.guard` em `updateMedia`); paridade adicional (`localMediaPath` no sink, `updateTags` por campo, `save-media`) na 0.6.1 |
+| `v2.25.3` | 24/10 | **PSA-2026-YT2HMH / CVE-2026-115933** (crítico 9.9): `extension-refresh` assinava JSON do cliente e o convite espalhava o body → forja de sessão/convite/reset/enterprise | **coberto na 0.6.0** (era o "achado do fork" 3.8.1/3.8.2, publicado pelo upstream um dia depois); checagens de tipo/formato extras na 0.6.1 |
 
 Hardening sem advisory no mesmo intervalo: `5f18f1ca` (SSRF/path de mídia),
 `#2269` (open redirect no `returnUrl`), `#2166` (texto do post no log do
