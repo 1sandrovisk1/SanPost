@@ -7,6 +7,10 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 
 ## [Unreleased]
 
+### Segurança
+
+- **Alertas críticos novos do Dependabot (25/10/2026) tratados na mesma major.** `@sentry/nestjs`, `@sentry/nextjs`, `@sentry/react` e `@sentry/profiling-node` 10.45 → 10.76.2 (GHSA-mchm-gjx6-7h55: bypass do middleware do Next.js quando `tunnelRoute` está configurado — o fork não configura; correção a partir da 10.75.2) e `dompurify` 3.4.8 → 3.4.17 via `pnpm.overrides` (GHSA-cg2g-xh64-v4q7: bypass de `SAFE_FOR_TEMPLATES`, que o fork não usa; chega por `isomorphic-dompurify` e `posthog-js`). Deixado de fora: `tinypool` 1.1.1 (2 críticos de prototype pollution/RCE nas opções do worker) é dependência **só de desenvolvimento** do `vitest` 3 e não roda em produção; a correção exige `vitest` 4 (major) e fica para a próxima rodada de dev-deps.
+
 ## [0.6.1] - 2026-10-25
 
 ### Segurança
