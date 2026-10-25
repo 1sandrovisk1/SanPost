@@ -7,6 +7,8 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-10-25
+
 ### Segurança
 
 - **Paridade com o Postiz `v2.25.3` (24/10/2026)**, que publicou os advisories PSA-2026-E9AHFV (CVE-2026-115932, path traversal em mídia de post) e PSA-2026-YT2HMH (CVE-2026-115933, forja de JWT via `extension-refresh`/convite). A 0.6.0 já fechava as duas rotas principais; esta versão porta o que o upstream fez a mais:
