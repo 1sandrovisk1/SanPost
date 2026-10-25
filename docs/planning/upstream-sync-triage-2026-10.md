@@ -391,12 +391,14 @@ Os 21 CVEs de 2026 anteriores do nginx já estão resolvidos no Debian
 8. NOWPayments (`/public/crypto/:path`): `processPayment` confia no
    `order_id` do corpo e não verifica assinatura IPN. Billing está desabilitado
    no fork; se algum dia for ligado, exige correção antes.
-9. Dependabot ainda lista alertas pré-existentes fora desta rodada (críticos:
-   `handlebars` < 4.7.10, `piscina`, `proxy-addr`, `shell-quote`, `tar`,
-   `vitest`; altos: `nodemailer`, `@modelcontextprotocol/sdk`, `compression`,
-   `ws`, `hono`, `js-yaml`, `svgo`, `image-size`, `protobufjs`, `form-data`,
-   `@nestjs/microservices`, `follow-redirects`, `markdown-it`, `lodash`…).
-   Vale um PR de dependências próprio, com validação como a de setembro.
+9. Dependabot listava 300 alertas em 89 pacotes após a 0.6.0 (14 críticos).
+   **Tratado em 24/10** no PR `chore/deps-advisories-2026-10` (bumps diretos +
+   62 overrides, todos na mesma major; ver CHANGELOG). Ficaram de fora, por
+   salto de major/ESM-only ou por o caminho vulnerável não ser usado:
+   `jsondiffpatch` 0.7, `langsmith` 0.6, `image-size` 1.x → 2.x,
+   `@opentelemetry/*`, `@nestjs/core` 11.1.16 duplicado (peer de terceiros).
+   Reavaliar quando os consumidores (`ai`, `@copilotkit/runtime`, carteira
+   Solana) subirem de versão.
 10. `Dockerfile.dev` fixa tag, não digest; container roda como root.
 
 ## 7. Execução (23/10/2026)
