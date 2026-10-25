@@ -333,6 +333,22 @@ Os 21 CVEs de 2026 anteriores do nginx já estão resolvidos no Debian
   Facebook (10), TikTok (7), Pinterest (5), X (3), VK (3), Threads (3),
   Bluesky (2), Reddit (2), YouTube (4), Lemmy, Dribbble, WordPress, GMB,
   Moltbook, Farcaster/Neynar (reescrita).
+  **Execução 25/10 — lote Meta** (`fix/providers-meta-2026-10`): Instagram
+  (11), Facebook (10, incl. #2155 título de vídeo com i18n) e Threads (3, incl.
+  #1946 bytes UTF-8 via `countLength` no compositor e na tool MCP) portados
+  com specs novos; o polling de status do Instagram ganhou `igContainerStatus`
+  (mesma semântica do upstream, mantendo o loop V102 do fork e a cadência
+  original de 30 s após cada checagem); checkpoint da Meta mapeado para
+  `refresh-token` (self-heal) no Facebook Login e `bad-body` no Instagram
+  Login, em vez do `disconnect` do upstream; `SocialAbstract.fetch` leva a
+  mensagem curada ao `BadBody` quando as retentativas esgotam (os `retry`
+  novos — 2207052, 1390008, 4279009, "Sorry, something went wrong" — não
+  terminam em erro vazio). Follow-ups do lote: o marcador de corte do preview
+  (`textSlicer`) ainda conta caracteres no Threads (contador e gate já contam
+  bytes); o `indexOf('490')` cru do `FacebookProvider.handleErrors` é
+  pré-existente e pode casar com ids/trace. Próximos sub-lotes: LinkedIn/YouTube/Pinterest/TikTok, depois os
+  pequenos (Reddit, Bluesky, X, VK, Lemmy, Dribbble, WordPress, GMB, Slack,
+  Hashnode, Telegram, Nostr, Moltbook) e Farcaster/Neynar por último.
 - **`REVIEW` (47)** — arquivo divergente, porte manual: refresh token na
   reconexão (`#1884`, `#2298`, `#1678`), uploader/modal (`#2145`–`#2178`),
   find-slot (`#2207`), erros curados no calendário/API/MCP (`#2119`),

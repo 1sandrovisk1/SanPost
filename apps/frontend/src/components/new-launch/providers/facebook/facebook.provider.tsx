@@ -10,10 +10,14 @@ import { Select } from '@gitroom/react/form/select';
 import { useSettings } from '@gitroom/frontend/components/launches/helpers/use.values';
 import { FacebookPreview } from '@gitroom/frontend/components/new-launch/providers/facebook/facebook.preview';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
+import { useIntegration } from '@gitroom/frontend/components/launches/helpers/use.integration';
 
 export const FacebookSettings = () => {
   const t = useT();
   const { register, watch } = useSettings();
+  const { integration } = useIntegration();
+  // zernio-facebook reaproveita este componente; o titulo so existe na Graph API
+  const supportsVideoTitle = integration?.identifier === 'facebook';
   const postCurrentType = watch('post_type');
   const postType = [
     {
@@ -37,13 +41,24 @@ export const FacebookSettings = () => {
       </Select>
 
       {postCurrentType !== 'story' && (
-        <Input
-          label={t(
-            'facebook_embedded_url',
-            'Embedded URL (only for text Post)'
+        <>
+          <Input
+            label={t(
+              'facebook_embedded_url',
+              'Embedded URL (only for text Post)'
+            )}
+            {...register('url')}
+          />
+          {supportsVideoTitle && (
+            <Input
+              label={t(
+                'facebook_video_title',
+                'Video Title (only for video Post)'
+              )}
+              {...register('title')}
+            />
           )}
-          {...register('url')}
-        />
+        </>
       )}
     </>
   );
