@@ -235,3 +235,59 @@ describe('Temporal provider failure payloads', () => {
     );
   });
 });
+
+// CVE-2026-115932: o provider so pode abrir arquivo dentro de UPLOAD_DIRECTORY,
+// mesmo que o caminho chegue sem passar por PostsService.updateMedia.
+describe('SocialAbstract.localMediaPath / readOrFetch (confinamento no sink)', () => {
+  const { mkdtempSync, writeFileSync } = jest.requireActual('fs') as typeof import('fs');
+  const { tmpdir } = jest.requireActual('os') as typeof import('os');
+  const { join, sep } = jest.requireActual('path') as typeof import('path');
+  const ORIGINAL = process.env.UPLOAD_DIRECTORY;
+
+  class SinkProvider extends SocialAbstract {
+    identifier = 'sink-test';
+    read(path: string) {
+      return this.readOrFetch(path);
+    }
+    local(path: string) {
+      return this.localMediaPath(path);
+    }
+  }
+
+  let base: string;
+
+  beforeAll(() => {
+    base = mkdtempSync(join(tmpdir(), 'robo-sink-'));
+    writeFileSync(join(base, 'ok.png'), 'png');
+    process.env.UPLOAD_DIRECTORY = base;
+  });
+
+  afterAll(() => {
+    if (ORIGINAL === undefined) delete process.env.UPLOAD_DIRECTORY;
+    else process.env.UPLOAD_DIRECTORY = ORIGINAL;
+  });
+
+  it('le arquivo dentro de UPLOAD_DIRECTORY', async () => {
+    const provider = new SinkProvider() as any;
+    await expect(provider.read(join(base, 'ok.png'))).resolves.toEqual(Buffer.from('png'));
+  });
+
+  it('rejeita traversal, caminho absoluto fora da base e prefixo irmao', () => {
+    const provider = new SinkProvider() as any;
+    for (const path of [
+      join(base, '..', 'etc', 'passwd'),
+      '/etc/passwd',
+      `${base}-evil${sep}x.png`,
+      base,
+    ]) {
+      expect(() => provider.local(path)).toThrow(BadBody);
+    }
+  });
+
+  it('sem UPLOAD_DIRECTORY nenhum caminho local e aberto', () => {
+    delete process.env.UPLOAD_DIRECTORY;
+    const provider = new SinkProvider() as any;
+    expect(() => provider.local(join(base, 'ok.png'))).toThrow(BadBody);
+    process.env.UPLOAD_DIRECTORY = base;
+  });
+});

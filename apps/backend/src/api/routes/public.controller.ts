@@ -242,7 +242,18 @@ export class PublicController {
         billing: 'FREE' | 'STANDARD' | 'TEAM' | 'PRO' | 'ULTIMATE';
       };
 
-      if (!load || !load.orgId || !load.billing || !pricing[load.billing]) {
+      // Convite, login e reset usam o mesmo JWT_SECRET: rejeita os formatos
+      // conhecidos e exige os tipos certos.
+      if (
+        !load ||
+        typeof load.orgId !== 'string' ||
+        !load.billing ||
+        !pricing[load.billing] ||
+        'timeLimit' in load ||
+        'providerName' in load ||
+        'expires' in load ||
+        'integrationId' in load
+      ) {
         return { success: false };
       }
 

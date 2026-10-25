@@ -178,7 +178,14 @@ export class MediaController {
     // plano (`item.url.split('/').pop()`); aceitar barra ou `..` permitiria
     // registrar uma mídia apontando para um objeto arbitrário do bucket — que
     // a exclusão da biblioteca passaria a apagar de verdade.
-    if (!/^[A-Za-z0-9._-]+$/.test(name)) {
+    // Sem bucket configurado (storage local) nao existe objeto remoto para
+    // registrar: o path gravado viraria um caminho local lido pelo worker.
+    if (
+      !process.env.CLOUDFLARE_BUCKET_URL ||
+      !/^[A-Za-z0-9._-]+$/.test(name) ||
+      name === '.' ||
+      name === '..'
+    ) {
       throw new HttpException('Invalid media name', 400);
     }
     return this._mediaService.saveFile(

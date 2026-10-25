@@ -400,7 +400,19 @@ export class NoAuthIntegrationsController {
     }
 
     const { integrationId, organizationId, internalId, provider } = payload;
-    if (!integrationId || !organizationId || !internalId || !provider) {
+    if (
+      typeof integrationId !== 'string' ||
+      !integrationId ||
+      typeof organizationId !== 'string' ||
+      !organizationId ||
+      typeof internalId !== 'string' ||
+      !internalId ||
+      typeof provider !== 'string' ||
+      !provider ||
+      'timeLimit' in payload || // convite de equipe
+      'expires' in payload || // reset de senha
+      'providerName' in payload // login
+    ) {
       throw new HttpException('Invalid token payload', 400);
     }
 
@@ -408,7 +420,11 @@ export class NoAuthIntegrationsController {
       organizationId,
       integrationId
     );
-    if (!integration || integration.internalId !== internalId) {
+    if (
+      !integration ||
+      integration.internalId !== internalId ||
+      integration.providerIdentifier !== provider
+    ) {
       throw new HttpException('Integration not found', 404);
     }
 

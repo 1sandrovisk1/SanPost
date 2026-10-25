@@ -8,6 +8,7 @@ import {
 } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
 import { AxiosInstance } from 'axios';
 import { readFileSync } from 'fs';
+import { resolve, sep } from 'path';
 import { setHeartbeatDetails } from '@gitroom/nestjs-libraries/temporal/temporal.heartbeat';
 
 // Temporal persiste ApplicationFailure inteira no historico e a transporta por
@@ -119,7 +120,30 @@ export abstract class SocialAbstract {
       return Buffer.from(response.data);
     }
 
-    return readFileSync(path);
+    return readFileSync(this.localMediaPath(path));
+  }
+
+  // Midia que nao e URL remota e lida do disco do worker. O path gravado e
+  // influenciado pelo usuario (DTO do post, tool MCP, settings de provider),
+  // entao so um arquivo DENTRO de UPLOAD_DIRECTORY e aberto — mesma checagem
+  // que PostsService.updateMedia faz antes, repetida aqui no sink para cobrir
+  // qualquer caminho que chegue ao provider sem passar por la
+  // (CVE-2026-115932). `resolve()` normaliza `..` antes da comparacao.
+  protected localMediaPath(path: string, identifier = ''): string {
+    const base = process.env.UPLOAD_DIRECTORY
+      ? resolve(process.env.UPLOAD_DIRECTORY)
+      : '';
+    const filePath = resolve(path);
+    if (!base || !filePath.startsWith(base + sep)) {
+      throw new BadBody(
+        identifier || this.identifier,
+        JSON.stringify({ path }),
+        Buffer.from('{}'),
+        'A mídia deste post não está no diretório de uploads, por isso não foi publicada'
+      );
+    }
+
+    return filePath;
   }
 
   public handleErrors(

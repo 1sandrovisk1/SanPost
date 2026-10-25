@@ -33,11 +33,15 @@ class TestLinkedinProvider extends LinkedinProvider {
 
 describe('LinkedinProvider media', () => {
   const originalFetch = global.fetch;
+  const originalUploadDirectory = process.env.UPLOAD_DIRECTORY;
   let directory: string;
   let provider: TestLinkedinProvider;
 
   beforeEach(() => {
     directory = mkdtempSync(join(tmpdir(), 'linkedin-provider-'));
+    // readOrFetch/statSync/createReadStream so abrem arquivo dentro de
+    // UPLOAD_DIRECTORY (CVE-2026-115932): os fixtures vivem no diretorio temporario
+    process.env.UPLOAD_DIRECTORY = directory;
     provider = new TestLinkedinProvider();
   });
 
@@ -45,6 +49,8 @@ describe('LinkedinProvider media', () => {
     global.fetch = originalFetch;
     jest.restoreAllMocks();
     rmSync(directory, { recursive: true, force: true });
+    if (originalUploadDirectory === undefined) delete process.env.UPLOAD_DIRECTORY;
+    else process.env.UPLOAD_DIRECTORY = originalUploadDirectory;
   });
 
   it('expõe o DTO do LinkedIn no contrato do provider', () => {

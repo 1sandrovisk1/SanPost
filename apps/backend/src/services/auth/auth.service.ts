@@ -220,7 +220,16 @@ export class AuthService {
 
     try {
       const getOrg: any = AuthChecker.verifyJWT(cookie);
-      if (dayjs(getOrg.timeLimit).isBefore(dayjs())) {
+      // Todo JWT da instancia usa o mesmo segredo: so o formato de convite
+      // (campos certos, com os tipos certos) serve aqui.
+      if (
+        !getOrg ||
+        typeof getOrg.orgId !== 'string' ||
+        typeof getOrg.id !== 'string' ||
+        !['USER', 'ADMIN'].includes(getOrg.role) ||
+        !getOrg.timeLimit ||
+        dayjs(getOrg.timeLimit).isBefore(dayjs())
+      ) {
         return false;
       }
 
@@ -424,7 +433,12 @@ export class AuthService {
       id: string;
       expires: string;
     };
-    if (dayjs(user.expires).isBefore(dayjs())) {
+    if (
+      !user ||
+      typeof user.id !== 'string' ||
+      !user.expires ||
+      dayjs(user.expires).isBefore(dayjs())
+    ) {
       return false;
     }
 

@@ -608,15 +608,26 @@ export class PostsService {
       e.replace('(post:', '').replace(')', '')
     );
     const urls = await this._postRepository.getPostUrls(orgId, ids);
-    const newPlainText = ids.reduce((acc, value) => {
-      const findUrl = urls?.find?.((u) => u.id === value)?.releaseURL || '';
-      return acc.replace(
-        new RegExp(`\\(post:${value}\\)`, 'g'),
-        findUrl.split(',')[0]
-      );
-    }, plainText);
+    const replaceTags = (text: string, escape = (url: string) => url) =>
+      ids.reduce((acc, value) => {
+        const findUrl = urls?.find?.((u) => u.id === value)?.releaseURL || '';
+        return acc.replace(new RegExp(`\\(post:${value}\\)`, 'g'), () =>
+          escape(findUrl.split(',')[0])
+        );
+      }, text);
 
-    return this.updateTags(orgId, JSON.parse(newPlainText) as Post[]);
+    // A release URL e o que a plataforma respondeu: so entra onde uma tag foi
+    // escrita — content e settings (escapada para o JSON deles) — e nunca na
+    // lista de midia, validada antes disto. Substituir no JSON inteiro
+    // permitia injetar um caminho de arquivo na midia via (post:ID)
+    // (CVE-2026-115932, CWE-74).
+    return post.map((p) => ({
+      ...p,
+      content: p.content && replaceTags(p.content),
+      settings:
+        p.settings &&
+        replaceTags(p.settings, (url) => JSON.stringify(url).slice(1, -1)),
+    }));
   }
 
   public async checkInternalPlug(

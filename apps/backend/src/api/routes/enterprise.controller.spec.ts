@@ -67,6 +67,19 @@ describe('EnterpriseController /enterprise/create-user', () => {
     expect(organizationService.createMaxUser).not.toHaveBeenCalled();
   });
 
+  it('recusa id/saasName que nao sao string', async () => {
+    for (const payload of [
+      { id: ['ext-1'], saasName: 's' },
+      { id: 'ext-1', saasName: { x: 1 } },
+      { id: 1, saasName: 's' },
+    ]) {
+      await expect(controller.createUser(sign(payload, secret))).resolves.toEqual(
+        { success: false }
+      );
+    }
+    expect(organizationService.createMaxUser).not.toHaveBeenCalled();
+  });
+
   it('recusa assinatura de outro segredo', async () => {
     await expect(
       controller.createUser(sign({ id: 'ext-1', saasName: 's' }, 'outro'))
