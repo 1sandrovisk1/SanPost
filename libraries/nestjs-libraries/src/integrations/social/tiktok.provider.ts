@@ -225,7 +225,8 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
     if (body.indexOf('picture_size_check_failed') > -1) {
       return {
         type: 'bad-body' as const,
-        value: 'Video must be at least 720p, Picture must no exceed 1080p',
+        value:
+          'Media size not supported by TikTok: images up to 1080px on the shorter side, videos at least 360px on both sides',
       };
     }
 
@@ -240,10 +241,17 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
     return undefined;
   }
 
-  async refreshToken(refreshToken: string): Promise<AuthTokenDetails> {
+  // clientInformation e obrigatorio aqui: o refresh_token foi emitido pelo app
+  // do perfil (Settings > Credenciais > TikTok); com as credenciais do env o
+  // TikTok devolve invalid_grant e o canal entra em loop de reconexao.
+  async refreshToken(
+    refreshToken: string,
+    clientInformation?: ClientInformation
+  ): Promise<AuthTokenDetails> {
     const value = {
-      client_key: process.env.TIKTOK_CLIENT_ID!,
-      client_secret: process.env.TIKTOK_CLIENT_SECRET!,
+      client_key: clientInformation?.client_id || process.env.TIKTOK_CLIENT_ID!,
+      client_secret:
+        clientInformation?.client_secret || process.env.TIKTOK_CLIENT_SECRET!,
       grant_type: 'refresh_token',
       refresh_token: refreshToken,
     };
@@ -399,9 +407,11 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
     publishId: string,
     accessToken: string
   ): Promise<{ url: string; id: string }> {
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
-      const post = await (
+    // Polling limitado (antes era infinito ate o timeout da activity): a cada
+    // 10 s por ate ~15 min, como o Pinterest faz com maxAttempts.
+    const maxAttempts = 90;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const raw = await (
         await this.fetch(
           'https://open.tiktokapis.com/v2/post/publish/status/fetch/',
           {
@@ -418,9 +428,19 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
           0,
           true
         )
-      ).json();
+      ).text();
 
-      const { status, publicaly_available_post_id } = post.data;
+      const { post, publicPostId } = this.parsePublishStatus(raw);
+      if (!post?.data) {
+        // 200 sem data (ou corpo que nao e JSON): falha rapido, como antes
+        throw new BadBody(
+          'titok-error-upload',
+          raw,
+          Buffer.from(raw),
+          'Unexpected response from TikTok while checking the publication status'
+        );
+      }
+      const { status } = post.data;
 
       if (status === 'SEND_TO_USER_INBOX') {
         return {
@@ -430,29 +450,100 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
       }
 
       if (status === 'PUBLISH_COMPLETE') {
+        // o id publico so aparece depois da moderacao (lista vazia ate la):
+        // fica a URL do perfil e o publish_id, e resolveReleaseId corrige
+        // depois pela tela de analytics (upstream #2186)
+        const handle = encodeURIComponent(id);
         return {
-          url: !publicaly_available_post_id
-            ? `https://www.tiktok.com/@${id}`
-            : `https://www.tiktok.com/@${id}/video/` +
-              publicaly_available_post_id,
-          id: !publicaly_available_post_id
-            ? publishId
-            : publicaly_available_post_id?.[0],
+          url: !publicPostId
+            ? `https://www.tiktok.com/@${handle}`
+            : `https://www.tiktok.com/@${handle}/video/${publicPostId}`,
+          id: !publicPostId ? publishId : publicPostId,
         };
       }
 
       if (status === 'FAILED') {
-        const handleError = this.handleErrors(JSON.stringify(post));
+        const handleError = this.handleErrors(raw);
         throw new BadBody(
           'titok-error-upload',
-          JSON.stringify(post),
-          Buffer.from(JSON.stringify(post)),
+          raw,
+          Buffer.from(raw),
           handleError?.value || ''
         );
       }
 
       await timer(10000);
     }
+
+    throw new BadBody(
+      'titok-error-upload',
+      '{}',
+      Buffer.from('{}'),
+      'TikTok did not confirm the publication in time, please check the TikTok app and try again'
+    );
+  }
+
+  // O TikTok devolve publicaly_available_post_id como int64 acima de 2^53, que
+  // o JSON.parse arredonda: o id sai do texto cru antes do parse (upstream
+  // #2182). Corpo que nao e JSON (HTML de erro) vira post undefined.
+  private parsePublishStatus(raw: string): {
+    post: any;
+    publicPostId?: string;
+  } {
+    const [, publicPostId] =
+      raw.match(
+        /"publicaly_available_post_id"\s*:\s*\[\s*"?(\d+)(?=\s*["\],])/
+      ) || [];
+    let post: any;
+    try {
+      post = JSON.parse(raw);
+    } catch {
+      post = undefined;
+    }
+    return { post, publicPostId };
+  }
+
+  // Posts publicados antes da moderacao terminar guardam o publish_id
+  // (v_pub_file~... / v_pub_url~...) como releaseId: resolve para o id publico
+  // e a URL definitiva (upstream #2186). Leitura de analytics, por isso
+  // analyticsFetch (SSRF-safe, sem retentativas de publicacao).
+  async resolveReleaseId(
+    accessToken: string,
+    releaseId: string,
+    integration: Integration
+  ): Promise<{ postId: string; releaseURL: string } | undefined> {
+    if (releaseId.indexOf('_pub_') === -1) {
+      return undefined;
+    }
+
+    const raw = await (
+      await this.analyticsFetch(
+        'https://open.tiktokapis.com/v2/post/publish/status/fetch/',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json; charset=UTF-8',
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({ publish_id: releaseId }),
+        }
+      )
+    ).text();
+
+    const { publicPostId } = this.parsePublishStatus(raw);
+    // sem perfil (Integration.profile e opcional) a URL ficaria /@null/...
+    // persistida para sempre: melhor nao resolver agora
+    if (!publicPostId || !integration.profile) {
+      return undefined;
+    }
+
+    return {
+      postId: publicPostId,
+      // handle codificado: a URL e persistida e reinjetada em posts (updateTags)
+      releaseURL: `https://www.tiktok.com/@${encodeURIComponent(
+        integration.profile
+      )}/video/${publicPostId}`,
+    };
   }
 
   private postingMethod(
@@ -511,6 +602,14 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
                 auto_add_music: firstPost.settings.autoAddMusic === 'yes',
               }
             : {}),
+          // frame de capa escolhido no compositor: campo de post_info na
+          // Content Posting API (upstream #2174); 0 e um valor valido
+          ...(!isPhoto && firstPost?.media?.[0]?.thumbnailTimestamp != null
+            ? {
+                video_cover_timestamp_ms:
+                  firstPost?.media?.[0]?.thumbnailTimestamp,
+              }
+            : {}),
         },
       };
     }
@@ -548,12 +647,6 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
       source_info: {
         source: 'PULL_FROM_URL',
         video_url: firstPost?.media?.[0]?.path!,
-        ...(firstPost?.media?.[0]?.thumbnailTimestamp!
-          ? {
-              video_cover_timestamp_ms:
-                firstPost?.media?.[0]?.thumbnailTimestamp!,
-            }
-          : {}),
       },
     };
   }
@@ -567,10 +660,6 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
     const [firstPost] = postDetails;
     const isPhoto = (firstPost?.media?.[0]?.path?.indexOf('mp4') || -1) === -1;
 
-    console.log({
-      ...this.buildTikokPostInfoBody(firstPost),
-      ...this.buildTikokSourceInfoBody(firstPost),
-    });
     const {
       data: { publish_id },
     } = await (
@@ -795,28 +884,10 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
   ): Promise<AnalyticsData[]> {
     const today = dayjs().format('YYYY-MM-DD');
 
-    if (postId.indexOf('v_pub_url') > -1) {
-      const post = await (
-        await this.analyticsFetch(
-          'https://open.tiktokapis.com/v2/post/publish/status/fetch/',
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json; charset=UTF-8',
-              Authorization: `Bearer ${accessToken}`,
-            },
-            body: JSON.stringify({
-              publish_id: postId,
-            }),
-          }
-        )
-      ).json();
-
-      if (!post?.data?.publicaly_available_post_id?.[0]) {
-        return [];
-      }
-
-      postId = post.data.publicaly_available_post_id[0];
+    // publish_id ainda nao resolvido (PostsService.resolveRelease tenta antes
+    // de chegar aqui): nao ha video publico para consultar.
+    if (postId.indexOf('_pub_') > -1) {
+      return [];
     }
 
     try {

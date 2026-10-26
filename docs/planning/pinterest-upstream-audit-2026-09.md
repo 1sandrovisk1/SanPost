@@ -10,6 +10,11 @@
 Atualizar o provider nativo do Pinterest sem trazer junto o novo pipeline
 Temporal e sem afetar o provider alternativo `zernio-pinterest`.
 
+> Atualização (25/10/2026): o lote de providers de outubro portou #1851
+> (`summary_metrics`), #2179, #2263 e #2129 — este último valida `board` como
+> id numérico no `PinterestSettingsDto`, que `zernio-pinterest` compartilha;
+> nome de board passa a responder 400 também nesse provider.
+
 ## Alterações adotadas
 
 | Origem                             | Decisão no fork                                                                                                                                                                                                      |

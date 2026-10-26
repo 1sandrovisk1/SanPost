@@ -209,3 +209,35 @@ describe('PostsRepository.getPost for publishing', () => {
     ]);
   });
 });
+
+// Porte do upstream #2186: persiste o id publico resolvido depois da publicacao.
+describe('PostsRepository.updateResolvedRelease', () => {
+  it('persiste id publico e URL definitiva do post, restrito a org e ao releaseId anterior', async () => {
+    const prismaMock = createPrismaRepositoryMock('post');
+    (prismaMock.model.post as any).update = jest.fn().mockResolvedValue({} as any);
+    const repo = new PostsRepository(
+      prismaMock as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any
+    );
+
+    await repo.updateResolvedRelease(
+      'post-1',
+      'org-1',
+      'v_pub_url~abc',
+      '7345678901234567891',
+      'https://www.tiktok.com/@p/video/7345678901234567891'
+    );
+
+    expect(prismaMock.model.post.update).toHaveBeenCalledWith({
+      where: { id: 'post-1', organizationId: 'org-1', releaseId: 'v_pub_url~abc' },
+      data: {
+        releaseId: '7345678901234567891',
+        releaseURL: 'https://www.tiktok.com/@p/video/7345678901234567891',
+      },
+    });
+  });
+});

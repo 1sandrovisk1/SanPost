@@ -289,6 +289,35 @@ lista durante o proprio sync e registre no CHANGELOG.
   o campo de titulo de video so aparece para `facebook` nativo (o componente e
   compartilhado com `zernio-facebook`).
 
+### Lote de providers YouTube/Pinterest/TikTok (2026-10-25) — divergencias deliberadas
+
+- **`libraries/nestjs-libraries/src/integrations/social/tiktok.provider.ts`** —
+  o upstream resolve o publish_id no `checkPending` do workflow; o fork mantem
+  o polling em `uploadedVideoSuccess` (`fetch` de publicacao) e `resolveReleaseId`
+  usa `analyticsFetch` (leitura de analytics, SSRF-safe). `postAnalytics` so
+  devolve vazio para `_pub_` nao resolvido (a resolucao e persistida por
+  `PostsService.resolveRelease`). `video_cover_timestamp_ms` vai em `post_info`.
+- **`apps/frontend/src/components/new-launch/providers/tiktok/tiktok.provider.tsx`** —
+  a pre-checagem de imagens (>1080px no lado menor) e client-side (o fork nao
+  adotou o `checkValidity` server-side com sharp do upstream); imagem que nao
+  carrega ou demora 5 s nao bloqueia o envio; so roda quando o `identifier`
+  (5o argumento do `checkValidity`, novo no HOC) e `tiktok` — o zernio-tiktok
+  compartilha o componente e o Zernio redimensiona por conta propria.
+  `uploadedVideoSuccess` tem polling limitado (90 x 10 s) e `refreshToken`
+  recebe `ClientInformation`.
+- **`libraries/nestjs-libraries/src/dtos/posts/providers-settings/zernio-pinterest.dto.ts`** —
+  DTO proprio do zernio-pinterest com o contrato antigo (board string
+  obrigatorio, sem `@Matches`); o upstream nao tem canais Zernio.
+- **`libraries/nestjs-libraries/src/chat/tools/settings.value.coercion.ts`** —
+  `coerceSettingValue` mantem cruas as chaves que o DTO declara com
+  `@IsString` (ids); o upstream faz `JSON.parse` em tudo.
+- **`libraries/nestjs-libraries/src/dtos/posts/providers-settings/pinterest.dto.ts`** —
+  `@Matches` fica ACIMA do `@MinLength` (registro de baixo para cima; o Select
+  mostra so a primeira mensagem). Nao reordenar ao aceitar o upstream.
+- **`libraries/nestjs-libraries/src/chat/tools/integration.schedule.post.ts`** —
+  o fork nao tem `post.settings.tool.ts`; a orientacao "id, nunca o label" vive
+  so na descricao do `value` desta tool (texto do fork, com `tryParseJson`).
+
 ## Regras Importantes
 
 - NUNCA executar `git push --force` em nenhuma branch

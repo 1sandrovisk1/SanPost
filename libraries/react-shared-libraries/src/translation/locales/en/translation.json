@@ -1938,5 +1938,6 @@
   "wordpress_categories_label": "Categories",
   "wordpress_tags_label": "WordPress Tags",
   "wordpress_select_type": "Select type",
-  "wordpress_add_cover_picture": "Add a cover picture"
+  "wordpress_add_cover_picture": "Add a cover picture",
+  "tiktok_image_too_large": "Image %index% is %width%x%height%, TikTok allows a maximum of 1080px on the shorter side"
 }

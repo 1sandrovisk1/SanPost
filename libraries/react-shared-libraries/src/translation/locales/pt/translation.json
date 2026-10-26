@@ -1936,5 +1936,6 @@
   "wordpress_categories_label": "Categorias",
   "wordpress_tags_label": "Tags do WordPress",
   "wordpress_select_type": "Selecionar tipo",
-  "wordpress_add_cover_picture": "Adicionar uma imagem de capa"
+  "wordpress_add_cover_picture": "Adicionar uma imagem de capa",
+  "tiktok_image_too_large": "A imagem %index% tem %width%x%height%; o TikTok aceita no máximo 1080px no lado menor"
 }
