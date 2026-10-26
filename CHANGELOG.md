@@ -19,6 +19,10 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
   - **Contador do compositor:** cada rede conta do seu jeito — X com o peso do twitter-text (URL = 23), Threads em bytes UTF-8, demais em caracteres — e a mesma regra (`countLength`) vale para o gate de "post muito longo" do modal e para a tool MCP; antes o contador e o modal contavam só caracteres. O gate deixa de usar o maior entre peso e caracteres (bloqueava posts do X com URL que a rede aceita); `zernio-twitter`/`zernio-threads` seguem a regra da rede de destino; a mensagem da tool MCP informa a unidade (bytes no Threads).
   - **Threads:** 4279009 (container ainda não encontrado) vira retentativa; `error_message` `UNKNOWN` vira orientação de formato de mídia; o limite de 500 passa a ser contado em **bytes UTF-8** (acentos e emoji pesam mais — era o motivo de posts em pt-BR com menos de 500 caracteres serem rejeitados) no contador do compositor e na tool MCP, via `countLength` compartilhado. (#1946, #2124, #2150)
 
+### Segurança
+
+- **Alertas críticos novos do Dependabot (25/10/2026) tratados na mesma major.** `@sentry/nestjs`, `@sentry/nextjs`, `@sentry/react` e `@sentry/profiling-node` 10.45 → 10.76.2 (GHSA-mchm-gjx6-7h55: bypass do middleware do Next.js quando `tunnelRoute` está configurado — o fork não configura; correção a partir da 10.75.2) e `dompurify` 3.4.8 → 3.4.17 via `pnpm.overrides` (GHSA-cg2g-xh64-v4q7: bypass de `SAFE_FOR_TEMPLATES`, que o fork não usa; chega por `isomorphic-dompurify` e `posthog-js`). Deixado de fora: `tinypool` 1.1.1 (2 críticos de prototype pollution/RCE nas opções do worker) é dependência **só de desenvolvimento** do `vitest` 3 e não roda em produção; a correção exige `vitest` 4 (major) e fica para a próxima rodada de dev-deps.
+
 ## [0.6.1] - 2026-10-25
 
 ### Segurança
