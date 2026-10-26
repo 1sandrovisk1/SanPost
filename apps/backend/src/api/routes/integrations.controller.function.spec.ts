@@ -153,3 +153,51 @@ describe('IntegrationsController /integrations/mentions', () => {
     expect(provider.readOrFetch).not.toHaveBeenCalled();
   });
 });
+
+// As rotas de plug recebiam so o id do canal: um membro de perfil A criava
+// plugs no canal do perfil B.
+describe('IntegrationsController plugs (escopo por perfil)', () => {
+  it('valida o perfil antes de listar/gravar e nao grava em mismatch', async () => {
+    const { controller, integrationService } = build();
+    (integrationService as any).createOrUpdatePlug = jest
+      .fn()
+      .mockResolvedValue({ activated: true });
+    (integrationService as any).getPlugsByIntegrationId = jest
+      .fn()
+      .mockResolvedValue([]);
+    const body = { func: 'autoRepostPost', fields: [] } as any;
+
+    await controller.postPlugsByIntegrationId('int-1', orgUser, profile, body);
+    await controller.getPlugsByIntegrationId('int-1', orgUser, profile);
+    expect(integrationService.validateIntegrationProfile).toHaveBeenCalledWith(
+      'org-1',
+      'int-1',
+      'prof-1',
+      { requireProfile: true }
+    );
+
+    integrationService.validateIntegrationProfile.mockRejectedValueOnce(
+      new Error('Integration does not belong to this profile')
+    );
+    await expect(
+      controller.postPlugsByIntegrationId('int-1', orgUser, profile, body)
+    ).rejects.toThrow();
+    expect((integrationService as any).createOrUpdatePlug).toHaveBeenCalledTimes(1);
+  });
+
+  it('ativar/desativar plug repassa o perfil ao service', async () => {
+    const { controller, integrationService } = build();
+    (integrationService as any).changePlugActivation = jest
+      .fn()
+      .mockResolvedValue({ id: 'plug-1' });
+
+    await controller.changePlugActivation('plug-1', orgUser, profile, false);
+    expect((integrationService as any).changePlugActivation).toHaveBeenCalledWith(
+      'org-1',
+      'plug-1',
+      false,
+      'prof-1',
+      { requireProfile: true }
+    );
+  });
+});

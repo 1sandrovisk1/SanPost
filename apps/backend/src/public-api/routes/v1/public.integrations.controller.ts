@@ -32,6 +32,8 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { UploadFactory } from '@gitroom/nestjs-libraries/upload/upload.factory';
 import { MediaService } from '@gitroom/nestjs-libraries/database/prisma/media/media.service';
 import { GetPostsDto } from '@gitroom/nestjs-libraries/dtos/posts/get.posts.dto';
+import { UpdateReleaseIdDto } from '@gitroom/nestjs-libraries/dtos/posts/update.release.id.dto';
+import { TriggerToolDto } from '@gitroom/nestjs-libraries/dtos/integrations/trigger.tool.dto';
 import {
   AuthorizationActions,
   Sections,
@@ -549,9 +551,18 @@ export class PublicIntegrationsController {
   @ApiParam({ name: 'id', description: 'integrationId' })
   async deleteChannel(
     @GetOrgFromRequest() org: Organization,
+    @GetPublicApiProfileId() publicApiProfileId: string | undefined,
     @Param('id') id: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
+    // chave de perfil so apaga canais do proprio perfil (como as rotas irmas)
+    if (publicApiProfileId) {
+      await this._integrationService.validateIntegrationProfile(
+        org.id,
+        id,
+        publicApiProfileId
+      );
+    }
     const isTherePosts = await this._integrationService.getPostsForChannel(
       org.id,
       id
@@ -570,13 +581,24 @@ export class PublicIntegrationsController {
   @ApiParam({ name: 'id', description: 'integrationId' })
   async getIntegrationSettings(
     @GetOrgFromRequest() org: Organization,
+    @GetPublicApiProfileId() publicApiProfileId: string | undefined,
     @Param('id') id: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
+    if (publicApiProfileId) {
+      await this._integrationService.validateIntegrationProfile(
+        org.id,
+        id,
+        publicApiProfileId
+      );
+    }
     const loadIntegration = await this._integrationService.getIntegrationById(
       org.id,
       id
     );
+    if (!loadIntegration) {
+      throw new HttpException({ msg: 'Integration not found' }, 404);
+    }
 
     const verified =
       JSON.parse(loadIntegration.additionalSettings || '[]')?.find(
@@ -615,10 +637,16 @@ export class PublicIntegrationsController {
   @ApiParam({ name: 'id', description: 'ID do post' })
   async getMissingContent(
     @GetOrgFromRequest() org: Organization,
+    @GetPublicApiProfileId() publicApiProfileId: string | undefined,
     @Param('id') id: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    return this._postsService.getMissingContent(org.id, id);
+    return this._postsService.getMissingContent(
+      org.id,
+      id,
+      false,
+      publicApiProfileId
+    );
   }
 
   @Put('/posts/:id/release-id')
@@ -626,11 +654,17 @@ export class PublicIntegrationsController {
   @ApiParam({ name: 'id', description: 'ID do post' })
   async updateReleaseId(
     @GetOrgFromRequest() org: Organization,
+    @GetPublicApiProfileId() publicApiProfileId: string | undefined,
     @Param('id') id: string,
-    @Body('releaseId') releaseId: string
+    @Body() body: UpdateReleaseIdDto
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    return this._postsService.updateReleaseId(org.id, id, releaseId);
+    return this._postsService.updateReleaseId(
+      org.id,
+      id,
+      body.releaseId,
+      publicApiProfileId
+    );
   }
 
   @Get('/analytics/:integration')
@@ -683,10 +717,18 @@ export class PublicIntegrationsController {
   @ApiParam({ name: 'id', description: 'integrationId' })
   async triggerIntegrationTool(
     @GetOrgFromRequest() org: Organization,
+    @GetPublicApiProfileId() publicApiProfileId: string | undefined,
     @Param('id') id: string,
-    @Body() body: { methodName: string; data: Record<string, string> }
+    @Body() body: TriggerToolDto
   ) {
     Sentry.metrics.count('public_api-request', 1);
+    if (publicApiProfileId) {
+      await this._integrationService.validateIntegrationProfile(
+        org.id,
+        id,
+        publicApiProfileId
+      );
+    }
     const getIntegration = await this._integrationService.getIntegrationById(
       org.id,
       id

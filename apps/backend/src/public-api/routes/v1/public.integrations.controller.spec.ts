@@ -452,3 +452,104 @@ describe('PublicIntegrationsController - posts (escopo por perfil)', () => {
     );
   });
 });
+
+// Rotas por id que so tinham escopo de org: uma chave de perfil operava canais e
+// posts de outros perfis da mesma org (achado do security-auditor, 25/10/2026).
+describe('PublicIntegrationsController - rotas por id com chave de perfil', () => {
+  const org = { id: 'org-1' } as any;
+  const build = () => {
+    const integrationService = {
+      validateIntegrationProfile: jest.fn().mockResolvedValue(undefined),
+      getPostsForChannel: jest.fn().mockResolvedValue([]),
+      deleteChannel: jest.fn().mockResolvedValue({ id: 'int-1' }),
+      getIntegrationById: jest.fn().mockResolvedValue(null),
+    };
+    const postsService = {
+      getMissingContent: jest.fn().mockResolvedValue([]),
+      updateReleaseId: jest.fn().mockResolvedValue({ id: 'post-1' }),
+    };
+    const controller = new PublicIntegrationsController(
+      integrationService as any,
+      postsService as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any
+    );
+    return { controller, integrationService, postsService };
+  };
+
+  it('DELETE /integrations/:id valida o perfil da chave antes de apagar', async () => {
+    const { controller, integrationService } = build();
+    await controller.deleteChannel(org, 'prof-1', 'int-1');
+    expect(integrationService.validateIntegrationProfile).toHaveBeenCalledWith(
+      'org-1',
+      'int-1',
+      'prof-1'
+    );
+    expect(
+      integrationService.validateIntegrationProfile.mock.invocationCallOrder[0]
+    ).toBeLessThan(integrationService.getPostsForChannel.mock.invocationCallOrder[0]);
+  });
+
+  it('DELETE /integrations/:id: canal de outro perfil nao apaga', async () => {
+    const { controller, integrationService } = build();
+    integrationService.validateIntegrationProfile.mockRejectedValue(
+      new HttpException('Integration does not belong to this profile', 403)
+    );
+    await expect(controller.deleteChannel(org, 'prof-1', 'int-1')).rejects.toBeInstanceOf(
+      HttpException
+    );
+    expect(integrationService.deleteChannel).not.toHaveBeenCalled();
+  });
+
+  it('chave de org (sem perfil) nao valida perfil em nenhuma das rotas', async () => {
+    const { controller, integrationService } = build();
+    await controller.deleteChannel(org, undefined, 'int-1');
+    await expect(
+      controller.getIntegrationSettings(org, undefined, 'int-x')
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(
+      controller.triggerIntegrationTool(org, undefined, 'int-x', { methodName: 'x', data: {} })
+    ).rejects.toMatchObject({ status: 404 });
+    expect(integrationService.validateIntegrationProfile).not.toHaveBeenCalled();
+  });
+
+  it('GET /posts/:id/missing e PUT /posts/:id/release-id repassam o perfil da chave', async () => {
+    const { controller, postsService } = build();
+    await controller.getMissingContent(org, 'prof-1', 'post-1');
+    expect(postsService.getMissingContent).toHaveBeenCalledWith(
+      'org-1',
+      'post-1',
+      false,
+      'prof-1'
+    );
+    await controller.updateReleaseId(org, 'prof-1', 'post-1', {
+      releaseId: 'v_pub_url~abc',
+    });
+    expect(postsService.updateReleaseId).toHaveBeenCalledWith(
+      'org-1',
+      'post-1',
+      'v_pub_url~abc',
+      'prof-1'
+    );
+  });
+
+  it('POST /integration-trigger/:id e GET /integration-settings/:id validam o perfil antes de carregar o canal', async () => {
+    const { controller, integrationService } = build();
+    integrationService.validateIntegrationProfile.mockRejectedValue(
+      new HttpException('x', 403)
+    );
+    await expect(
+      controller.triggerIntegrationTool(org, 'prof-1', 'int-1', {
+        methodName: 'x',
+        data: {},
+      })
+    ).rejects.toBeInstanceOf(HttpException);
+    await expect(
+      controller.getIntegrationSettings(org, 'prof-1', 'int-1')
+    ).rejects.toBeInstanceOf(HttpException);
+    expect(integrationService.getIntegrationById).not.toHaveBeenCalled();
+  });
+});

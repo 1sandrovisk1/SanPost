@@ -425,3 +425,31 @@ describe('IntegrationRepository - updates devolvem apenas campos seguros', () =>
     );
   });
 });
+
+describe('IntegrationRepository.getPlugForOrg', () => {
+  it('busca o plug restrito a org, so com id e integrationId', async () => {
+    const plugsMock = createPrismaRepositoryMock('plugs');
+    plugsMock.model.plugs.findFirst.mockResolvedValue({
+      id: 'plug-1',
+      integrationId: 'int-1',
+    } as any);
+    const repo = new IntegrationRepository(
+      {} as any,
+      {} as any,
+      plugsMock as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any
+    );
+
+    await expect(repo.getPlugForOrg('org-1', 'plug-1')).resolves.toEqual({
+      id: 'plug-1',
+      integrationId: 'int-1',
+    });
+    expect(plugsMock.model.plugs.findFirst).toHaveBeenCalledWith({
+      where: { id: 'plug-1', organizationId: 'org-1' },
+      select: { id: true, integrationId: true },
+    });
+  });
+});

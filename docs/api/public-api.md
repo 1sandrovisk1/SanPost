@@ -12,7 +12,7 @@ Header **`Authorization`** com a chave de API (valor **cru, sem `Bearer`**). Peg
 Authorization: SUA_CHAVE_DE_API
 ```
 
-`401` chave ausente/inválida · `403` chave de perfil tentando outro perfil.
+`401` chave ausente/inválida · `403` chave de perfil tentando outro perfil (canal de outro perfil nas rotas por id também responde 403; canal inexistente, 404).
 
 ## Swagger interativo
 
@@ -36,6 +36,11 @@ Authorization: SUA_CHAVE_DE_API
 | `GET` | `/public/v1/analytics/post/:postId` | Analytics de um post |
 | `POST` | `/public/v1/generate-video` | Gerar vídeo (IA) |
 | `GET` | `/public/v1/notifications` | Listar notificações |
+| `DELETE` | `/public/v1/integrations/:id` | Excluir um canal e seus posts (chave de perfil: só canais do próprio perfil) |
+| `GET` | `/public/v1/integration-settings/:id` | Configurações/validação de um canal (idem) |
+| `POST` | `/public/v1/integration-trigger/:id` | Executar ferramenta nativa de um canal (idem) |
+| `GET` | `/public/v1/posts/:id/missing` | Conteúdo faltante de um post (chave de perfil: só posts do próprio perfil; fora dele, lista vazia) |
+| `PUT` | `/public/v1/posts/:id/release-id` | Atualizar o id externo de um post — corpo `{ "releaseId": "<id>" }`, string de 1 a 512 caracteres com um único id de plataforma (`^[A-Za-z0-9._~:/-]+$`); 404 para post de outro perfil |
 
 > Automações: `POST/GET/PUT/DELETE /public/v1/flows` — ver [`public-flows-api.md`](public-flows-api.md).
 

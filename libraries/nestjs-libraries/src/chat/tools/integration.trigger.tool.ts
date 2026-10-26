@@ -62,7 +62,24 @@ export class IntegrationTriggerTool implements AgentToolInterface {
 
         if (!getIntegration) {
           return {
-            output: 'Integration not found',
+            output: [{ error: 'Integration not found' }],
+          };
+        }
+        // mesmo escopo da tool de agendamento: o canal precisa ser do perfil
+        // ativo da sessao MCP
+        const profileId =
+          (requestContext.get('profileId') as string) || undefined;
+        if (
+          profileId &&
+          getIntegration.profileId &&
+          getIntegration.profileId !== profileId
+        ) {
+          // outputSchema e um array de registros: a string crua seria
+          // rejeitada pela validacao de saida do Mastra
+          return {
+            output: [
+              { error: 'Integration does not belong to the active profile' },
+            ],
           };
         }
         getIntegration.token = decryptIntegrationToken(
@@ -76,7 +93,7 @@ export class IntegrationTriggerTool implements AgentToolInterface {
 
         if (!integrationProvider) {
           return {
-            output: 'Integration not found',
+            output: [{ error: 'Integration not found' }],
           };
         }
 
@@ -89,7 +106,7 @@ export class IntegrationTriggerTool implements AgentToolInterface {
           // @ts-ignore
           !integrationProvider[input.methodName]
         ) {
-          return { output: 'tool not found' };
+          return { output: [{ error: 'tool not found' }] };
         }
 
         while (true) {
@@ -139,7 +156,7 @@ export class IntegrationTriggerTool implements AgentToolInterface {
               } else {
               }
             }
-            return { output: 'Unexpected error' };
+            return { output: [{ error: 'Unexpected error' }] };
           }
         }
       },

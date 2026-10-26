@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   HttpException,
+  HttpStatus,
   Injectable,
   ValidationPipe,
 } from '@nestjs/common';
@@ -50,6 +51,7 @@ import { AnalyticsData } from '@gitroom/nestjs-libraries/integrations/social/soc
 import { timer } from '@gitroom/helpers/utils/timer';
 import { ioRedis } from '@gitroom/nestjs-libraries/redis/redis.service';
 import { RefreshToken } from '@gitroom/nestjs-libraries/integrations/social.abstract';
+import { toPublicPost } from '@gitroom/nestjs-libraries/database/prisma/posts/post.response.projection';
 import { RefreshIntegrationService } from '@gitroom/nestjs-libraries/integrations/refresh.integration.service';
 import { StatusEventService } from '@gitroom/nestjs-libraries/database/prisma/status/status-event.service';
 import { selectPostWorkflowVersion } from '@gitroom/nestjs-libraries/temporal/post-workflow-version';
@@ -93,10 +95,19 @@ export class PostsService {
   async getMissingContent(
     orgId: string,
     postId: string,
-    forceRefresh = false
+    forceRefresh = false,
+    profileId?: string
   ): Promise<{ id: string; url: string }[]> {
     const post = await this._postRepository.getPostById(postId, orgId);
     if (!post || post.releaseId !== 'missing') {
+      return [];
+    }
+    // chave/membro de perfil so alcanca posts (e canais) do proprio perfil —
+    // antes de renovar token ou consultar o provider
+    if (
+      !this.postInProfile(post, profileId) ||
+      !this.postInProfile({ profileId: post.integration?.profileId }, profileId)
+    ) {
       return [];
     }
 
@@ -147,14 +158,40 @@ export class PostsService {
     } catch (e) {
       console.log(e);
       if (e instanceof RefreshToken) {
-        return this.getMissingContent(orgId, postId, true);
+        return this.getMissingContent(orgId, postId, true, profileId);
       }
     }
 
     return [];
   }
 
-  async updateReleaseId(orgId: string, postId: string, releaseId: string) {
+  // Escopo por perfil nas leituras/escritas por id: um membro (ou chave de
+  // perfil) so alcanca posts do proprio perfil. 404 tambem para inexistente,
+  // para a resposta nao virar oraculo de existencia.
+  private postInProfile(
+    post: { profileId?: string | null } | null | undefined,
+    profileId?: string
+  ): boolean {
+    return !!post && (!profileId || !post.profileId || post.profileId === profileId);
+  }
+
+  private assertPostInProfile(
+    post: { profileId?: string | null } | null | undefined,
+    profileId?: string
+  ) {
+    if (!this.postInProfile(post, profileId)) {
+      throw new HttpException('Post not found', HttpStatus.NOT_FOUND);
+    }
+  }
+
+  async updateReleaseId(
+    orgId: string,
+    postId: string,
+    releaseId: string,
+    profileId?: string
+  ) {
+    const post = await this._postRepository.getPostById(postId, orgId);
+    this.assertPostInProfile(post, profileId);
     return this._postRepository.updateReleaseId(postId, orgId, releaseId);
   }
 
@@ -589,16 +626,22 @@ export class PostsService {
     };
   }
 
-  async getPostsByGroup(orgId: string, group: string) {
+  async getPostsByGroup(orgId: string, group: string, profileId?: string) {
     const convertToJPEG = false;
     const loadAll = await this._postRepository.getPostsByGroup(orgId, group);
-    const posts = this.arrangePostsByGroup(loadAll, undefined);
+    // um grupo pode ter raizes de perfis diferentes (chave de org / MCP): o
+    // membro so ve as do proprio perfil, mesmo escopo do deletePost por grupo
+    const inProfile = profileId
+      ? loadAll.filter((post) => this.postInProfile(post, profileId))
+      : loadAll;
+    const posts = this.arrangePostsByGroup(inProfile, undefined);
+    this.assertPostInProfile(posts?.[0], profileId);
 
     return {
       group: posts?.[0]?.group,
       posts: await Promise.all(
         (posts || []).map(async (post) => ({
-          ...post,
+          ...toPublicPost(post),
           image: await this.updateMedia(
             post.id,
             JSON.parse(post.image || '[]'),
@@ -630,13 +673,19 @@ export class PostsService {
     ];
   }
 
-  async getPost(orgId: string, id: string, convertToJPEG = false) {
+  async getPost(
+    orgId: string,
+    id: string,
+    convertToJPEG = false,
+    profileId?: string
+  ) {
     const posts = await this.getPostsRecursively(id, true, orgId, true);
+    this.assertPostInProfile(posts?.[0], profileId);
     const list = {
       group: posts?.[0]?.group,
       posts: await Promise.all(
         (posts || []).map(async (post) => ({
-          ...post,
+          ...toPublicPost(post),
           image: await this.updateMedia(
             post.id,
             JSON.parse(post.image || '[]'),
@@ -944,6 +993,20 @@ export class PostsService {
     ) {
       for (const existingPost of existingPosts) {
         this.guardAgainstRepublish(existingPost, 'createPost');
+      }
+    }
+
+    // canal de cada post precisa ser do perfil: a API publica e a tool MCP ja
+    // validavam na borda, o dashboard nao — aqui vale para todas as entradas
+    if (profileId) {
+      for (const post of body.posts) {
+        if (post?.integration?.id) {
+          await this._integrationService.validateIntegrationProfile(
+            orgId,
+            post.integration.id,
+            profileId
+          );
+        }
       }
     }
 

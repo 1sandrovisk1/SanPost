@@ -512,4 +512,181 @@ describe('IntegrationService', () => {
       expect(thrown.getStatus()).toBe(418);
     });
   });
+
+  describe('validateIntegrationProfile (status HTTP)', () => {
+    it('integracao de outro perfil responde 403 e inexistente 404 (nao 500)', async () => {
+      const repo = {
+        getIntegrationById: jest
+          .fn()
+          .mockResolvedValueOnce({ id: 'int-1', profileId: 'prof-2' })
+          .mockResolvedValueOnce(null),
+      };
+      const service = makeService(repo);
+
+      let thrown: any;
+      try {
+        await service.validateIntegrationProfile('org-1', 'int-1', 'prof-1');
+      } catch (err) {
+        thrown = err;
+      }
+      expect(thrown).toBeInstanceOf(HttpException);
+      expect(thrown.getStatus()).toBe(403);
+
+      try {
+        await service.validateIntegrationProfile('org-1', 'int-x', 'prof-1');
+      } catch (err) {
+        thrown = err;
+      }
+      expect(thrown.getStatus()).toBe(404);
+    });
+  });
+
+  describe('plugs (func validado contra os plugs registrados)', () => {
+    const makePlugService = (integration: any) => {
+      const repo = {
+        getIntegrationById: jest.fn().mockResolvedValue(integration),
+        createOrUpdatePlug: jest.fn().mockResolvedValue({ activated: true }),
+        getPlug: jest.fn(),
+      };
+      const manager = {
+        getAllPlugs: jest.fn().mockReturnValue([
+          {
+            identifier: 'x',
+            name: 'X',
+            plugs: [
+              {
+                methodName: 'autoRepostPost',
+                identifier: 'x-autoRepostPost',
+                fields: [{ name: 'likesAmount', validation: '/^\\d+$/' }],
+              },
+            ],
+          },
+        ]),
+        getSocialIntegration: jest.fn(),
+      };
+      const service = new IntegrationService(
+        repo as any,
+        {} as any,
+        manager as any,
+        {} as any,
+        {} as any,
+        {} as any,
+        {} as any,
+        {} as any,
+        {} as any
+      );
+      return { service, repo, manager };
+    };
+    const body = (func: string, fields = [{ name: 'likesAmount', value: '10' }]) =>
+      ({ func, fields } as any);
+
+    it('integracao fora da org responde 404 sem gravar', async () => {
+      const { service, repo } = makePlugService(null);
+      let thrown: any;
+      try {
+        await service.createOrUpdatePlug('org-1', 'int-1', body('autoRepostPost'));
+      } catch (err) {
+        thrown = err;
+      }
+      expect(thrown).toBeInstanceOf(HttpException);
+      expect(thrown.getStatus()).toBe(404);
+      expect(repo.createOrUpdatePlug).not.toHaveBeenCalled();
+    });
+
+    it('func que nao e um plug registrado do provider responde 400 sem gravar', async () => {
+      const { service, repo } = makePlugService({ id: 'int-1', providerIdentifier: 'x' });
+      for (const func of ['readOrFetch', 'fetch', 'post', 'x-autoRepostPost']) {
+        let thrown: any;
+        try {
+          await service.createOrUpdatePlug('org-1', 'int-1', body(func));
+        } catch (err) {
+          thrown = err;
+        }
+        expect(thrown).toBeInstanceOf(HttpException);
+        expect(thrown.getStatus()).toBe(400);
+      }
+      expect(repo.createOrUpdatePlug).not.toHaveBeenCalled();
+    });
+
+    it('campo nao declarado pelo plug responde 400', async () => {
+      const { service, repo } = makePlugService({ id: 'int-1', providerIdentifier: 'x' });
+      let thrown: any;
+      try {
+        await service.createOrUpdatePlug(
+          'org-1',
+          'int-1',
+          body('autoRepostPost', [{ name: 'constructor', value: 'x' }])
+        );
+      } catch (err) {
+        thrown = err;
+      }
+      expect(thrown?.getStatus?.()).toBe(400);
+      expect(repo.createOrUpdatePlug).not.toHaveBeenCalled();
+    });
+
+    it('plug registrado com os campos declarados grava', async () => {
+      const { service, repo } = makePlugService({ id: 'int-1', providerIdentifier: 'x' });
+      await expect(
+        service.createOrUpdatePlug('org-1', 'int-1', body('autoRepostPost'))
+      ).resolves.toEqual({ activated: true });
+      expect(repo.createOrUpdatePlug).toHaveBeenCalledWith(
+        'org-1',
+        'int-1',
+        body('autoRepostPost')
+      );
+    });
+
+    it('changePlugActivation exige plug da org e canal do perfil', async () => {
+      const { service, repo } = makePlugService({ id: 'int-1', providerIdentifier: 'x', profileId: 'prof-2' });
+      (repo as any).getPlugForOrg = jest.fn().mockResolvedValue({ id: 'plug-1', integrationId: 'int-1' });
+      (repo as any).changePlugActivation = jest.fn().mockResolvedValue({ id: 'plug-1' });
+
+      let thrown: any;
+      try {
+        await service.changePlugActivation('org-1', 'plug-1', false, 'prof-1');
+      } catch (err) {
+        thrown = err;
+      }
+      expect(thrown?.getStatus?.()).toBe(403);
+      expect((repo as any).changePlugActivation).not.toHaveBeenCalled();
+
+      await expect(
+        service.changePlugActivation('org-1', 'plug-1', false, 'prof-2')
+      ).resolves.toEqual({ id: 'plug-1' });
+
+      (repo as any).getPlugForOrg.mockResolvedValue(null);
+      try {
+        await service.changePlugActivation('org-1', 'plug-x', false, 'prof-2');
+      } catch (err) {
+        thrown = err;
+      }
+      expect(thrown?.getStatus?.()).toBe(404);
+    });
+
+    it('processPlugs nao invoca funcao que nao e plug registrado (linha legada) e encerra', async () => {
+      const { service, repo, manager } = makePlugService({ id: 'int-1', providerIdentifier: 'x' });
+      const provider = { autoRepostPost: jest.fn().mockResolvedValue(true), readOrFetch: jest.fn() };
+      manager.getSocialIntegration.mockReturnValue(provider);
+      repo.getPlug.mockResolvedValue({
+        id: 'plug-1',
+        plugFunction: 'readOrFetch',
+        data: '[]',
+        integration: { providerIdentifier: 'x', token: 'tok' },
+      });
+
+      await expect(
+        service.processPlugs({ plugId: 'plug-1', postId: 'p', delay: 0, totalRuns: 1, currentRun: 1 })
+      ).resolves.toBe(true);
+      expect(provider.readOrFetch).not.toHaveBeenCalled();
+
+      repo.getPlug.mockResolvedValue({
+        id: 'plug-1',
+        plugFunction: 'autoRepostPost',
+        data: '[{"name":"likesAmount","value":"10"}]',
+        integration: { providerIdentifier: 'x', token: 'tok' },
+      });
+      await service.processPlugs({ plugId: 'plug-1', postId: 'p', delay: 0, totalRuns: 1, currentRun: 1 });
+      expect(provider.autoRepostPost).toHaveBeenCalled();
+    });
+  });
 });

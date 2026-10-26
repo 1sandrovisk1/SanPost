@@ -13,6 +13,7 @@ import {
 import { PostsService } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.service';
 import { GetOrgFromRequest } from '@gitroom/nestjs-libraries/user/org.from.request';
 import { GetProfileFromRequest } from '@gitroom/nestjs-libraries/user/profile.from.request';
+import { UpdateReleaseIdDto } from '@gitroom/nestjs-libraries/dtos/posts/update.release.id.dto';
 import { Organization, Profile, User } from '@prisma/client';
 import { GetPostsDto } from '@gitroom/nestjs-libraries/dtos/posts/get.posts.dto';
 import { GetPostsListDto } from '@gitroom/nestjs-libraries/dtos/posts/get.posts.list.dto';
@@ -54,18 +55,25 @@ export class PostsController {
   @Get('/:id/missing')
   async getMissingContent(
     @GetOrgFromRequest() org: Organization,
+    @GetProfileFromRequest() profile: Profile | null,
     @Param('id') id: string
   ) {
-    return this._postsService.getMissingContent(org.id, id);
+    return this._postsService.getMissingContent(org.id, id, false, profile?.id);
   }
 
   @Put('/:id/release-id')
   async updateReleaseId(
     @GetOrgFromRequest() org: Organization,
+    @GetProfileFromRequest() profile: Profile | null,
     @Param('id') id: string,
-    @Body('releaseId') releaseId: string
+    @Body() body: UpdateReleaseIdDto
   ) {
-    return this._postsService.updateReleaseId(org.id, id, releaseId);
+    return this._postsService.updateReleaseId(
+      org.id,
+      id,
+      body.releaseId,
+      profile?.id
+    );
   }
 
   @Post('/should-shortlink')
@@ -238,13 +246,21 @@ export class PostsController {
   }
 
   @Get('/group/:group')
-  getPostsByGroup(@GetOrgFromRequest() org: Organization, @Param('group') group: string) {
-    return this._postsService.getPostsByGroup(org.id, group);
+  getPostsByGroup(
+    @GetOrgFromRequest() org: Organization,
+    @GetProfileFromRequest() profile: Profile | null,
+    @Param('group') group: string
+  ) {
+    return this._postsService.getPostsByGroup(org.id, group, profile?.id);
   }
 
   @Get('/:id')
-  getPost(@GetOrgFromRequest() org: Organization, @Param('id') id: string) {
-    return this._postsService.getPost(org.id, id);
+  getPost(
+    @GetOrgFromRequest() org: Organization,
+    @GetProfileFromRequest() profile: Profile | null,
+    @Param('id') id: string
+  ) {
+    return this._postsService.getPost(org.id, id, false, profile?.id);
   }
 
   @Post('/')
@@ -254,7 +270,6 @@ export class PostsController {
     @GetProfileFromRequest() profile: Profile | null,
     @Body() rawBody: any
   ) {
-    console.log(JSON.stringify(rawBody, null, 2));
     const body = await this._postsService.mapTypeToPost(rawBody, org.id);
     return this._postsService.createPost(org.id, body, profile?.id);
   }

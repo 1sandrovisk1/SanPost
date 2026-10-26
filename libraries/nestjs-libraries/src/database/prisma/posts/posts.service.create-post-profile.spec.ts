@@ -108,4 +108,21 @@ describe('PostsService.createPost - derivacao de profileId', () => {
     const passedProfileId = repo.createOrUpdatePost.mock.calls[0][6];
     expect(passedProfileId).toBeUndefined();
   });
+
+  it('canal de outro perfil e recusado antes de gravar (dashboard tambem)', async () => {
+    integrationService.validateIntegrationProfile.mockRejectedValue(
+      new Error('Integration does not belong to this profile')
+    );
+    const service = buildService(repo, integrationService);
+
+    await expect(
+      service.createPost('org-1', makeBody() as any, 'prof-1')
+    ).rejects.toThrow('Integration does not belong to this profile');
+    expect(integrationService.validateIntegrationProfile).toHaveBeenCalledWith(
+      'org-1',
+      'int-1',
+      'prof-1'
+    );
+    expect(repo.createOrUpdatePost).not.toHaveBeenCalled();
+  });
 });
