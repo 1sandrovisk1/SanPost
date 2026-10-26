@@ -7,6 +7,17 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 
 ## [Unreleased]
 
+### Corrigido
+
+- **Lote de providers (YouTube, Pinterest, TikTok) — portes cirúrgicos do Postiz `v2.24.0`–`v2.25.2`.**
+  - **YouTube:** cota diária de inserção de vídeo esgotada (`defaultVideoInsertPerDayPerProject`) vira erro claro pedindo reagendamento; a mensagem de thumbnail sem canal verificado explica que o vídeo foi publicado e como verificar o canal (youtube.com/verify) e definir a thumbnail no Studio. (#2294, #2257)
+  - **Pinterest:** analytics do pin lê `summary_metrics` (métricas do período) em vez de `lifetime_metrics`, que só traz comentários/reações — antes o card ficava vazio; "Something went wrong on our end" vira retentativa; "not permitted to access that resource" explica que a conta não pode publicar nesse board. (#1851, #2263, #2179)
+  - **TikTok:** o id público do vídeo é lido do texto cru da resposta — acima de 2^53 o `JSON.parse` arredondava e o link do post ficava errado; lista vazia de ids (moderação pendente) guarda o `publish_id` e a URL do perfil em vez de `undefined`; na primeira abertura das estatísticas o id definitivo e a URL são resolvidos e persistidos (`resolveReleaseId` + `PostsService.resolveRelease`, com cache negativo de 5 min enquanto o TikTok ainda não expõe o id, para não repetir a consulta a cada abertura); o frame de capa escolhido no compositor (`video_cover_timestamp_ms`) passa a ir em `post_info`, onde a API o lê; `picture_size_check_failed` descreve os limites reais e o compositor avisa qual imagem passa de 1080px no lado menor antes de enviar — só no canal TikTok nativo (o Zernio redimensiona por conta própria) e sem bloquear quando a imagem não carrega. O polling de publicação passa a ser limitado (~15 min) em vez de girar até o timeout, resposta inesperada falha na hora, e a renovação do token usa as credenciais do perfil (antes só as do `.env`, o que derrubava canais conectados com app próprio); o payload de publicação (legenda, URLs de mídia) deixa de ir para o log do worker. Posts do TikTok já publicados antes desta correção mantêm o link/estatísticas antigos (não há reparo retroativo). (#2182, #2180, #2186, #2174, #1875)
+
+### Alterado
+
+- **Pinterest: `settings.board` precisa ser o id numérico do board** (compositor, `POST /public/v1/posts` e tool MCP) — nome de board agora responde 400 com a orientação de usar a lista de boards do canal, em vez de falhar só na publicação. O canal `zernio-pinterest` mantém o contrato anterior (board obrigatório, sem exigir id numérico — DTO próprio): hoje o Zernio ignora o valor e publica no primeiro board da conta. A descrição do campo `value` da tool MCP orienta a usar o id devolvido pelas tools do canal, nunca o rótulo, e a tool deixa de converter em número as chaves que o DTO declara como string (um id só de dígitos chegava ao provider como `number`). (#2129)
+
 ## [0.6.1] - 2026-10-25
 
 ### Segurança

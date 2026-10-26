@@ -13,34 +13,16 @@ import { checkAuth } from '@gitroom/nestjs-libraries/chat/auth.context';
 import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validation';
 import { readRequestContext } from '@gitroom/nestjs-libraries/chat/tools/tool.context.helper';
 import { weightedLength } from '@gitroom/helpers/utils/count.length';
+import {
+  coerceSettingValue,
+  stringKeysOf,
+} from '@gitroom/nestjs-libraries/chat/tools/settings.value.coercion';
 
 function countCharacters(text: string, type: string): number {
   if (type !== 'x') {
     return text.length;
   }
   return weightedLength(text);
-}
-
-// Settings values chegam do agent sempre como string (schema compatibility com
-// Gemini). Tentamos reidratar via JSON.parse — se for "true", "42", "[...]",
-// "{...}" volta o tipo nativo. Strings cruas ("video-id-xyz") nao sao JSON
-// validas e ficam intactas. Numeros como "42" sao parseaveis e voltam number.
-function tryParseJson(value: string): unknown {
-  if (typeof value !== 'string') return value;
-  const trimmed = value.trim();
-  if (
-    trimmed === '' ||
-    (!/^[\[{]/.test(trimmed) &&
-      !/^(true|false|null)$/i.test(trimmed) &&
-      !/^-?\d/.test(trimmed))
-  ) {
-    return value;
-  }
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    return value;
-  }
 }
 
 @Injectable()
@@ -116,7 +98,7 @@ If the tools return errors, you would need to rerun it with the right parameters
                     value: z
                       .string()
                       .describe(
-                        'Value of the key as a string. For complex values (objects, arrays, numbers, booleans) send a JSON-stringified representation — the backend will JSON.parse it transparently. For simple ids/labels, send the raw string. Always prefer the id then label if possible.'
+                        'Value of the key as a string. For complex values (objects, arrays, numbers, booleans) send a JSON-stringified representation — the backend will JSON.parse it transparently. For simple ids/labels, send the raw string. Always prefer the id then label if possible. When the settings schema says a field is an id (for example the Pinterest board), pass the id returned by the channel tools, never the display label.'
                       ),
                   })
                 )
@@ -216,6 +198,13 @@ If the tools return errors, you would need to rerun it with the right parameters
             throw new Error('Integration not found');
           }
 
+          // chaves que o DTO declara como string (ids) nao passam pelo JSON.parse
+          const stringKeys = stringKeysOf(
+            socialIntegrationList.find(
+              (p) => p.identifier === integration.providerIdentifier
+            )?.dto
+          );
+
           const output = await this._postsService.createPost(organizationId, {
             date: post.date,
             type: post.type as 'draft' | 'schedule' | 'now',
@@ -229,9 +218,9 @@ If the tools return errors, you would need to rerun it with the right parameters
                   (acc, s) => ({
                     ...acc,
                     // Schema declara value como string (compatibilidade Gemini);
-                    // tentamos JSON.parse para reidratar arrays/objects/numbers/booleans.
-                    // Falha de parse → mantemos como string crua.
-                    [s.key]: tryParseJson(s.value),
+                    // JSON.parse reidrata arrays/objects/numbers/booleans,
+                    // exceto nas chaves de string do DTO (ids ficam crus).
+                    [s.key]: coerceSettingValue(stringKeys, s.key, s.value),
                   }),
                   {
                     __type: integration.providerIdentifier,

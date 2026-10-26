@@ -400,6 +400,25 @@ Os 21 CVEs de 2026 anteriores do nginx já estão resolvidos no Debian
    Reavaliar quando os consumidores (`ai`, `@copilotkit/runtime`, carteira
    Solana) subirem de versão.
 10. `Dockerfile.dev` fixa tag, não digest; container roda como root.
+11. **API pública: 4 rotas só com escopo de org** (`DELETE /integrations/:id`,
+    `GET /posts/:id/missing`, `PUT /posts/:id/release-id`,
+    `POST /integration-trigger/:id` em `public.integrations.controller.ts`):
+    as rotas irmãs comparam `publicApiProfileId`; estas não — uma chave de
+    perfil opera canais/posts de outros perfis da mesma org. Aplicar a mesma
+    checagem (achado do `security-auditor`, 25/10/2026).
+12. **`GET /posts/:id` e `GET /posts/group/:group` devolvem a linha inteira de
+    `Integration`** (`token`, `refreshToken`, `customInstanceDetails`) e
+    `Post.error` pelo spread `...post` sobre `integration: true`
+    (`posts.service.ts`/`posts.repository.ts`): mesma classe da
+    CVE-2026-107761 — projetar no repositório (confirmar com captura de
+    resposta).
+13. **`PlugDto.func` só `@IsString`**, gravado sem checagem e despachado por
+    nome (`integration.service.ts`): mesma classe da CVE-2026-115931; validar
+    contra os plugs registrados na gravação.
+14. **`releaseId` sem DTO nas rotas `release-id`** (`posts.controller.ts`,
+    `public.integrations.controller.ts`): só `String()`; qualquer valor com
+    `_pub_` dispara a consulta de status no TikTok com o token da org (saída
+    só dígitos, host constante). Validar formato/tamanho na borda.
 
 ## 7. Execução (23/10/2026)
 
@@ -432,6 +451,24 @@ Validação local (23/10/2026, Node 22.22.3 no dev — por isso o `pnpm` avisa
 
 O espelho local `postiz` foi avançado para `9383f5be`; o push do espelho fica
 para o mantenedor (cada push em branch dispara `build.yml`, ~8 min).
+
+### Sub-lote PROVIDER 2 — YouTube, Pinterest e TikTok (25/10/2026)
+
+Branch `fix/providers-yt-pt-tt-2026-10`. Portados: YouTube #2257/#2294;
+Pinterest #1851/#2129/#2179/#2263; TikTok #1875/#2174/#2180/#2182/#2186
+(provider nativo + `PostsService.resolveRelease`). Já cobertos no fork, sem
+porte: #1767 (LinkedIn Page usa `p_${id}` no passo intermediário) e #2125
+(board id). Fora: #2258 (lane Temporal), #2249 (lane MCP), #2212/#2295 (P2),
+#2240 e a parte Business do #2186 (TikTok for Business ainda não existe no
+fork). Divergências: `resolveReleaseId` via `analyticsFetch`; polling de
+publicação segue no provider; pré-checagem de imagens do TikTok client-side.
+O caminho MCP deixa de converter em número as chaves que o DTO declara como
+string (`coerceSettingValue`). Follow-ups: posts do TikTok publicados antes da
+correção do int64 mantêm `releaseId` arredondado (ou `undefined`) — reparo
+retroativo só por lista de vídeos do canal; `ZernioBaseProvider` não mapeia
+`board` → `boardId` (o Zernio publica no primeiro board); o carregador de
+imagem do `checkValidity` do Pinterest (`pinterest.provider.tsx`) não tem
+`onerror`/timeout e pode travar o `Promise.all` do compositor.
 
 ## Apêndice — classificação 1 por 1 (171 PRs + 74 commits diretos)
 

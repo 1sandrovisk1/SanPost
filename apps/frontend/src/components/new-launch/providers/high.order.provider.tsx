@@ -65,7 +65,10 @@ export const withProvider = function <T extends object>(params: {
     >,
     settings: T,
     additionalSettings: any,
-    t?: (key: string, defaultValue: string) => string
+    t?: (key: string, defaultValue: string) => string,
+    // identificador do canal (ex.: 'tiktok' vs 'zernio-tiktok'): componentes
+    // compartilhados com os canais Zernio usam para limitar checagens nativas
+    identifier?: string
   ) => Promise<string | true>;
   maximumCharacters?: number | ((settings: any) => number);
 }) {
@@ -222,7 +225,8 @@ export const withProvider = function <T extends object>(params: {
                   JSON.parse(
                     selectedIntegration.integration.additionalSettings || '[]'
                   ),
-                  t
+                  t,
+                  selectedIntegration.integration.identifier
                 )
               : true,
             settings,
