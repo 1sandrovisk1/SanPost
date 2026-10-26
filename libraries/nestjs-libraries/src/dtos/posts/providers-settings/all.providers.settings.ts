@@ -1,5 +1,6 @@
 import { RedditSettingsDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/reddit.dto';
 import { PinterestSettingsDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/pinterest.dto';
+import { ZernioPinterestSettingsDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/zernio-pinterest.dto';
 import { YoutubeSettingsDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/youtube.settings.dto';
 import { TikTokDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/tiktok.dto';
 import { XDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/x.dto';
@@ -65,7 +66,7 @@ export type AllProvidersSettings =
   | ProviderExtension<'zernio-youtube', YoutubeSettingsDto>
   | ProviderExtension<'zernio-facebook', FacebookDto>
   | ProviderExtension<'zernio-linkedin', LinkedinDto>
-  | ProviderExtension<'zernio-pinterest', PinterestSettingsDto>
+  | ProviderExtension<'zernio-pinterest', ZernioPinterestSettingsDto>
   | ProviderExtension<'zernio-reddit', RedditSettingsDto>
   | ProviderExtension<'zernio-twitter', XDto>
   | ProviderExtension<'zernio-bluesky', None>
@@ -116,7 +117,7 @@ export const allProviders = (setEmpty?: any) => {
     { value: YoutubeSettingsDto, name: 'zernio-youtube' },
     { value: FacebookDto, name: 'zernio-facebook' },
     { value: LinkedinDto, name: 'zernio-linkedin' },
-    { value: PinterestSettingsDto, name: 'zernio-pinterest' },
+    { value: ZernioPinterestSettingsDto, name: 'zernio-pinterest' },
     { value: RedditSettingsDto, name: 'zernio-reddit' },
     { value: XDto, name: 'zernio-twitter' },
     { value: setEmpty, name: 'zernio-bluesky' },

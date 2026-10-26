@@ -195,6 +195,58 @@ export class PostsService {
     return this._postRepository.updateReleaseId(postId, orgId, releaseId);
   }
 
+  // Porte do upstream #2186: providers que publicam antes de ter o id publico
+  // (TikTok) guardam o publish_id como releaseId; aqui ele e trocado pelo id
+  // definitivo (e a URL) assim que a plataforma o expoe, e persistido. Chamar
+  // com o token ja descriptografado (post.integration e o mesmo objeto).
+  async resolveRelease(
+    orgId: string,
+    post: {
+      id: string;
+      releaseId: string;
+      releaseURL: string | null;
+      integration: Integration;
+    }
+  ): Promise<{ releaseId: string; releaseURL: string | null }> {
+    const stored = { releaseId: post.releaseId, releaseURL: post.releaseURL };
+    const integrationProvider = this._integrationManager.getSocialIntegration(
+      post.integration.providerIdentifier
+    );
+    if (!integrationProvider.resolveReleaseId) {
+      return stored;
+    }
+
+    // Cache negativo curto: um post ainda sem id publico nao deve bater na
+    // plataforma a cada abertura das estatisticas (GET sem throttle, mesmo
+    // token e endpoint do polling de publicacao, rate limit por token).
+    const unresolvedKey = `release-resolve:${orgId}:${post.id}`;
+    if (await ioRedis.get(unresolvedKey)) {
+      return stored;
+    }
+
+    const resolved = await integrationProvider.resolveReleaseId(
+      post.integration.token,
+      post.releaseId,
+      post.integration
+    );
+    if (!resolved) {
+      await ioRedis.set(unresolvedKey, '1', 'EX', 300);
+      return stored;
+    }
+    if (resolved.postId === post.releaseId) {
+      return stored;
+    }
+
+    await this._postRepository.updateResolvedRelease(
+      post.id,
+      orgId,
+      post.releaseId,
+      resolved.postId,
+      resolved.releaseURL
+    );
+    return { releaseId: resolved.postId, releaseURL: resolved.releaseURL };
+  }
+
   async checkPostAnalytics(
     orgId: string,
     postId: string,
@@ -262,10 +314,19 @@ export class PostsService {
       getIntegration.token
     );
     try {
+      // depois do decrypt acima e dentro do try: RefreshToken aqui tambem
+      // cai no refresh + nova tentativa
+      const { releaseId } = await this.resolveRelease(orgId, {
+        id: post.id,
+        releaseId: post.releaseId,
+        releaseURL: post.releaseURL,
+        integration: getIntegration,
+      });
+
       const loadAnalytics = await integrationProvider.postAnalytics(
         getIntegration.internalId,
         getIntegration.token,
-        post.releaseId,
+        releaseId,
         date,
         getIntegration
       );

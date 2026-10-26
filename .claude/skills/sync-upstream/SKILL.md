@@ -259,6 +259,65 @@ lista durante o proprio sync e registre no CHANGELOG.
     endpoints `/credentials/:provider/test` em
     `apps/backend/src/api/routes/credentials.controller.ts`.
 
+### Lote de providers Meta (2026-10-25) — divergencias deliberadas
+
+- **`libraries/nestjs-libraries/src/integrations/social/instagram.provider.ts`** —
+  o upstream moveu o polling de container para o workflow e usa um tipo
+  `disconnect` no checkpoint da Meta. O fork mantem o loop V102 dentro de
+  `post()` (cadencia de 30 s apos cada checagem) e so extraiu `igContainerStatus`;
+  o checkpoint mapeia para `refresh-token` (self-heal por Usuario do Sistema).
+  `instagram.standalone.provider.ts` converte esse caso em `bad-body` pela
+  subclasse `InstagramLoginDelegate` (hook `metaCheckpointError`), porque
+  `this.fetch`/`igContainerStatus` consultam o `handleErrors` do delegate, nao
+  o do standalone. Nao reintroduzir `Disconnect`.
+- **`libraries/nestjs-libraries/src/integrations/social/facebook.provider.ts`** —
+  `videoPostAnalytics` usa `analyticsFetch` (SSRF/DNS pinning), nao o `fetch`
+  cru do upstream; o bloco de mapeamentos novos fica ANTES do `indexOf('490')`,
+  o 190/459 (checkpoint) e `refresh-token` (self-heal, como no Instagram; o
+  upstream falha o post) e os catch-alls `(#200)` / "Sorry, something went
+  wrong" ficam por ULTIMO para nao sombrear subcodes especificos (1404078).
+- **`libraries/nestjs-libraries/src/integrations/social.abstract.ts`** —
+  `fetch()` com retentativas esgotadas lanca `BadBody` com a mensagem curada de
+  `handleErrors` (upstream lanca vazio).
+- **`libraries/helpers/src/utils/count.length.ts`** + `manage.modal.tsx` +
+  `information.component.tsx` + `integration.schedule.post.ts` — uma unica
+  regra de contagem (`countLength`, com `zernio-twitter`/`zernio-threads`
+  normalizados para a rede de destino e `countLengthUnit` nas mensagens); o
+  upstream so trocou o contador e mantem o `max(peso, caracteres)` no gate,
+  que bloqueia posts do X com URL. Nao reintroduzir o `max()`.
+- **`apps/frontend/src/components/new-launch/providers/facebook/facebook.provider.tsx`** —
+  o campo de titulo de video so aparece para `facebook` nativo (o componente e
+  compartilhado com `zernio-facebook`).
+
+### Lote de providers YouTube/Pinterest/TikTok (2026-10-25) — divergencias deliberadas
+
+- **`libraries/nestjs-libraries/src/integrations/social/tiktok.provider.ts`** —
+  o upstream resolve o publish_id no `checkPending` do workflow; o fork mantem
+  o polling em `uploadedVideoSuccess` (`fetch` de publicacao) e `resolveReleaseId`
+  usa `analyticsFetch` (leitura de analytics, SSRF-safe). `postAnalytics` so
+  devolve vazio para `_pub_` nao resolvido (a resolucao e persistida por
+  `PostsService.resolveRelease`). `video_cover_timestamp_ms` vai em `post_info`.
+- **`apps/frontend/src/components/new-launch/providers/tiktok/tiktok.provider.tsx`** —
+  a pre-checagem de imagens (>1080px no lado menor) e client-side (o fork nao
+  adotou o `checkValidity` server-side com sharp do upstream); imagem que nao
+  carrega ou demora 5 s nao bloqueia o envio; so roda quando o `identifier`
+  (5o argumento do `checkValidity`, novo no HOC) e `tiktok` — o zernio-tiktok
+  compartilha o componente e o Zernio redimensiona por conta propria.
+  `uploadedVideoSuccess` tem polling limitado (90 x 10 s) e `refreshToken`
+  recebe `ClientInformation`.
+- **`libraries/nestjs-libraries/src/dtos/posts/providers-settings/zernio-pinterest.dto.ts`** —
+  DTO proprio do zernio-pinterest com o contrato antigo (board string
+  obrigatorio, sem `@Matches`); o upstream nao tem canais Zernio.
+- **`libraries/nestjs-libraries/src/chat/tools/settings.value.coercion.ts`** —
+  `coerceSettingValue` mantem cruas as chaves que o DTO declara com
+  `@IsString` (ids); o upstream faz `JSON.parse` em tudo.
+- **`libraries/nestjs-libraries/src/dtos/posts/providers-settings/pinterest.dto.ts`** —
+  `@Matches` fica ACIMA do `@MinLength` (registro de baixo para cima; o Select
+  mostra so a primeira mensagem). Nao reordenar ao aceitar o upstream.
+- **`libraries/nestjs-libraries/src/chat/tools/integration.schedule.post.ts`** —
+  o fork nao tem `post.settings.tool.ts`; a orientacao "id, nunca o label" vive
+  so na descricao do `value` desta tool (texto do fork, com `tryParseJson`).
+
 ## Regras Importantes
 
 - NUNCA executar `git push --force` em nenhuma branch

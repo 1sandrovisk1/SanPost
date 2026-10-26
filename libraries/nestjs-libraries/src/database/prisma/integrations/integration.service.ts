@@ -485,10 +485,22 @@ export class IntegrationService {
       this._encryption,
       getIntegration.token
     );
-    const getIntegrationInformation = await provider.fetchPageInformation(
-      getIntegration.token,
-      data
-    );
+    // Erros do provider nesta etapa sao de acesso/permissao a Pagina ("no
+    // permission to manage this page", "Page not found") e precisam chegar a
+    // tela de conexao com a mensagem, nao como 500 "Internal server error".
+    const getIntegrationInformation = await provider
+      .fetchPageInformation(getIntegration.token, data)
+      .catch((err: unknown) => {
+        if (err instanceof HttpException) {
+          throw err;
+        }
+        throw new HttpException(
+          err instanceof Error && err.message
+            ? err.message
+            : 'Failed to fetch page information',
+          HttpStatus.BAD_REQUEST
+        );
+      });
 
     // Antes de salvar, verifica se o canal ja existe em outro perfil da mesma
     // org. Sem essa checagem, o updateIntegration faria upsert silencioso na

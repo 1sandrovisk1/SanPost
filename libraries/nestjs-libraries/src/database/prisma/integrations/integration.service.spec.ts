@@ -445,6 +445,74 @@ describe('IntegrationService', () => {
     });
   });
 
+  describe('saveProviderPage', () => {
+    const makePageService = (fetchPageInformation: jest.Mock) => {
+      const repo = {
+        getIntegrationById: jest.fn().mockResolvedValue({
+          id: 'int-1',
+          inBetweenSteps: true,
+          providerIdentifier: 'facebook',
+          token: 'tok',
+        }),
+      };
+      const manager = {
+        getSocialIntegration: jest
+          .fn()
+          .mockReturnValue({ fetchPageInformation }),
+      };
+      return new IntegrationService(
+        repo as any,
+        {} as any,
+        manager as any,
+        {} as any,
+        {} as any,
+        {} as any,
+        {} as any,
+        {} as any,
+        {} as any
+      );
+    };
+
+    it('converte erro do provider ao buscar a pagina em 400 com a mensagem, nao 500', async () => {
+      const service = makePageService(
+        jest
+          .fn()
+          .mockRejectedValue(
+            new Error(
+              'Your Facebook user has no permission to manage this page'
+            )
+          )
+      );
+
+      let thrown: any;
+      try {
+        await service.saveProviderPage('org-1', 'int-1', { page: 'p-1' });
+      } catch (err) {
+        thrown = err;
+      }
+      expect(thrown).toBeInstanceOf(HttpException);
+      expect(thrown.getStatus()).toBe(400);
+      expect(thrown.message).toBe(
+        'Your Facebook user has no permission to manage this page'
+      );
+    });
+
+    it('preserva HttpException lancada pelo provider', async () => {
+      const service = makePageService(
+        jest.fn().mockRejectedValue(new HttpException('teapot', 418))
+      );
+
+      let thrown: any;
+      try {
+        await service.saveProviderPage('org-1', 'int-1', { page: 'p-1' });
+      } catch (err) {
+        thrown = err;
+      }
+      expect(thrown).toBeInstanceOf(HttpException);
+      expect(thrown.getStatus()).toBe(418);
+    });
+  });
+
   describe('validateIntegrationProfile (status HTTP)', () => {
     it('integracao de outro perfil responde 403 e inexistente 404 (nao 500)', async () => {
       const repo = {

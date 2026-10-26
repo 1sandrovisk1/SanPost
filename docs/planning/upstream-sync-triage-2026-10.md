@@ -333,6 +333,22 @@ Os 21 CVEs de 2026 anteriores do nginx já estão resolvidos no Debian
   Facebook (10), TikTok (7), Pinterest (5), X (3), VK (3), Threads (3),
   Bluesky (2), Reddit (2), YouTube (4), Lemmy, Dribbble, WordPress, GMB,
   Moltbook, Farcaster/Neynar (reescrita).
+  **Execução 25/10 — lote Meta** (`fix/providers-meta-2026-10`): Instagram
+  (11), Facebook (10, incl. #2155 título de vídeo com i18n) e Threads (3, incl.
+  #1946 bytes UTF-8 via `countLength` no compositor e na tool MCP) portados
+  com specs novos; o polling de status do Instagram ganhou `igContainerStatus`
+  (mesma semântica do upstream, mantendo o loop V102 do fork e a cadência
+  original de 30 s após cada checagem); checkpoint da Meta mapeado para
+  `refresh-token` (self-heal) no Facebook Login e `bad-body` no Instagram
+  Login, em vez do `disconnect` do upstream; `SocialAbstract.fetch` leva a
+  mensagem curada ao `BadBody` quando as retentativas esgotam (os `retry`
+  novos — 2207052, 1390008, 4279009, "Sorry, something went wrong" — não
+  terminam em erro vazio). Follow-ups do lote: o marcador de corte do preview
+  (`textSlicer`) ainda conta caracteres no Threads (contador e gate já contam
+  bytes); o `indexOf('490')` cru do `FacebookProvider.handleErrors` é
+  pré-existente e pode casar com ids/trace. Próximos sub-lotes: LinkedIn/YouTube/Pinterest/TikTok, depois os
+  pequenos (Reddit, Bluesky, X, VK, Lemmy, Dribbble, WordPress, GMB, Slack,
+  Hashnode, Telegram, Nostr, Moltbook) e Farcaster/Neynar por último.
 - **`REVIEW` (47)** — arquivo divergente, porte manual: refresh token na
   reconexão (`#1884`, `#2298`, `#1678`), uploader/modal (`#2145`–`#2178`),
   find-slot (`#2207`), erros curados no calendário/API/MCP (`#2119`),
@@ -400,6 +416,25 @@ Os 21 CVEs de 2026 anteriores do nginx já estão resolvidos no Debian
    Reavaliar quando os consumidores (`ai`, `@copilotkit/runtime`, carteira
    Solana) subirem de versão.
 10. `Dockerfile.dev` fixa tag, não digest; container roda como root.
+11. **API pública: 4 rotas só com escopo de org** (`DELETE /integrations/:id`,
+    `GET /posts/:id/missing`, `PUT /posts/:id/release-id`,
+    `POST /integration-trigger/:id` em `public.integrations.controller.ts`):
+    as rotas irmãs comparam `publicApiProfileId`; estas não — uma chave de
+    perfil opera canais/posts de outros perfis da mesma org. Aplicar a mesma
+    checagem (achado do `security-auditor`, 25/10/2026).
+12. **`GET /posts/:id` e `GET /posts/group/:group` devolvem a linha inteira de
+    `Integration`** (`token`, `refreshToken`, `customInstanceDetails`) e
+    `Post.error` pelo spread `...post` sobre `integration: true`
+    (`posts.service.ts`/`posts.repository.ts`): mesma classe da
+    CVE-2026-107761 — projetar no repositório (confirmar com captura de
+    resposta).
+13. **`PlugDto.func` só `@IsString`**, gravado sem checagem e despachado por
+    nome (`integration.service.ts`): mesma classe da CVE-2026-115931; validar
+    contra os plugs registrados na gravação.
+14. **`releaseId` sem DTO nas rotas `release-id`** (`posts.controller.ts`,
+    `public.integrations.controller.ts`): só `String()`; qualquer valor com
+    `_pub_` dispara a consulta de status no TikTok com o token da org (saída
+    só dígitos, host constante). Validar formato/tamanho na borda.
 
 ## 7. Execução (23/10/2026)
 
@@ -432,6 +467,24 @@ Validação local (23/10/2026, Node 22.22.3 no dev — por isso o `pnpm` avisa
 
 O espelho local `postiz` foi avançado para `9383f5be`; o push do espelho fica
 para o mantenedor (cada push em branch dispara `build.yml`, ~8 min).
+
+### Sub-lote PROVIDER 2 — YouTube, Pinterest e TikTok (25/10/2026)
+
+Branch `fix/providers-yt-pt-tt-2026-10`. Portados: YouTube #2257/#2294;
+Pinterest #1851/#2129/#2179/#2263; TikTok #1875/#2174/#2180/#2182/#2186
+(provider nativo + `PostsService.resolveRelease`). Já cobertos no fork, sem
+porte: #1767 (LinkedIn Page usa `p_${id}` no passo intermediário) e #2125
+(board id). Fora: #2258 (lane Temporal), #2249 (lane MCP), #2212/#2295 (P2),
+#2240 e a parte Business do #2186 (TikTok for Business ainda não existe no
+fork). Divergências: `resolveReleaseId` via `analyticsFetch`; polling de
+publicação segue no provider; pré-checagem de imagens do TikTok client-side.
+O caminho MCP deixa de converter em número as chaves que o DTO declara como
+string (`coerceSettingValue`). Follow-ups: posts do TikTok publicados antes da
+correção do int64 mantêm `releaseId` arredondado (ou `undefined`) — reparo
+retroativo só por lista de vídeos do canal; `ZernioBaseProvider` não mapeia
+`board` → `boardId` (o Zernio publica no primeiro board); o carregador de
+imagem do `checkValidity` do Pinterest (`pinterest.provider.tsx`) não tem
+`onerror`/timeout e pode travar o `Promise.all` do compositor.
 
 ### PR de segurança 3 — achados adjacentes do `security-auditor` (26/10/2026)
 

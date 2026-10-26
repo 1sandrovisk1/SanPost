@@ -293,6 +293,26 @@ const TikTokSettings: FC<{
     </div>
   );
 };
+// Le as dimensoes da imagem no browser. Imagem inacessivel ou lenta (5 s)
+// conta como "nao mensuravel" e nao trava o envio dos outros canais.
+const readImageDimensions = (path?: string) =>
+  new Promise<{ width: number; height: number } | undefined>((resolve) => {
+    if (!path) {
+      resolve(undefined);
+      return;
+    }
+    const img = new Image();
+    const done = (value?: { width: number; height: number }) => {
+      clearTimeout(timeout);
+      resolve(value);
+    };
+    const timeout = setTimeout(() => done(undefined), 5000);
+    img.onload = () =>
+      done({ width: img.naturalWidth, height: img.naturalHeight });
+    img.onerror = () => done(undefined);
+    img.src = path;
+  });
+
 export default withProvider({
   postComment: PostComment.COMMENT,
   minimumCharacters: [],
@@ -300,7 +320,7 @@ export default withProvider({
   comments: false,
   CustomPreviewComponent: TiktokPreview,
   dto: TikTokDto,
-  checkValidity: async (items) => {
+  checkValidity: async (items, _settings, _additionalSettings, t, identifier) => {
     const [firstItems] = items ?? [];
     if ((firstItems?.length ?? 0) === 0) {
       return 'No video / images selected';
@@ -315,6 +335,33 @@ export default withProvider({
       (firstItems?.[0]?.path?.indexOf?.('mp4') ?? -1) > -1
     ) {
       return 'You need one media';
+    }
+
+    // Porte do upstream #1875 (no fork a validacao e client-side): o TikTok
+    // rejeita o post inteiro quando uma imagem passa de 1080px no lado menor
+    // e o status so diz picture_size_check_failed, sem apontar qual. So no
+    // canal nativo: o zernio-tiktok compartilha este componente e o Zernio
+    // redimensiona as imagens por conta propria.
+    if (
+      identifier === 'tiktok' &&
+      (firstItems ?? []).every((p) => (p?.path?.indexOf?.('mp4') ?? -1) === -1)
+    ) {
+      const dimensions = await Promise.all(
+        (firstItems ?? []).map((p) => readImageDimensions(p?.path))
+      );
+      const tooBig = dimensions.findIndex(
+        (d) => !!d && Math.min(d.width, d.height) > 1080
+      );
+      const big = dimensions[tooBig];
+      if (tooBig > -1 && big) {
+        // placeholders %x% (nao {{x}}) para o i18next nao interpolar antes do replace
+        const fallback =
+          'Image %index% is %width%x%height%, TikTok allows a maximum of 1080px on the shorter side';
+        return (t?.('tiktok_image_too_large', fallback) ?? fallback)
+          .replace('%index%', String(tooBig + 1))
+          .replace('%width%', String(big.width))
+          .replace('%height%', String(big.height));
+      }
     }
     return true;
   },

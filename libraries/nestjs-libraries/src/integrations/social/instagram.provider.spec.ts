@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { InstagramProvider } from './instagram.provider';
+import { BadBody, RefreshToken } from '@gitroom/nestjs-libraries/integrations/social.abstract';
 
 describe('InstagramProvider (flags)', () => {
   afterEach(() => {
@@ -367,5 +368,336 @@ describe('InstagramProvider.handleErrors', () => {
       value:
         'The account is missing some permissions to perform this action, please re-add the account and allow all permissions',
     });
+  });
+});
+
+// Lote de providers out/2026 — portes dos PRs upstream #2088, #2123, #2137,
+// #2152, #2215, #2234, #2239, #2256, #2260, #2261 e #1855.
+describe('InstagramProvider.handleErrors (lote out/2026)', () => {
+  const provider = new InstagramProvider();
+
+  it.each([
+    ['2207085', 'bad-body', /video format, duration and resolution/],
+    ['2207082', 'bad-body', /set the original video volume to 0/],
+    ['2207078', 'bad-body', /Trial Reel publish limit/],
+    ['2207018', 'bad-body', /collaborators could not be tagged/],
+    ['1772107', 'bad-body', /did not add the comment/],
+    ['2207053', 'bad-body', /300MB, 1920px width, 25Mbps/],
+    ['2207052', 'retry', /Media fetch failed/],
+    ['(#200)', 'bad-body', /missing permissions/],
+  ])('mapeia %s como %s', (code, type, message) => {
+    const result = provider.handleErrors(
+      JSON.stringify({ error: { message: `Erro ${code}`, error_subcode: code } }),
+      400
+    );
+    expect(result?.type).toBe(type);
+    expect(result?.value).toMatch(message);
+  });
+
+  it.each([
+    'You cannot access the app till you log in to www.facebook.com',
+    'Session key is malformed',
+  ])('checkpoint da Meta ("%s") vira refresh-token para passar pelo self-heal/desconexao', (text) => {
+    expect(provider.handleErrors(text, 400)).toEqual({
+      type: 'refresh-token',
+      value: expect.stringMatching(/log in at instagram\.com/),
+    });
+  });
+});
+
+describe('InstagramProvider.post (lote out/2026)', () => {
+  const mockGraph = (
+    provider: InstagramProvider,
+    statusByContainer: (id: string) => { status_code: string; status?: string }
+  ) => {
+    let children = 0;
+    const calls: string[] = [];
+    jest.spyOn(provider, 'fetch').mockImplementation(async (url: any) => {
+      const u = String(url);
+      calls.push(u);
+      const json = u.includes('/media_publish')
+        ? { id: 'media-1' }
+        : u.includes('fields=status_code')
+        ? statusByContainer(u.split('/').pop()!.split('?')[0])
+        : u.includes('fields=permalink')
+        ? { permalink: 'https://instagram.example/p/1' }
+        : u.includes('media_type=CAROUSEL')
+        ? { id: 'carousel-1' }
+        : u.includes('/media?')
+        ? { id: `child-${++children}` }
+        : {};
+      return { json: async () => json } as Response;
+    });
+    return calls;
+  };
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('carrossel: collaborators (sem @, url-encoded) vao no container, nao nos itens', async () => {
+    jest.useFakeTimers();
+    const provider = new InstagramProvider();
+    const calls = mockGraph(provider, () => ({ status_code: 'FINISHED' }));
+
+    const posting = provider.post(
+      'ig-1',
+      'token',
+      [
+        {
+          id: 'post-1',
+          message: 'Carrossel',
+          media: [
+            { path: 'https://cdn.example/a.jpg' },
+            { path: 'https://cdn.example/b.jpg' },
+          ],
+          settings: {
+            post_type: 'post',
+            collaborators: [{ label: '@alice' }, { label: 'bob' }],
+          },
+        },
+      ] as any,
+      {} as any
+    );
+    await jest.runAllTimersAsync();
+    await posting;
+
+    const encoded = encodeURIComponent(JSON.stringify(['alice', 'bob']));
+    const children = calls.filter((u) => u.includes('is_carousel_item=true'));
+    const container = calls.find((u) => u.includes('media_type=CAROUSEL'))!;
+    expect(children).toHaveLength(2);
+    for (const child of children) expect(child).not.toContain('collaborators');
+    expect(container).toContain(`&collaborators=${encoded}`);
+  });
+
+  it('post unico: collaborators vao no item, sem @ e url-encoded', async () => {
+    jest.useFakeTimers();
+    const provider = new InstagramProvider();
+    const calls = mockGraph(provider, () => ({ status_code: 'FINISHED' }));
+
+    const posting = provider.post(
+      'ig-1',
+      'token',
+      [
+        {
+          id: 'post-1',
+          message: 'Foto',
+          media: [{ path: 'https://cdn.example/a.jpg' }],
+          settings: { post_type: 'post', collaborators: [{ label: '@alice' }] },
+        },
+      ] as any,
+      {} as any
+    );
+    await jest.runAllTimersAsync();
+    await posting;
+
+    expect(calls[0]).toContain(
+      `&collaborators=${encodeURIComponent(JSON.stringify(['alice']))}`
+    );
+  });
+
+  it('reel usa a thumbnail da midia como cover_url quando nao ha capa nas settings', async () => {
+    jest.useFakeTimers();
+    const provider = new InstagramProvider();
+    const calls = mockGraph(provider, () => ({ status_code: 'FINISHED' }));
+
+    const posting = provider.post(
+      'ig-1',
+      'token',
+      [
+        {
+          id: 'post-1',
+          message: 'Reel',
+          media: [
+            {
+              path: 'https://cdn.example/v.mp4',
+              thumbnail: 'https://cdn.example/thumb.jpg',
+            },
+          ],
+          settings: { post_type: 'post' },
+        },
+      ] as any,
+      {} as any
+    );
+    await jest.runAllTimersAsync();
+    await posting;
+
+    expect(calls[0]).toContain('media_type=REELS');
+    expect(calls[0]).toContain(
+      `&cover_url=${encodeURIComponent('https://cdn.example/thumb.jpg')}`
+    );
+  });
+
+  it('container em ERROR vira BadBody com a mensagem curada (2207082)', async () => {
+    jest.useFakeTimers();
+    const provider = new InstagramProvider();
+    mockGraph(provider, () => ({
+      status_code: 'ERROR',
+      status: 'Error: Media upload has failed with error code 2207082',
+    }));
+
+    const posting = provider.post(
+      'ig-1',
+      'token',
+      [
+        {
+          id: 'post-1',
+          message: 'Reel',
+          media: [{ path: 'https://cdn.example/v.mp4' }],
+          settings: { post_type: 'post' },
+        },
+      ] as any,
+      {} as any
+    );
+    const assertion = expect(posting).rejects.toThrow(
+      /set the original video volume to 0/
+    );
+    await jest.runAllTimersAsync();
+    await assertion;
+  });
+
+  it('checkpoint da Meta no status do container vira RefreshToken (nao BadBody)', async () => {
+    jest.useFakeTimers();
+    const provider = new InstagramProvider();
+    mockGraph(provider, () => ({
+      status_code: 'ERROR',
+      status: 'Error: You cannot access the app till you log in to www.facebook.com',
+    }));
+
+    const posting = provider.post(
+      'ig-1',
+      'token',
+      [{ id: 'p', message: 'x', media: [{ path: 'https://cdn.example/a.jpg' }], settings: { post_type: 'post' } }] as any,
+      {} as any
+    );
+    const assertion = expect(posting).rejects.toBeInstanceOf(RefreshToken);
+    await jest.runAllTimersAsync();
+    await assertion;
+  });
+
+  it('EXPIRED tambem falha o post com BadBody', async () => {
+    jest.useFakeTimers();
+    const provider = new InstagramProvider();
+    mockGraph(provider, () => ({ status_code: 'EXPIRED', status: 'EXPIRED' }));
+
+    const posting = provider.post(
+      'ig-1',
+      'token',
+      [{ id: 'p', message: 'x', media: [{ path: 'https://cdn.example/a.jpg' }], settings: { post_type: 'post' } }] as any,
+      {} as any
+    );
+    const assertion = expect(posting).rejects.toBeInstanceOf(BadBody);
+    await jest.runAllTimersAsync();
+    await assertion;
+  });
+
+  it('ERROR no container do carrossel (itens FINISHED) falha com a mensagem curada', async () => {
+    jest.useFakeTimers();
+    const provider = new InstagramProvider();
+    mockGraph(provider, (id) =>
+      id === 'carousel-1'
+        ? { status_code: 'ERROR', status: 'Error: 2207085' }
+        : { status_code: 'FINISHED' }
+    );
+
+    const posting = provider.post(
+      'ig-1',
+      'token',
+      [
+        {
+          id: 'p',
+          message: 'x',
+          media: [{ path: 'https://cdn.example/a.jpg' }, { path: 'https://cdn.example/b.jpg' }],
+          settings: { post_type: 'post' },
+        },
+      ] as any,
+      {} as any
+    );
+    const assertion = expect(posting).rejects.toThrow(/video format, duration and resolution/);
+    await jest.runAllTimersAsync();
+    await assertion;
+  });
+
+  it('story nao envia collaborators', async () => {
+    jest.useFakeTimers();
+    const provider = new InstagramProvider();
+    const calls = mockGraph(provider, () => ({ status_code: 'FINISHED' }));
+
+    const posting = provider.post(
+      'ig-1',
+      'token',
+      [
+        {
+          id: 'p',
+          message: 'x',
+          media: [{ path: 'https://cdn.example/a.jpg' }],
+          settings: { post_type: 'story', collaborators: [{ label: '@alice' }] },
+        },
+      ] as any,
+      {} as any
+    );
+    await jest.runAllTimersAsync();
+    await posting;
+
+    expect(calls[0]).toContain('media_type=STORIES');
+    expect(calls[0]).not.toContain('collaborators');
+  });
+
+  it('IN_PROGRESS consulta o status de novo e dorme 30 s apos cada checagem, inclusive FINISHED', async () => {
+    jest.useFakeTimers();
+    const sleeps = jest.spyOn(global, 'setTimeout');
+    const provider = new InstagramProvider();
+    let polls = 0;
+    const calls = mockGraph(provider, () => ({
+      status_code: ++polls === 1 ? 'IN_PROGRESS' : 'FINISHED',
+    }));
+
+    const posting = provider.post(
+      'ig-1',
+      'token',
+      [
+        {
+          id: 'p',
+          message: 'x',
+          media: [{ path: 'https://cdn.example/a.jpg' }],
+          settings: { post_type: 'post' },
+        },
+      ] as any,
+      {} as any
+    );
+    await jest.runAllTimersAsync();
+    await posting;
+
+    expect(calls.filter((u) => u.includes('fields=status_code')).length).toBe(2);
+    // cadencia do fork: um sleep apos IN_PROGRESS e outro apos FINISHED
+    expect(sleeps.mock.calls.filter(([, ms]) => ms === 30000)).toHaveLength(2);
+    sleeps.mockRestore();
+  });
+
+  it('container em ERROR sem detalhe usa a mensagem padrao; com detalhe nao mapeado usa o detalhe', async () => {
+    jest.useFakeTimers();
+    const semDetalhe = new InstagramProvider();
+    mockGraph(semDetalhe, () => ({ status_code: 'ERROR', status: 'ERROR' }));
+    const p1 = semDetalhe.post(
+      'ig-1',
+      'token',
+      [{ id: 'p', message: 'x', media: [{ path: 'https://cdn.example/a.jpg' }], settings: { post_type: 'post' } }] as any,
+      {} as any
+    );
+    const a1 = expect(p1).rejects.toThrow(/Instagram could not process the media/);
+    await jest.runAllTimersAsync();
+    await a1;
+
+    const comDetalhe = new InstagramProvider();
+    mockGraph(comDetalhe, () => ({ status_code: 'ERROR', status: 'Error: The video file is corrupted' }));
+    const p2 = comDetalhe.post(
+      'ig-1',
+      'token',
+      [{ id: 'p', message: 'x', media: [{ path: 'https://cdn.example/a.jpg' }], settings: { post_type: 'post' } }] as any,
+      {} as any
+    );
+    const a2 = expect(p2).rejects.toThrow(/The video file is corrupted/);
+    await jest.runAllTimersAsync();
+    await a2;
   });
 });

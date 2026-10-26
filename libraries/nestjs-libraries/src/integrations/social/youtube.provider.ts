@@ -96,6 +96,16 @@ export class YoutubeProvider extends SocialAbstract implements SocialProvider {
       };
     }
 
+    // Cota diaria de insercao de video do projeto Google (upstream #2294):
+    // nao e problema do video, reagendar resolve.
+    if (body.includes('defaultVideoInsertPerDayPerProject')) {
+      return {
+        type: 'bad-body',
+        value:
+          "YouTube's daily upload quota is exhausted for today, please reschedule this post for a later time.",
+      };
+    }
+
     if (body.includes('uploadLimitExceeded')) {
       return {
         type: 'bad-body',
@@ -116,7 +126,7 @@ export class YoutubeProvider extends SocialAbstract implements SocialProvider {
       return {
         type: 'bad-body',
         value:
-          'Your account is not verified, we have uploaded your video but we could not set the thumbnail. Please verify your account and try again.',
+          "Your video was uploaded to YouTube successfully, but we could not set the thumbnail: custom thumbnails require a phone-verified YouTube channel. Verify your channel at youtube.com/verify, and set this video's thumbnail manually in YouTube Studio.",
       };
     }
 

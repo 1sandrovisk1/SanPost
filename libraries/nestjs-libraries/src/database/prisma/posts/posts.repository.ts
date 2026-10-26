@@ -435,6 +435,31 @@ export class PostsRepository {
     });
   }
 
+  // Troca o publish id guardado pelo id publico definitivo (e a URL) quando a
+  // plataforma o expoe depois da publicacao (ver PostsService.resolveRelease).
+  // `previousReleaseId` no where: uma resolucao antiga nao sobrescreve uma
+  // republicacao concorrente (que troca o releaseId); sem match, o Prisma
+  // lanca P2025 e o chamador descarta a resolucao.
+  updateResolvedRelease(
+    id: string,
+    orgId: string,
+    previousReleaseId: string,
+    releaseId: string,
+    releaseURL: string
+  ) {
+    return this._post.model.post.update({
+      where: {
+        id,
+        organizationId: orgId,
+        releaseId: previousReleaseId,
+      },
+      data: {
+        releaseId,
+        releaseURL,
+      },
+    });
+  }
+
   updateReleaseId(id: string, orgId: string, releaseId: string) {
     return this._post.model.post.update({
       where: {
