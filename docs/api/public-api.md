@@ -85,7 +85,12 @@ ou envie `republish: true` quando a nova publicação for intencional. Texto com
 
 **`settings` por canal:** além de `__type`, aceita opções do provider. No Instagram:
 - `settings.post_type` — `"post"` (feed/Reels) ou `"story"`.
-- `settings.cover` — **capa do Reels**: um `MediaDto` `{ id, path }` (mídia de `POST /upload`). O `path` (URL pública) é enviado como `cover_url` à Meta. Só vale para **Reels** (um único vídeo `.mp4`, não story); em foto/carrossel/story é ignorado. Exige `id` **e** `path` válidos — senão a API responde **400**.
+- `settings.cover` — **capa do Reels**: um `MediaDto` `{ id, path }` (mídia de `POST /upload`). O `path` (URL pública) é enviado como `cover_url` à Meta. Só vale para **Reels** (um único vídeo `.mp4`, não story); em foto/carrossel/story é ignorado. Exige `id` **e** `path` válidos — senão a API responde **400**. Sem `settings.cover`, a **thumbnail da própria mídia** (`image[].thumbnail`, quando existir na biblioteca) é usada como `cover_url`.
+- `settings.collaborators` — lista `[{ label }]` de contas a marcar como colaboradoras; o `@` inicial é removido. Em carrossel os colaboradores vão no container, não nos itens.
+
+No Facebook:
+- `settings.post_type` — `"post"` (feed/Reel) ou `"story"`.
+- `settings.title` — título opcional para **posts de vídeo** (não story); ignorado em foto/texto.
 
 ### Exemplo — publicar agora com imagem
 ```json

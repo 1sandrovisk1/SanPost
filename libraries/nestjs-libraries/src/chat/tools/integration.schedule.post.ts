@@ -12,17 +12,14 @@ import { Integration } from '@prisma/client';
 import { checkAuth } from '@gitroom/nestjs-libraries/chat/auth.context';
 import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validation';
 import { readRequestContext } from '@gitroom/nestjs-libraries/chat/tools/tool.context.helper';
-import { weightedLength } from '@gitroom/helpers/utils/count.length';
+import { countLength, countLengthUnit } from '@gitroom/helpers/utils/count.length';
 import {
   coerceSettingValue,
   stringKeysOf,
 } from '@gitroom/nestjs-libraries/chat/tools/settings.value.coercion';
 
 function countCharacters(text: string, type: string): number {
-  if (type !== 'x') {
-    return text.length;
-  }
-  return weightedLength(text);
+  return countLength(type, text);
 }
 
 @Injectable()
@@ -171,14 +168,14 @@ If the tools return errors, you would need to rerun it with the right parameters
             for (const post of platform.postsAndComments) {
               const maximumCharacters = maxLength(platform.isPremium);
               const strip = stripHtmlValidation('normal', post.content, true);
-              const weightedLength = countCharacters(strip, identifier || '');
-              const totalCharacters =
-                weightedLength > strip.length ? weightedLength : strip.length;
+              // mesma regra do contador e do gate do compositor (countLength)
+              const totalCharacters = countCharacters(strip, identifier || '');
 
               if (totalCharacters > (maximumCharacters || 1000000)) {
+                const unit = countLengthUnit(identifier || '');
                 errorsLength.push({
                   value: post.content,
-                  error: `The maximum characters is ${maximumCharacters}, we got ${totalCharacters}, please fix it, and try integrationSchedulePostTool again.`,
+                  error: `The maximum is ${maximumCharacters} ${unit}, we got ${totalCharacters} ${unit}, please fix it, and try integrationSchedulePostTool again.`,
                 });
               }
             }

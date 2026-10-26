@@ -1,4 +1,4 @@
-import { IsOptional, ValidateIf, IsUrl, IsIn } from 'class-validator';
+import { IsOptional, ValidateIf, IsUrl, IsIn, IsString } from 'class-validator';
 
 export class FacebookDto {
   // Tipo de publicacao: feed/reel (padrao) ou story.
@@ -12,4 +12,9 @@ export class FacebookDto {
   @ValidateIf((p) => p.url)
   @IsUrl()
   url?: string;
+
+  // Titulo do video (apenas posts de video que nao sao story).
+  @IsOptional()
+  @IsString()
+  title?: string;
 }

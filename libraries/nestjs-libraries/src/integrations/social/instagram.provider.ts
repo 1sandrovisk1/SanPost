@@ -13,6 +13,7 @@ import dayjs from 'dayjs';
 import {
   RefreshToken,
   SocialAbstract,
+  BadBody,
 } from '@gitroom/nestjs-libraries/integrations/social.abstract';
 import { InstagramDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/instagram.dto';
 import { Integration } from '@prisma/client';
@@ -147,6 +148,14 @@ export class InstagramProvider
       };
     }
 
+    // Checkpoint da Meta: ver metaCheckpointError (o Instagram Login sobrescreve).
+    if (
+      body.indexOf('You cannot access the app till you log in to') > -1 ||
+      body.indexOf('Session key is malformed') > -1
+    ) {
+      return this.metaCheckpointError();
+    }
+
     if (body.indexOf('2207050') > -1) {
       return {
         type: 'bad-body' as const,
@@ -179,14 +188,56 @@ export class InstagramProvider
     if (body.indexOf('2207053') > -1) {
       return {
         type: 'bad-body' as const,
-        value: 'Unknown upload error, please try again',
+        value:
+          "Instagram failed to upload the video. If it exceeds Instagram's limits (300MB, 1920px width, 25Mbps bitrate), export a smaller version and try again",
       };
     }
 
+    // Falha transitoria ao buscar a midia na origem: vale repetir.
     if (body.indexOf('2207052') > -1) {
       return {
-        type: 'bad-body' as const,
+        type: 'retry' as const,
         value: 'Media fetch failed, please try again',
+      };
+    }
+
+    if (body.indexOf('2207085') > -1) {
+      return {
+        type: 'bad-body' as const,
+        value:
+          'Instagram could not process the video, please check the video format, duration and resolution and try again',
+      };
+    }
+
+    if (body.indexOf('2207082') > -1) {
+      return {
+        type: 'bad-body' as const,
+        value:
+          'Instagram could not process this video. If you attached audio to a video that has no sound track, set the original video volume to 0 and try again',
+      };
+    }
+
+    if (body.indexOf('2207078') > -1) {
+      return {
+        type: 'bad-body' as const,
+        value:
+          'Instagram Trial Reel publish limit reached for this account, please try again later or publish the post as a regular Reel',
+      };
+    }
+
+    if (body.indexOf('2207018') > -1) {
+      return {
+        type: 'bad-body' as const,
+        value:
+          'One of the collaborators could not be tagged, please check the username is correct, the account is public, and that it allows collaborator invites',
+      };
+    }
+
+    if (body.indexOf('1772107') > -1) {
+      return {
+        type: 'bad-body' as const,
+        value:
+          'Instagram did not add the comment, the post itself was published. Please try again with different comment text',
       };
     }
 
@@ -330,6 +381,14 @@ export class InstagramProvider
         type: 'refresh-token' as const,
         value:
           'The connected Facebook user session is no longer valid, please reconnect the account',
+      };
+    }
+
+    if (body.indexOf('(#200)') > -1) {
+      return {
+        type: 'bad-body' as const,
+        value:
+          'Facebook rejected the post due to missing permissions. Make sure your Facebook account has full content access to the Page linked to this Instagram account, then reconnect the channel.',
       };
     }
 
@@ -657,6 +716,69 @@ export class InstagramProvider
     };
   }
 
+  // Instagram rejeita handle com @ inicial (error_subcode 2207018) e o campo
+  // de colaboradores guarda o que o usuario digitou.
+  private stripHandle(handle: string) {
+    return handle.replace(/^@+/, '');
+  }
+
+  // Checkpoint da Meta: o token continua valido, mas todo post falha ate o
+  // usuario entrar no Instagram e cumprir as instrucoes. No upstream vira
+  // `disconnect`; aqui passa pelo fluxo de refresh do fork, que tenta o
+  // self-heal por Usuario do Sistema e, sem ele, desconecta com o aviso.
+  // O Instagram Login (instagram.standalone.provider.ts) sobrescreve para
+  // `bad-body`: nao tem self-heal e o refresh nao destrava a conta.
+  protected metaCheckpointError(): {
+    type: 'refresh-token' | 'bad-body';
+    value: string;
+  } {
+    return {
+      type: 'refresh-token',
+      value:
+        'Instagram requires you to log in at instagram.com and follow its instructions before posting can resume. After that, please reconnect this channel.',
+    };
+  }
+
+  // Checagem unica do status de um container de midia. Em ERROR/EXPIRED o
+  // detalhe (`status`) passa por handleErrors: codigo curado vira texto
+  // acionavel; checkpoint da Meta vira RefreshToken (self-heal por Usuario do
+  // Sistema ou desconexao com aviso); sem mapeamento, vale o texto do
+  // Instagram ou a mensagem padrao. Antes, ERROR seguia para media_publish e
+  // falhava com "Unknown Error".
+  private async igContainerStatus(
+    containerId: string,
+    accessToken: string,
+    type: string
+  ): Promise<string> {
+    const { status_code, status } = await (
+      await this.fetch(
+        `${metaGraphUrl(type)}/${containerId}?access_token=${accessToken}&fields=status_code,status`,
+        undefined,
+        '',
+        0,
+        true
+      )
+    ).json();
+
+    if (status_code === 'ERROR' || status_code === 'EXPIRED') {
+      const handled = this.handleErrors(status || '', 200);
+      const payload = JSON.stringify({ status_code, status });
+      if (handled?.type === 'refresh-token') {
+        throw new RefreshToken(this.identifier, payload, '{}', handled.value);
+      }
+      throw new BadBody(
+        this.identifier,
+        payload,
+        '{}',
+        handled?.value ||
+          (status && status !== status_code ? status : '') ||
+          'Instagram could not process the media'
+      );
+    }
+
+    return status_code;
+  }
+
   async post(
     id: string,
     accessToken: string,
@@ -668,6 +790,17 @@ export class InstagramProvider
     console.log('in progress', id);
     const isStory = firstPost.settings.post_type === 'story';
     const isTrialReel = this.assetBoolean(firstPost.settings.is_trial_reel);
+    // url-encoded porque o JSON leva aspas; em carrossel vai no container.
+    const collaborators =
+      firstPost?.settings?.collaborators?.length && !isStory
+        ? `&collaborators=${encodeURIComponent(
+            JSON.stringify(
+              firstPost.settings.collaborators.map((p) =>
+                this.stripHandle(p.label)
+              )
+            )
+          )}`
+        : ``;
     const medias = await Promise.all(
       firstPost?.media?.map(async (m) => {
         const caption =
@@ -709,21 +842,22 @@ export class InstagramProvider
             )}`
           : ``;
 
-        const collaborators =
-          firstPost?.settings?.collaborators?.length && !isStory
-            ? `&collaborators=${JSON.stringify(
-                firstPost?.settings?.collaborators.map((p) => p.label)
-              )}`
-            : ``;
+        // Collaborators nao sao aceitos nos itens de carrossel: so no post
+        // unico vao no proprio item.
+        const itemCollaborators =
+          firstPost?.media?.length === 1 ? collaborators : ``;
 
+        // Capa do reel: a escolhida nas settings ou, na falta, a thumbnail da
+        // propria midia (biblioteca).
+        const coverPath = firstPost?.settings?.cover?.path || m?.thumbnail;
         const coverUrl =
-          isReel && firstPost?.settings?.cover?.path
-            ? `&cover_url=${encodeURIComponent(firstPost.settings.cover.path)}`
+          isReel && coverPath
+            ? `&cover_url=${encodeURIComponent(coverPath)}`
             : ``;
 
         const { id: photoId } = await (
           await this.fetch(
-            `${metaGraphUrl(type)}/${id}/media?${mediaType}${isCarousel}${collaborators}${trialParams}${coverUrl}&access_token=${accessToken}${caption}`,
+            `${metaGraphUrl(type)}/${id}/media?${mediaType}${isCarousel}${itemCollaborators}${trialParams}${coverUrl}&access_token=${accessToken}${caption}`,
             {
               method: 'POST',
             }
@@ -733,17 +867,10 @@ export class InstagramProvider
 
         let status = 'IN_PROGRESS';
         while (status === 'IN_PROGRESS') {
-          const { status_code } = await (
-            await this.fetch(
-              `${metaGraphUrl(type)}/${photoId}?access_token=${accessToken}&fields=status_code`,
-              undefined,
-              '',
-              0,
-              true
-            )
-          ).json();
+          status = await this.igContainerStatus(photoId, accessToken, type);
+          // cadencia original do fork (tambem apos FINISHED): colchao contra
+          // "media not ready" (2207027) no media_publish
           await timer(30000);
-          status = status_code;
         }
         console.log('in progress3', id);
 
@@ -813,7 +940,7 @@ export class InstagramProvider
             firstPost?.message
           )}&media_type=CAROUSEL&children=${encodeURIComponent(
             medias.join(',')
-          )}&access_token=${accessToken}`,
+          )}${collaborators}&access_token=${accessToken}`,
           {
             method: 'POST',
           }
@@ -822,17 +949,9 @@ export class InstagramProvider
 
       let status = 'IN_PROGRESS';
       while (status === 'IN_PROGRESS') {
-        const { status_code } = await (
-          await this.fetch(
-            `${metaGraphUrl(type)}/${containerId}?fields=status_code&access_token=${accessToken}`,
-            undefined,
-            '',
-            0,
-            true
-          )
-        ).json();
+        status = await this.igContainerStatus(containerId, accessToken, type);
+        // mesma cadencia do loop dos itens: 30 s apos cada checagem
         await timer(30000);
-        status = status_code;
       }
 
       const { id: mediaId, ...all4 } = await (

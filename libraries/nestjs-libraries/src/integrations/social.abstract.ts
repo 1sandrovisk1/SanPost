@@ -221,10 +221,6 @@ export abstract class SocialAbstract {
       return request;
     }
 
-    if (totalRetries > 2) {
-      throw new BadBody(identifier, '{}', options.body || '{}');
-    }
-
     let json = '{}';
     try {
       json = await request.text();
@@ -233,6 +229,17 @@ export abstract class SocialAbstract {
     }
 
     const handleError = this.handleErrors(json || '{}', request.status);
+
+    // Retentativas esgotadas: leva a mensagem curada do provider (ex.: "Media
+    // fetch failed", "posting too fast") em vez de um BadBody vazio.
+    if (totalRetries > 2) {
+      throw new BadBody(
+        identifier,
+        json,
+        options.body || '{}',
+        handleError?.value || ''
+      );
+    }
 
     if (
       request.status === 429 ||
