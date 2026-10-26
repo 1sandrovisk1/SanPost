@@ -13,6 +13,10 @@ import slugify from 'slugify';
 import { Tool } from '@gitroom/nestjs-libraries/integrations/tool.decorator';
 import { ssrfSafeFetch } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
 
+// Hosts com WAF recusam requisicoes sem User-Agent (upstream #2172).
+const WORDPRESS_USER_AGENT =
+  'RoboMultipost/1.0 (+https://github.com/maiconramos/robo-multipost)';
+
 export class WordpressProvider
   extends SocialAbstract
   implements SocialProvider
@@ -126,6 +130,7 @@ export class WordpressProvider
       response = await ssrfSafeFetch(`${domain}/wp-json/wp/v2/users/me`, {
         headers: {
           Authorization: `Basic ${auth}`,
+          'User-Agent': WORDPRESS_USER_AGENT,
         },
       });
     } catch {
@@ -234,6 +239,7 @@ export class WordpressProvider
       await this.fetch(`${domain}${path}`, {
         headers: {
           Authorization: `Basic ${auth}`,
+          'User-Agent': WORDPRESS_USER_AGENT,
         },
       })
     ).json();
@@ -292,6 +298,7 @@ export class WordpressProvider
           method: 'POST',
           headers: {
             Authorization: `Basic ${auth}`,
+            'User-Agent': WORDPRESS_USER_AGENT,
             'Content-Disposition': `attachment; filename="${postDetails[0].settings.main_image.path
               .split('/')
               .pop()}"`,
@@ -315,6 +322,7 @@ export class WordpressProvider
         {
           headers: {
             Authorization: `Basic ${auth}`,
+            'User-Agent': WORDPRESS_USER_AGENT,
             'Content-Type': 'application/json',
           },
           method: 'POST',

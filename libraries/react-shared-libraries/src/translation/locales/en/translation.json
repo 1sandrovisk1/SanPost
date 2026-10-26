@@ -1067,6 +1067,7 @@
   "enter_set_name": "Enter a name for this set",
   "add_a_comment_dot": "Add a comment...",
   "comments_only_text": "Comments can only contain text.",
+  "slack_no_video_support": "No video support for Slack, only images",
   "wallet": "Wallet",
   "unhandled_error": "Unhandled error: ",
   "general_error_check_console": "Please check your browser console.",

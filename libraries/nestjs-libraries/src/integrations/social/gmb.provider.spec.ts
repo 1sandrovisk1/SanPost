@@ -131,6 +131,26 @@ describe('GmbProvider', () => {
     });
   });
 
+  describe('releaseURL (lote out/2026, upstream #2107)', () => {
+    it('usa o searchUrl do post quando o Google devolve', async () => {
+      jest.spyOn(provider, 'fetch').mockResolvedValue(
+        responseWith({
+          name: 'accounts/1/locations/2/localPosts/3',
+          state: 'LIVE',
+          searchUrl: 'https://local.google.com/place?id=1&use=posts&lpsid=3',
+        })
+      );
+
+      await expect(
+        provider.post('accounts/1/locations/2', 'access-token', postDetails)
+      ).resolves.toEqual([
+        expect.objectContaining({
+          releaseURL: 'https://local.google.com/place?id=1&use=posts&lpsid=3',
+        }),
+      ]);
+    });
+  });
+
   describe('OAuth por perfil', () => {
     const oauthConstructor = google.auth.OAuth2 as unknown as jest.Mock;
 

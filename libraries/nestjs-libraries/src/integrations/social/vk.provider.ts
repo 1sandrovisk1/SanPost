@@ -6,7 +6,11 @@ import {
 } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
 import { makeSecureId } from '@gitroom/nestjs-libraries/services/make.secure.id';
 import dayjs from 'dayjs';
-import { SocialAbstract } from '@gitroom/nestjs-libraries/integrations/social.abstract';
+import {
+  BadBody,
+  RefreshToken,
+  SocialAbstract,
+} from '@gitroom/nestjs-libraries/integrations/social.abstract';
 import { createHash, randomBytes } from 'crypto';
 import FormDataNew from 'form-data';
 import mime from 'mime-types';
@@ -43,7 +47,7 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
     formData.append('scope', this.scopes.join(' '));
 
     const { access_token, refresh_token, expires_in } = await (
-      await this.fetch('https://id.vk.com/oauth2/auth', {
+      await this.fetch('https://id.vk.ru/oauth2/auth', {
         method: 'POST',
         body: formData,
       })
@@ -56,7 +60,7 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
     const {
       user: { user_id, first_name, last_name, avatar },
     } = await (
-      await this.fetch('https://id.vk.com/oauth2/user_info', {
+      await this.fetch('https://id.vk.ru/oauth2/user_info', {
         method: 'POST',
         body: newFormData,
       })
@@ -86,7 +90,7 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
 
     return {
       url:
-        'https://id.vk.com/authorize' +
+        'https://id.vk.ru/authorize' +
         `?response_type=code` +
         `&client_id=${process.env.VK_ID}` +
         `&code_challenge_method=S256` +
@@ -128,7 +132,7 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
     );
 
     const { access_token, scope, refresh_token, expires_in } = await (
-      await this.fetch('https://id.vk.com/oauth2/auth', {
+      await this.fetch('https://id.vk.ru/oauth2/auth', {
         method: 'POST',
         body: formData,
       })
@@ -141,7 +145,7 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
     const {
       user: { user_id, first_name, last_name, avatar },
     } = await (
-      await this.fetch('https://id.vk.com/oauth2/user_info', {
+      await this.fetch('https://id.vk.ru/oauth2/user_info', {
         method: 'POST',
         body: newFormData,
       })
@@ -168,10 +172,11 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
         const all = await (
           await this.fetch(
             media.path.indexOf('mp4') > -1
-              ? `https://api.vk.com/method/video.save?access_token=${accessToken}&v=5.251`
-              : `https://api.vk.com/method/photos.getWallUploadServer?owner_id=${userId}&access_token=${accessToken}&v=5.251`
+              ? `https://api.vk.ru/method/video.save?access_token=${accessToken}&v=5.251`
+              : `https://api.vk.ru/method/photos.getWallUploadServer?owner_id=${userId}&access_token=${accessToken}&v=5.251`
           )
         ).json();
+        this.checkApiError(all);
 
         const { data } = await this.getSsrfSafeAxios().get(media.path!, {
           responseType: 'stream',
@@ -208,17 +213,17 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
         formSend.append('server', value.server);
         formSend.append('hash', value.hash);
 
-        const { id } = (
-          await (
-            await fetch(
-              `https://api.vk.com/method/photos.saveWallPhoto?access_token=${accessToken}&v=5.251`,
-              {
-                method: 'POST',
-                body: formSend,
-              }
-            )
-          ).json()
-        ).response[0];
+        const saved = await (
+          await this.fetch(
+            `https://api.vk.ru/method/photos.saveWallPhoto?access_token=${accessToken}&v=5.251`,
+            {
+              method: 'POST',
+              body: formSend,
+            }
+          )
+        ).json();
+        this.checkApiError(saved);
+        const { id } = saved.response[0];
 
         return {
           id,
@@ -226,6 +231,29 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
         };
       })
     );
+  }
+
+  // A VK responde HTTP 200 com { error } em vez de { response }: o this.fetch
+  // nao ve e o post era marcado como publicado (upstream #2131/#2242).
+  // Codigo 5 = autorizacao; 6/9/29 = rate limit/flood (Error simples, a
+  // activity retenta); demais = BadBody com a mensagem.
+  private checkApiError(all: any) {
+    if (!all?.error) {
+      return;
+    }
+    // request_params ecoa os parametros da chamada (inclui o token): fica fora
+    // do erro persistido
+    const error = { ...all.error };
+    delete error.request_params;
+    const json = JSON.stringify({ ...all, error });
+    const message = all.error.error_msg || 'VK rejected the request';
+    if (all.error.error_code === 5) {
+      throw new RefreshToken(this.identifier, json, Buffer.from('{}'), message);
+    }
+    if ([6, 9, 29].includes(all.error.error_code)) {
+      throw new Error(message);
+    }
+    throw new BadBody(this.identifier, json, Buffer.from('{}'), message);
   }
 
   async post(
@@ -248,15 +276,17 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
       );
     }
 
-    const { response } = await (
+    const all = await (
       await this.fetch(
-        `https://api.vk.com/method/wall.post?v=5.251&access_token=${accessToken}&client_id=${process.env.VK_ID}`,
+        `https://api.vk.ru/method/wall.post?v=5.251&access_token=${accessToken}&client_id=${process.env.VK_ID}`,
         {
           method: 'POST',
           body,
         }
       )
     ).json();
+    this.checkApiError(all);
+    const { response } = all;
 
     return [
       {
@@ -292,15 +322,17 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
       );
     }
 
-    const { response } = await (
+    const all = await (
       await this.fetch(
-        `https://api.vk.com/method/wall.createComment?v=5.251&access_token=${accessToken}&client_id=${process.env.VK_ID}`,
+        `https://api.vk.ru/method/wall.createComment?v=5.251&access_token=${accessToken}&client_id=${process.env.VK_ID}`,
         {
           method: 'POST',
           body,
         }
       )
     ).json();
+    this.checkApiError(all);
+    const { response } = all;
 
     return [
       {

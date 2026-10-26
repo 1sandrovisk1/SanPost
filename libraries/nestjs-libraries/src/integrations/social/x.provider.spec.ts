@@ -237,3 +237,23 @@ describe('XProvider', () => {
     });
   });
 });
+
+// Lote de providers out/2026 — portes dos PRs upstream #2130, #2132 e #2133.
+describe('XProvider.handleErrors (lote out/2026)', () => {
+  const provider = new XProvider();
+
+  it.each([
+    ['{"title":"Too Many Requests","detail":"Too Many Requests"}', 'bad-body', /rate limit/],
+    ['{"title":"Unauthorized","status":401}', 'refresh-token', /reconnect/],
+    ['This user is not allowed to post a video longer than 10 minutes', 'bad-body', /longer than 10 minutes/],
+    ['Your account is temporarily locked', 'bad-body', /temporarily locked/],
+    ['Crypto addresses are prohibited', 'bad-body', /crypto addresses/],
+    ['Your media IDs are invalid', 'bad-body', /re-upload/],
+    ['You are not authorized to create or publish articles', 'bad-body', /Premium/],
+    ['Please include either text or media in your Tweet', 'bad-body', /no text or media/],
+  ])('mapeia %s como %s', (body, type, message) => {
+    const result = provider.handleErrors(body);
+    expect(result?.type).toBe(type);
+    expect(result?.value).toMatch(message);
+  });
+});

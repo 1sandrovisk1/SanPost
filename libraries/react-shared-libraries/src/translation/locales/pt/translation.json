@@ -1065,6 +1065,7 @@
   "enter_set_name": "Digite um nome para este conjunto",
   "add_a_comment_dot": "Adicione um comentário...",
   "comments_only_text": "Comentários podem conter apenas texto.",
+  "slack_no_video_support": "O Slack não aceita vídeo; envie apenas imagens",
   "wallet": "Carteira",
   "unhandled_error": "Erro não tratado: ",
   "general_error_check_console": "Verifique o console do navegador.",

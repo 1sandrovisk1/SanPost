@@ -520,7 +520,10 @@ export class GmbProvider extends SocialAbstract implements SocialProvider {
     const locationId = id.split('/').pop();
 
     // GMB posts don't have direct URLs, but we can link to the business profile
-    const releaseURL = `https://business.google.com/locations/${locationId}`;
+    // o Google devolve searchUrl (link do post na busca) quando existe
+    const releaseURL =
+      postData.searchUrl ||
+      `https://business.google.com/locations/${locationId}`;
 
     return [
       {

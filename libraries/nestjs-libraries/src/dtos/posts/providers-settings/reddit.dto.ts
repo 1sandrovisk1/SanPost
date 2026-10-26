@@ -1,7 +1,9 @@
 import {
+  ArrayMaxSize,
   ArrayMinSize,
   IsBoolean,
   IsDefined,
+  IsIn,
   IsString,
   IsUrl,
   Matches,
@@ -37,10 +39,11 @@ export class RedditSettingsDtoInner {
   title: string;
 
   @IsString()
-  @MinLength(2)
+  @IsIn(['self', 'link', 'media'])
   @IsDefined()
   @JSONSchema({
-    description: 'Must be any of link, self (normal post), image, video, videogif',
+    description:
+      "Must be one of self (text post), link (requires url), media (uploads the post's first attached image or mp4 video)",
   })
   type: string;
 
@@ -77,5 +80,8 @@ export class RedditSettingsDto {
   @Type(() => RedditSettingsValueDto)
   @ValidateNested({ each: true })
   @ArrayMinSize(1)
+  // cada subreddit custa ate ~35 s (5 s de intervalo + 30 s de websocket) dentro
+  // da activity de 10 min do V102: limite para o post nao estourar o orcamento
+  @ArrayMaxSize(10, { message: 'A post can target at most 10 subreddits' })
   subreddit: RedditSettingsValueDto[];
 }
