@@ -259,6 +259,36 @@ lista durante o proprio sync e registre no CHANGELOG.
     endpoints `/credentials/:provider/test` em
     `apps/backend/src/api/routes/credentials.controller.ts`.
 
+### Lote de providers Meta (2026-10-25) — divergencias deliberadas
+
+- **`libraries/nestjs-libraries/src/integrations/social/instagram.provider.ts`** —
+  o upstream moveu o polling de container para o workflow e usa um tipo
+  `disconnect` no checkpoint da Meta. O fork mantem o loop V102 dentro de
+  `post()` (cadencia de 30 s apos cada checagem) e so extraiu `igContainerStatus`;
+  o checkpoint mapeia para `refresh-token` (self-heal por Usuario do Sistema).
+  `instagram.standalone.provider.ts` converte esse caso em `bad-body` pela
+  subclasse `InstagramLoginDelegate` (hook `metaCheckpointError`), porque
+  `this.fetch`/`igContainerStatus` consultam o `handleErrors` do delegate, nao
+  o do standalone. Nao reintroduzir `Disconnect`.
+- **`libraries/nestjs-libraries/src/integrations/social/facebook.provider.ts`** —
+  `videoPostAnalytics` usa `analyticsFetch` (SSRF/DNS pinning), nao o `fetch`
+  cru do upstream; o bloco de mapeamentos novos fica ANTES do `indexOf('490')`,
+  o 190/459 (checkpoint) e `refresh-token` (self-heal, como no Instagram; o
+  upstream falha o post) e os catch-alls `(#200)` / "Sorry, something went
+  wrong" ficam por ULTIMO para nao sombrear subcodes especificos (1404078).
+- **`libraries/nestjs-libraries/src/integrations/social.abstract.ts`** —
+  `fetch()` com retentativas esgotadas lanca `BadBody` com a mensagem curada de
+  `handleErrors` (upstream lanca vazio).
+- **`libraries/helpers/src/utils/count.length.ts`** + `manage.modal.tsx` +
+  `information.component.tsx` + `integration.schedule.post.ts` — uma unica
+  regra de contagem (`countLength`, com `zernio-twitter`/`zernio-threads`
+  normalizados para a rede de destino e `countLengthUnit` nas mensagens); o
+  upstream so trocou o contador e mantem o `max(peso, caracteres)` no gate,
+  que bloqueia posts do X com URL. Nao reintroduzir o `max()`.
+- **`apps/frontend/src/components/new-launch/providers/facebook/facebook.provider.tsx`** —
+  o campo de titulo de video so aparece para `facebook` nativo (o componente e
+  compartilhado com `zernio-facebook`).
+
 ## Regras Importantes
 
 - NUNCA executar `git push --force` em nenhuma branch

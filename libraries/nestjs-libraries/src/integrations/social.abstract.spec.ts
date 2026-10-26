@@ -291,3 +291,39 @@ describe('SocialAbstract.localMediaPath / readOrFetch (confinamento no sink)', (
     process.env.UPLOAD_DIRECTORY = base;
   });
 });
+
+// Retentativas esgotadas levam a mensagem curada do provider ao BadBody.
+describe('SocialAbstract.fetch (retentativas esgotadas)', () => {
+  const originalFetch = global.fetch;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('usa a mensagem do handleErrors em vez de um BadBody vazio', async () => {
+    class RetryProvider extends SocialAbstract {
+      identifier = 'retry-test';
+      override handleErrors(body: string) {
+        if (body.includes('2207052')) {
+          return { type: 'retry' as const, value: 'Media fetch failed, please try again' };
+        }
+        return undefined;
+      }
+    }
+    global.fetch = jest.fn().mockResolvedValue({
+      status: 400,
+      ok: false,
+      text: async () => '{"error":{"error_subcode":2207052}}',
+      clone() {
+        return this;
+      },
+    }) as any;
+
+    const provider = new RetryProvider();
+    const exhausted = provider.fetch('https://graph.example/x', {}, 'retry-test', 3);
+    await expect(exhausted).rejects.toBeInstanceOf(BadBody);
+    await expect(exhausted).rejects.toMatchObject({
+      message: 'Media fetch failed, please try again',
+    });
+  });
+});

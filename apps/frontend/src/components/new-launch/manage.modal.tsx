@@ -24,7 +24,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { RepeatComponent } from '@gitroom/frontend/components/launches/repeat.component';
 import { TagsComponent } from '@gitroom/frontend/components/launches/tags.component';
 import { useToaster } from '@gitroom/react/toaster/toaster';
-import { weightedLength } from '@gitroom/helpers/utils/count.length';
+import { countLength } from '@gitroom/helpers/utils/count.length';
 import { deleteDialog } from '@gitroom/react/helpers/delete.dialog';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
@@ -45,13 +45,6 @@ import { useHasScroll } from '@gitroom/frontend/components/ui/is.scroll.hook';
 import { useShortlinkPreference } from '@gitroom/frontend/components/settings/shortlink-preference.component';
 import dayjs from 'dayjs';
 import { Button } from '@gitroom/react/form/button';
-
-function countCharacters(text: string, type: string): number {
-  if (type !== 'x') {
-    return text.length;
-  }
-  return weightedLength(text);
-}
 
 export const ManageModal: FC<AddEditModalProps> = (props) => {
   const t = useT();
@@ -285,9 +278,9 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
       const notEnoughChars = checkAllValid.filter((p: any) => {
         return p.values.some((a: any) => {
           return (
-            countCharacters(
-              stripHtmlValidation('normal', a.content, true),
-              p?.integration?.identifier || ''
+            countLength(
+              p?.integration?.identifier || '',
+              stripHtmlValidation('normal', a.content, true)
             ) === 0 && a.media?.length === 0
           );
         });
@@ -342,12 +335,13 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
         const sliceNeeded = checkAllValid.filter((p: any) => {
           return p.values.some((a: any) => {
             const strip = stripHtmlValidation('normal', a.content, true);
-            const weightedLength = countCharacters(
-              strip,
-              p?.integration?.identifier || ''
+            // mesma regra do contador: no X a URL pesa 23 e no Threads conta
+            // bytes; o max() com o tamanho bruto bloqueava posts do X com URL
+            // que a rede aceita.
+            const totalCharacters = countLength(
+              p?.integration?.identifier || '',
+              strip
             );
-            const totalCharacters =
-              weightedLength > strip.length ? weightedLength : strip.length;
 
             return totalCharacters > (p.maximumCharacters || 1000000);
           });

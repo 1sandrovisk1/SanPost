@@ -14,7 +14,21 @@ import { Integration } from '@prisma/client';
 import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorator';
 import { META_INSTAGRAM_GRAPH_URL } from '@gitroom/nestjs-libraries/integrations/social/meta-graph.constants';
 
-const instagramProvider = new InstagramProvider();
+// Instagram Login nao tem self-heal por Usuario do Sistema e o ig_refresh_token
+// renovaria o token sem destravar a conta: o checkpoint da Meta falha o post
+// com a orientacao (bad-body) em vez de pedir refresh. Precisa ser uma
+// subclasse porque this.fetch e igContainerStatus rodam dentro do
+// InstagramProvider e consultam o handleErrors dele, nao o do standalone.
+class InstagramLoginDelegate extends InstagramProvider {
+  protected override metaCheckpointError() {
+    return {
+      type: 'bad-body' as const,
+      value: super.metaCheckpointError().value,
+    };
+  }
+}
+
+const instagramProvider = new InstagramLoginDelegate();
 
 @Rules(
   "Instagram should have at least one attachment, if it's a story, it can have only one picture"

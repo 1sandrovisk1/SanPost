@@ -39,7 +39,7 @@ export class ThreadsProvider extends SocialAbstract implements SocialProvider {
 
   override handleErrors(body: string):
     | {
-        type: 'refresh-token' | 'bad-body';
+        type: 'refresh-token' | 'bad-body' | 'retry';
         value: string;
       }
     | undefined {
@@ -55,6 +55,15 @@ export class ThreadsProvider extends SocialAbstract implements SocialProvider {
           'One of the media URLs is invalid or inaccessible, make sure it\'s being uploaded to Postiz first',
       };
     }
+    // O container acabou de ser criado e o Threads ainda nao o encontra.
+    if (body.includes('4279009')) {
+      return {
+        type: 'retry',
+        value:
+          'Threads could not find the media container yet, please try again in a few seconds',
+      };
+    }
+
     if (body.includes('text must be at most 500 characters')) {
       return {
         type: 'bad-body',
@@ -177,10 +186,12 @@ export class ThreadsProvider extends SocialAbstract implements SocialProvider {
       // o que mascarava o motivo real (video too long / cover invalida /
       // codec nao suportado / aspect ratio fora do range, etc.). Mantemos
       // o id no inicio da mensagem pra continuar localizavel nos logs.
+      // `UNKNOWN` e o que a Meta devolve para formato/codec invalido: vira
+      // orientacao em vez de uma palavra sem significado para o usuario.
       throw new Error(
-        error_message
+        error_message && error_message !== 'UNKNOWN'
           ? `Threads container ${id} failed: ${error_message}`
-          : `Threads container ${id} failed: status=ERROR (no error_message returned by Meta)`
+          : `Threads container ${id} failed: Threads could not process the media, please check the media format and try again`
       );
     }
 

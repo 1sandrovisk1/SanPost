@@ -12,6 +12,7 @@ jest.mock('@gitroom/nestjs-libraries/upload/upload.factory', () => ({
 }));
 
 import { IntegrationService } from './integration.service';
+import { HttpException } from '@nestjs/common';
 import { SYSTEM_USER_PAGE_TOKEN_TTL } from '@gitroom/nestjs-libraries/integrations/meta-system-user.service';
 
 const makeService = (repo: any) =>
@@ -441,6 +442,74 @@ describe('IntegrationService', () => {
 
       await expect(service.refreshTokens()).resolves.toBeUndefined();
       expect(upsert).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('saveProviderPage', () => {
+    const makePageService = (fetchPageInformation: jest.Mock) => {
+      const repo = {
+        getIntegrationById: jest.fn().mockResolvedValue({
+          id: 'int-1',
+          inBetweenSteps: true,
+          providerIdentifier: 'facebook',
+          token: 'tok',
+        }),
+      };
+      const manager = {
+        getSocialIntegration: jest
+          .fn()
+          .mockReturnValue({ fetchPageInformation }),
+      };
+      return new IntegrationService(
+        repo as any,
+        {} as any,
+        manager as any,
+        {} as any,
+        {} as any,
+        {} as any,
+        {} as any,
+        {} as any,
+        {} as any
+      );
+    };
+
+    it('converte erro do provider ao buscar a pagina em 400 com a mensagem, nao 500', async () => {
+      const service = makePageService(
+        jest
+          .fn()
+          .mockRejectedValue(
+            new Error(
+              'Your Facebook user has no permission to manage this page'
+            )
+          )
+      );
+
+      let thrown: any;
+      try {
+        await service.saveProviderPage('org-1', 'int-1', { page: 'p-1' });
+      } catch (err) {
+        thrown = err;
+      }
+      expect(thrown).toBeInstanceOf(HttpException);
+      expect(thrown.getStatus()).toBe(400);
+      expect(thrown.message).toBe(
+        'Your Facebook user has no permission to manage this page'
+      );
+    });
+
+    it('preserva HttpException lancada pelo provider', async () => {
+      const service = makePageService(
+        jest.fn().mockRejectedValue(new HttpException('teapot', 418))
+      );
+
+      let thrown: any;
+      try {
+        await service.saveProviderPage('org-1', 'int-1', { page: 'p-1' });
+      } catch (err) {
+        thrown = err;
+      }
+      expect(thrown).toBeInstanceOf(HttpException);
+      expect(thrown.getStatus()).toBe(418);
     });
   });
 });
