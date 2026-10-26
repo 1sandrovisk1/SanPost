@@ -507,6 +507,61 @@ de exceções de provider em `getMissingContent`/`checkPostAnalytics` sem
 redação; `GET /public/v1/social/:integration` não grava `profile:${state}`
 (canal conectado por chave de perfil pode ficar sem perfil).
 
+### Sub-lote PROVIDER 3 — providers pequenos (26/10/2026)
+
+Branch `fix/providers-small-2026-10`. Portados: Reddit #1915/#1930/#2116/#2126;
+X #2130/#2132/#2133; VK #2131/#2242/#2264/#2164; Lemmy #2128; Dribbble #2134;
+WordPress #2172; GMB #2107; Slack #2117/#2118; Hashnode #2108; Telegram
+#2140/#2262; Nostr #2141; Moltbook #1880. Não aplicável: #1929 (Bluesky
+`prepFailures` — o fork não tem a lane pendente). Fora: Farcaster #2078/#2080
+(feature de managed signers + QR, PR próprio). Divergências: RATELIMIT do
+Reddit tratado dentro do loop com orçamento de 180 s por activity (o V102 dá
+10 min ao post inteiro e reexecuta o loop em timeout); "Too Many Requests" do
+X como bad-body curado (`runInConcurrent` não retenta); Lemmy só
+`getJwtAndService` em `this.fetch`, com a senha removida da falha; User-Agent
+do WordPress com a marca do fork (`RoboMultipost/1.0`); DTO do Reddit limita um
+post a 10 subreddits (cada um pode esperar ~35 s dentro da activity de 10 min).
+
+Revisões: `plan-reviewer` (1 blocker — orçamento do RATELIMIT — resolvido);
+`code-reviewer` (1 MUST FIX: websocket do Reddit não era fechado após o
+redirect; SHOULD FIX aplicados: `linkFlairs` sem `eslint-disable`, VK
+`saveWallPhoto` via `this.fetch`, Dribbble 401 → reconexão, UA alinhado ao
+`credential.service`, chave do Nostr validada (64 hex), specs de wiring do
+Moltbook e do DTO do Reddit, `this.identifier` no Telegram);
+`security-auditor` (0 CRITICAL/HIGH introduzidos; 2 MEDIUM introduzidos e
+resolvidos — ciclo do websocket e limite de subreddits —, `request_params` da
+VK fora do erro gravado).
+
+Follow-ups pré-existentes apontados pelas revisões (fora deste lote, por
+prioridade):
+
+- **CRITICAL (confirmado em 26/10/2026):** `ssrf.safe.dispatcher.ts` — o guard
+  vive só no `lookup`, e o Node pula o `lookup` para hosts em IP literal:
+  `ssrfSafeFetch('http://127.0.0.1:<porta>/')` e o axios SSRF-safe respondem
+  200 (`http://localhost:<porta>/` é bloqueado). Corrigir no `connect` do
+  undici e no `createConnection` do `http(s).Agent` — PR próprio, antes da
+  prerelease.
+- **HIGH:** Telegram — `authenticate()` confia no chat id enviado pelo cliente,
+  a palavra do `/connect` é `makeId(4)` e `GET /integrations/telegram/updates`
+  aceita o offset do chamador (afeta só bot compartilhado entre orgs).
+- **HIGH:** `customInstanceDetails` (senha do Lemmy, Application Password do
+  WordPress, chave do Nostr, API key do Hashnode) cifrado com `fixedEncryption`
+  (AES-CBC com chave/IV por MD5 do `JWT_SECRET`, sem integridade) e a chave do
+  Nostr dentro de um JWT assinado — migrar para `EncryptionService` (GCM).
+- **MEDIUM:** `redirectmeto.com` no OAuth da VK/Slack quando `FRONTEND_URL`
+  não é https; `DribbbleProvider.refreshToken` copiado do Pinterest (código
+  morto apontando para `api-sandbox.pinterest.com`); segredos OAuth lidos de
+  `process.env` em Reddit/VK/Slack/Dribbble (sem `ClientInformation`);
+  `upload_url` da VK e websocket do Reddit sem allowlist de host.
+- **Higiene:** `fetch` cru no Slack (7 chamadas) e no Hashnode (`authenticate`,
+  `publications`); i18n em `subreddit.tsx` (9 labels) e no toast do
+  `telegram.provider.tsx` (`copied_to_clipboard` já existe); `console.log(e)`
+  no `authenticate` do Nostr; esquema do Hashnode (`gql-beta`, `coverImage`)
+  só verificável com conta real.
+- **Dependabot:** `tinypool` (2 CRITICAL, só dev via vitest), `zod` → 4.6.6
+  (HIGH, dependência direta), `http-cache-semantics`/`node-forge` sem versão
+  corrigida.
+
 ## Apêndice — classificação 1 por 1 (171 PRs + 74 commits diretos)
 
 Legenda: **P0** segurança (nesta branch) · **ADOPT** cherry-pick/porte leve ·

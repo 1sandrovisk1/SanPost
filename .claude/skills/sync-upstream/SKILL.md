@@ -318,6 +318,28 @@ lista durante o proprio sync e registre no CHANGELOG.
   o fork nao tem `post.settings.tool.ts`; a orientacao "id, nunca o label" vive
   so na descricao do `value` desta tool (texto do fork, com `tryParseJson`).
 
+### Lote de providers pequenos (2026-10-26) — divergencias deliberadas
+
+- **`libraries/nestjs-libraries/src/integrations/social/reddit.provider.ts`** —
+  o upstream trata RATELIMIT rearmando a lane `checkPending`; o fork mantem o
+  loop em `post()` e espera dentro de um orcamento de 180 s por activity
+  (`submitWithRateLimit`), reenviando o mesmo subreddit — um `throw` faria o
+  V102 reexecutar o loop e duplicar os subreddits ja publicados. Nao
+  reintroduzir `armed`/`pendingData`.
+- **`libraries/nestjs-libraries/src/integrations/social/x.provider.ts`** —
+  "Too Many Requests" e `bad-body` curado (o X roda por `runInConcurrent`, que
+  nao retenta `retry`); o upstream mapeia como `retry`.
+- **`libraries/nestjs-libraries/src/integrations/social/lemmy.provider.ts`** —
+  `getJwtAndService` usa `this.fetch` (SSRF-safe por dentro, sem `dispatcher`)
+  e relanca a falha de login sem o corpo (senha); `authenticate()` continua em
+  `ssrfSafeFetch`. O upstream passa `dispatcher` em cada chamada.
+- **`libraries/nestjs-libraries/src/integrations/social/wordpress.provider.ts`** —
+  `User-Agent` com a marca do fork (`RoboMultipost/1.0`, igual ao
+  `credential.service.ts`), nao `Postiz/1.0`.
+- **`apps/frontend/src/components/new-launch/providers/slack/slack.provider.tsx`** —
+  a recusa de video e client-side (`checkValidity` com `t`), nao no
+  `SocialAbstract.checkValidity` do upstream.
+
 ## Regras Importantes
 
 - NUNCA executar `git push --force` em nenhuma branch

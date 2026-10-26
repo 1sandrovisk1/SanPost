@@ -5,7 +5,11 @@ import {
   SocialProvider,
 } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
 import { makeSecureId } from '@gitroom/nestjs-libraries/services/make.secure.id';
-import { SocialAbstract } from '@gitroom/nestjs-libraries/integrations/social.abstract';
+import {
+  BadBody,
+  RefreshToken,
+  SocialAbstract,
+} from '@gitroom/nestjs-libraries/integrations/social.abstract';
 import dayjs from 'dayjs';
 import { Integration } from '@prisma/client';
 import { AuthService } from '@gitroom/helpers/auth/auth.service';
@@ -24,6 +28,43 @@ export class LemmyProvider extends SocialAbstract implements SocialProvider {
     return 10000;
   }
   dto = LemmySettingsDto;
+
+  // Lote out/2026 (upstream #2128): erros do Lemmy sao JSON { error }.
+  override handleErrors(
+    body: string,
+    status: number
+  ):
+    | { type: 'refresh-token' | 'bad-body' | 'retry'; value: string }
+    | undefined {
+    if (body.includes('rate_limit_error')) {
+      return { type: 'retry', value: 'Lemmy rate limit reached, please try again later' };
+    }
+    if (body.includes('not_logged_in') || body.includes('incorrect_login')) {
+      return {
+        type: 'refresh-token',
+        value: 'Lemmy session is no longer valid, please reconnect the channel',
+      };
+    }
+    if (body.includes('site_ban') || body.includes('"error":"banned"')) {
+      return { type: 'bad-body', value: 'This account is banned on the Lemmy instance' };
+    }
+    if (body.includes('couldnt_find_community')) {
+      return {
+        type: 'bad-body',
+        value: 'The selected Lemmy community no longer exists, please pick another one',
+      };
+    }
+    if (body.includes('blocked_url')) {
+      return { type: 'bad-body', value: 'The Lemmy instance blocks the URL in this post' };
+    }
+    if (body.includes('"error":"deleted"')) {
+      return { type: 'bad-body', value: 'The selected Lemmy community or post was deleted' };
+    }
+    if (body.includes('"error":"locked"')) {
+      return { type: 'bad-body', value: 'This Lemmy post is locked, comments cannot be added' };
+    }
+    return undefined;
+  }
 
   async customFields() {
     return [
@@ -131,18 +172,37 @@ export class LemmyProvider extends SocialAbstract implements SocialProvider {
       AuthService.fixedDecryption(integration.customInstanceDetails!)
     );
 
-    const { jwt } = await (
-      await ssrfSafeFetch(body.service + '/api/v3/user/login', {
-        body: JSON.stringify({
-          username_or_email: body.identifier,
-          password: body.password,
-        }),
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+    // this.fetch (SSRF-safe + handleErrors). O corpo leva a senha guardada:
+    // a falha e reconstruida sem ele antes de chegar ao historico do Temporal
+    // e a tabela Errors (truncateForTemporal limita tamanho, nao redige).
+    let login: Response;
+    try {
+      login = await this.fetch(
+        body.service + '/api/v3/user/login',
+        {
+          body: JSON.stringify({
+            username_or_email: body.identifier,
+            password: body.password,
+          }),
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
         },
-      })
-    ).json();
+        this.identifier
+      );
+    } catch (err) {
+      const json = (err as any)?.details?.[0]?.json || '{}';
+      if (err instanceof BadBody) {
+        throw new BadBody(this.identifier, json, '{}', err.message || 'Unknown Error');
+      }
+      if (err instanceof RefreshToken) {
+        throw new RefreshToken(this.identifier, json, '{}', err.message || 'Unknown Error');
+      }
+      throw err;
+    }
+
+    const { jwt } = await login.json();
 
     return { jwt, service: body.service };
   }
@@ -159,18 +219,8 @@ export class LemmyProvider extends SocialAbstract implements SocialProvider {
     const valueArray: PostResponse[] = [];
 
     for (const lemmy of firstPost.settings.subreddit) {
-      console.log({
-        community_id: +lemmy.value.id,
-        name: lemmy.value.title,
-        body: firstPost.message,
-        ...(lemmy.value.url ? { url: lemmy.value.url } : {}),
-        ...(firstPost.media?.length
-          ? { custom_thumbnail: firstPost.media[0].path }
-          : {}),
-        nsfw: false,
-      });
       const { post_view } = await (
-        await ssrfSafeFetch(service + '/api/v3/post', {
+        await this.fetch(service + '/api/v3/post', {
           body: JSON.stringify({
             community_id: +lemmy.value.id,
             name: lemmy.value.title,
@@ -193,7 +243,7 @@ export class LemmyProvider extends SocialAbstract implements SocialProvider {
             Authorization: `Bearer ${jwt}`,
             'Content-Type': 'application/json',
           },
-        })
+        }, this.identifier)
       ).json();
 
       valueArray.push({
@@ -231,7 +281,7 @@ export class LemmyProvider extends SocialAbstract implements SocialProvider {
 
     for (const singlePostId of postIds) {
       const { comment_view } = await (
-        await ssrfSafeFetch(service + '/api/v3/comment', {
+        await this.fetch(service + '/api/v3/comment', {
           body: JSON.stringify({
             post_id: +singlePostId,
             content: commentPost.message,
@@ -241,7 +291,7 @@ export class LemmyProvider extends SocialAbstract implements SocialProvider {
             Authorization: `Bearer ${jwt}`,
             'Content-Type': 'application/json',
           },
-        })
+        }, this.identifier)
       ).json();
 
       valueArray.push({
@@ -281,13 +331,14 @@ export class LemmyProvider extends SocialAbstract implements SocialProvider {
     const { jwt, service } = await this.getJwtAndService(integration);
 
     const { communities } = await (
-      await ssrfSafeFetch(
+      await this.fetch(
         service + `/api/v3/search?type_=Communities&sort=Active&q=${data.word}`,
         {
           headers: {
             Authorization: `Bearer ${jwt}`,
           },
-        }
+        },
+        this.identifier
       )
     ).json();
 

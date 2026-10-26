@@ -8,7 +8,11 @@ import { makeSecureId } from '@gitroom/nestjs-libraries/services/make.secure.id'
 import { RedditSettingsDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/reddit.dto';
 import { timer } from '@gitroom/helpers/utils/timer';
 import { groupBy } from 'lodash';
-import { SocialAbstract } from '@gitroom/nestjs-libraries/integrations/social.abstract';
+import {
+  BadBody,
+  RefreshToken,
+  SocialAbstract,
+} from '@gitroom/nestjs-libraries/integrations/social.abstract';
 import { lookup } from 'mime-types';
 import WebSocket from 'ws';
 import { Tool } from '@gitroom/nestjs-libraries/integrations/tool.decorator';
@@ -17,6 +21,20 @@ import { ssrfSafeFetch } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe
 
 // @ts-ignore
 global.WebSocket = WebSocket;
+
+// Aceita "r/x", "/r/x/", URL do reddit ou so o nome; devolve o nome minusculo
+// (upstream #1930: "/r/" era removido so no inicio e barras sobravam).
+export const normalizeSubreddit = (value: string): string => {
+  const trimmed = String(value || '').trim();
+  const match = trimmed.match(/(?:^|\/)r\/([A-Za-z0-9_]+)/);
+  return (match ? match[1] : trimmed.replace(/^\/+|\/+$/g, '')).toLowerCase();
+};
+
+// Orcamento total de espera por activity quando o Reddit responde RATELIMIT:
+// o workflow padrao (V102) da 10 min ao post inteiro e, em timeout, reexecuta
+// o loop (duplicaria os subreddits ja publicados) — entao espera-se pouco e
+// falha-se cedo com a orientacao.
+const RATE_LIMIT_WAIT_BUDGET_MS = 180_000;
 
 export class RedditProvider extends SocialAbstract implements SocialProvider {
   override maxConcurrentJob = 1; // Reddit has strict rate limits (1 request per second)
@@ -183,6 +201,7 @@ export class RedditProvider extends SocialAbstract implements SocialProvider {
     const [post] = postDetails;
 
     const valueArray: PostResponse[] = [];
+    const budget = { remainingMs: RATE_LIMIT_WAIT_BUDGET_MS };
     for (const firstPostSettings of post.settings.subreddit) {
       const kind =
         firstPostSettings.value.type === 'media'
@@ -222,19 +241,15 @@ export class RedditProvider extends SocialAbstract implements SocialProvider {
             }
           : {}),
         text: post.message,
-        sr: firstPostSettings.value.subreddit.replace('/r/', '').toLowerCase(),
+        sr: normalizeSubreddit(firstPostSettings.value.subreddit),
       };
 
-      const all = await (
-        await this.fetch('https://oauth.reddit.com/api/submit', {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          body: new URLSearchParams(postData),
-        })
-      ).json();
+      const all = await this.submitWithRateLimit(
+        accessToken,
+        postData,
+        budget,
+        valueArray
+      );
 
       const {
         id: redditId,
@@ -247,14 +262,30 @@ export class RedditProvider extends SocialAbstract implements SocialProvider {
       }>((res) => {
         if (all?.json?.data?.id) {
           res(all.json.data);
+          return;
         }
 
         const ws = new WebSocket(all.json.data.websocket_url);
-        ws.on('message', (data: any) => {
-          setTimeout(() => {
-            res({ id: '', name: '', url: '' });
+        const empty = { id: '', name: '', url: '' };
+        let settled = false;
+        let giveUp: ReturnType<typeof setTimeout> | undefined;
+        // resolve uma vez e SEMPRE fecha o socket (redirect, erro ou 30 s
+        // sem resposta — antes o timer so era armado ao chegar uma mensagem
+        // e um websocket mudo travava a activity)
+        const finish = (value: { id: string; name: string; url: string }) => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          clearTimeout(giveUp);
+          res(value);
+          try {
             ws.close();
-          }, 30_000);
+          } catch (err) {}
+        };
+        giveUp = setTimeout(() => finish(empty), 30_000);
+        ws.on('error', () => finish(empty));
+        ws.on('message', (data: any) => {
           try {
             const parsedData = JSON.parse(data.toString());
             if (parsedData?.payload?.redirect) {
@@ -262,7 +293,7 @@ export class RedditProvider extends SocialAbstract implements SocialProvider {
                 /https:\/\/www\.reddit\.com\/r\/.*?\/comments\/(.*?)\/.*/g,
                 '$1'
               );
-              res({
+              finish({
                 id: onlyId,
                 name: `t3_${onlyId}`,
                 url: parsedData?.payload?.redirect,
@@ -290,6 +321,79 @@ export class RedditProvider extends SocialAbstract implements SocialProvider {
       releaseURL: p.map((p) => p.releaseURL).join(','),
       status: 'published',
     }));
+  }
+
+  // O Reddit responde 200 com json.errors (antes o fork seguia para
+  // websocket_url e quebrava com TypeError). RATELIMIT e recusa sem envio:
+  // espera o tempo da mensagem (dentro do orcamento) e reenvia o MESMO
+  // subreddit — upstream #2126 rearma a lane pendente; aqui o loop e interno.
+  private async submitWithRateLimit(
+    accessToken: string,
+    postData: Record<string, string>,
+    budget: { remainingMs: number },
+    published: PostResponse[]
+  ): Promise<any> {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const all = await (
+        await this.fetch('https://oauth.reddit.com/api/submit', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams(postData),
+        })
+      ).json();
+
+      const errors: any[][] = all?.json?.errors || [];
+      if (!errors.length) {
+        return all;
+      }
+      const messages = errors
+        .map((e) => e?.[1] || e?.[0])
+        .filter(Boolean)
+        .join('; ');
+      const alreadyPublished = published.length
+        ? ` (already published: ${published.map((p) => p.releaseURL).join(', ')})`
+        : '';
+      const rateLimited = errors.every((e) => e?.[0] === 'RATELIMIT');
+      if (rateLimited) {
+        const waitMs = this.rateLimitWaitMs(messages);
+        if (attempt < 2 && waitMs <= budget.remainingMs) {
+          budget.remainingMs -= waitMs;
+          await timer(waitMs);
+          continue;
+        }
+        throw new BadBody(
+          this.identifier,
+          JSON.stringify(all),
+          JSON.stringify(postData),
+          `Reddit rate limit: ${messages}${alreadyPublished}`
+        );
+      }
+      throw new BadBody(
+        this.identifier,
+        JSON.stringify(all),
+        JSON.stringify(postData),
+        `Reddit rejected the post: ${messages}${alreadyPublished}`
+      );
+    }
+    throw new BadBody(
+      this.identifier,
+      '{}',
+      JSON.stringify(postData),
+      'Reddit rate limit: too many attempts'
+    );
+  }
+
+  // "you are doing that too much. try again in 2 minutes." -> 120000
+  private rateLimitWaitMs(message: string): number {
+    const match = message.match(/(\d+)\s*(minute|second)/i);
+    if (!match) {
+      return 60_000;
+    }
+    const amount = parseInt(match[1], 10);
+    return (match[2].toLowerCase().startsWith('minute') ? amount * 60 : amount) * 1000;
   }
 
   async comment(
@@ -351,11 +455,17 @@ export class RedditProvider extends SocialAbstract implements SocialProvider {
     ],
   })
   async subreddits(accessToken: string, data: any) {
+    // "r/nome" ou URL colada: busca pelo nome (a URL inteira nao acha nada)
+    // e poe o subreddit exato em primeiro quando existe (upstream #2116).
+    const named = String(data.word || '').match(/(?:^|\/)r\/([A-Za-z0-9_]+)/);
+    const word = named ? named[1] : data.word;
+    const exact = named ? await this.subredditByName(accessToken, named[1]) : [];
+
     const {
       data: { children },
     } = await (
       await this.fetch(
-        `https://oauth.reddit.com/subreddits/search?show=public&q=${data.word}&sort=activity&show_users=false&limit=10`,
+        `https://oauth.reddit.com/subreddits/search?show=public&q=${word}&sort=activity&show_users=false&limit=10`,
         {
           method: 'GET',
           headers: {
@@ -369,16 +479,80 @@ export class RedditProvider extends SocialAbstract implements SocialProvider {
       )
     ).json();
 
-    return children
-      .filter(
-        ({ data }: { data: any }) =>
-          data.subreddit_type === 'public' && data.submission_type !== 'image'
-      )
-      .map(({ data: { title, url, id } }: any) => ({
-        title,
-        name: url,
-        id,
-      }));
+    return [
+      ...exact,
+      ...children
+        .filter(
+          ({ data }: { data: any }) =>
+            data.subreddit_type === 'public' &&
+            data.submission_type !== 'image' &&
+            !exact.some((e) => e.id === data.id)
+        )
+        .map(({ data: { title, url, id } }: any) => ({
+          title,
+          name: url,
+          id,
+        })),
+    ];
+  }
+
+  private async subredditByName(accessToken: string, name: string) {
+    let about: any;
+    try {
+      about = await (
+        await this.fetch(
+          `https://oauth.reddit.com/r/${name}/about`,
+          {
+            method: 'GET',
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+          },
+          'reddit',
+          0,
+          false
+        )
+      ).json();
+    } catch (err) {
+      if (err instanceof RefreshToken) {
+        throw err;
+      }
+      return [];
+    }
+
+    if (
+      about?.kind !== 't5' ||
+      about.data.subreddit_type !== 'public' ||
+      about.data.submission_type === 'image'
+    ) {
+      return [];
+    }
+
+    return [{ title: about.data.title, name: about.data.url, id: about.data.id }];
+  }
+
+  // flairs do subreddit; sem permissao/sem flairs devolve lista vazia
+  private async linkFlairs(accessToken: string, subreddit: string): Promise<any[]> {
+    try {
+      return await (
+        await this.fetch(
+          `https://oauth.reddit.com/${subreddit}/api/link_flair_v2`,
+          {
+            method: 'GET',
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+          },
+          'reddit',
+          0,
+          false
+        )
+      ).json();
+    } catch (err) {
+      return [];
+    }
   }
 
   private getPermissions(submissionType: string, allow_images: string) {
@@ -446,32 +620,7 @@ export class RedditProvider extends SocialAbstract implements SocialProvider {
       )
     ).json();
 
-    // eslint-disable-next-line no-async-promise-executor
-    const newData = await new Promise<{ id: string; name: string }[]>(
-      async (res) => {
-        try {
-          const flair = await (
-            await this.fetch(
-              `https://oauth.reddit.com/${data.subreddit}/api/link_flair_v2`,
-              {
-                method: 'GET',
-                headers: {
-                  Authorization: `Bearer ${accessToken}`,
-                  'Content-Type': 'application/x-www-form-urlencoded',
-                },
-              },
-              'reddit',
-              0,
-              false
-            )
-          ).json();
-
-          res(flair);
-        } catch (err) {
-          return res([]);
-        }
-      }
-    );
+    const newData = await this.linkFlairs(accessToken, data.subreddit);
 
     return {
       subreddit: data.subreddit,
