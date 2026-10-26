@@ -610,8 +610,15 @@ export class IntegrationsController {
   @Get('/:id/plugs')
   async getPlugsByIntegrationId(
     @Param('id') id: string,
-    @GetOrgFromRequest() org: Organization
+    @GetOrgFromRequest() org: Organization,
+    @GetProfileFromRequest() profile: Profile | null
   ) {
+    await this._integrationService.validateIntegrationProfile(
+      org.id,
+      id,
+      profile?.id,
+      { requireProfile: getOrgRole(org) === 'USER' }
+    );
     return this._integrationService.getPlugsByIntegrationId(org.id, id);
   }
 
@@ -619,8 +626,15 @@ export class IntegrationsController {
   async postPlugsByIntegrationId(
     @Param('id') id: string,
     @GetOrgFromRequest() org: Organization,
+    @GetProfileFromRequest() profile: Profile | null,
     @Body() body: PlugDto
   ) {
+    await this._integrationService.validateIntegrationProfile(
+      org.id,
+      id,
+      profile?.id,
+      { requireProfile: getOrgRole(org) === 'USER' }
+    );
     return this._integrationService.createOrUpdatePlug(org.id, id, body);
   }
 
@@ -628,9 +642,16 @@ export class IntegrationsController {
   async changePlugActivation(
     @Param('id') id: string,
     @GetOrgFromRequest() org: Organization,
+    @GetProfileFromRequest() profile: Profile | null,
     @Body('status') status: boolean
   ) {
-    return this._integrationService.changePlugActivation(org.id, id, status);
+    return this._integrationService.changePlugActivation(
+      org.id,
+      id,
+      status,
+      profile?.id,
+      { requireProfile: getOrgRole(org) === 'USER' }
+    );
   }
 
   @Get('/telegram/updates')

@@ -433,6 +433,27 @@ Validação local (23/10/2026, Node 22.22.3 no dev — por isso o `pnpm` avisa
 O espelho local `postiz` foi avançado para `9383f5be`; o push do espelho fica
 para o mantenedor (cada push em branch dispara `build.yml`, ~8 min).
 
+### PR de segurança 3 — achados adjacentes do `security-auditor` (26/10/2026)
+
+Branch `fix/security-followups-3-2026-10`. Trata os quatro itens que o
+`security-auditor` levantou ao revisar o PR #320 (registrados como itens
+11–14 da seção 6 naquela branch): rotas da API pública só com escopo de org
+(+ `GET /integration-settings/:id` e a tool MCP `triggerTool`), `GET /posts/:id`
+e `/posts/group/:group` devolvendo a linha inteira de `Integration` e o
+`Post.error`, `PlugDto.func` sem validação e `releaseId` sem DTO.
+`validateIntegrationProfile` passa a lançar `HttpException` (403/404) em vez
+de `Error` (500). A verificação do `security-auditor` sobre as correções
+acrescentou: preview público só com campos de exibição (devolvia a linha
+inteira), troca de grupo do `createOrUpdatePost` restrita à org (apagava
+grupo alheio pelo `group`), `POST /posts` do dashboard validando o canal pelo
+perfil (dentro de `PostsService.createPost`), escopo de perfil em
+`PUT /integrations/plugs/:id/activate`, DTO no `integration-trigger`.
+Follow-ups da mesma classe, fora deste PR: `GET /posts/:id/statistics` e
+`/posts/:id/review-links` do dashboard sem escopo de perfil; `console.log(e)`
+de exceções de provider em `getMissingContent`/`checkPostAnalytics` sem
+redação; `GET /public/v1/social/:integration` não grava `profile:${state}`
+(canal conectado por chave de perfil pode ficar sem perfil).
+
 ## Apêndice — classificação 1 por 1 (171 PRs + 74 commits diretos)
 
 Legenda: **P0** segurança (nesta branch) · **ADOPT** cherry-pick/porte leve ·

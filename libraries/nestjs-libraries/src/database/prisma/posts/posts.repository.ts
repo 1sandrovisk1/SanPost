@@ -445,6 +445,8 @@ export class PostsRepository {
       data: {
         releaseId: String(releaseId),
       },
+      // a resposta vai para a API publica/dashboard: nunca a linha inteira
+      select: { id: true },
     });
   }
 
@@ -662,11 +664,14 @@ export class PostsRepository {
       }
     }
 
+    // group vem do cliente: sem organizationId aqui, um usuario de outra org
+    // (ou perfil) que soubesse o id do grupo apagava o grupo alheio
     const previousPost = body.group
       ? (
           await this._post.model.post.findFirst({
             where: {
               group: body.group,
+              organizationId: orgId,
               deletedAt: null,
               parentPostId: null,
             },
@@ -681,6 +686,7 @@ export class PostsRepository {
       await this._post.model.post.updateMany({
         where: {
           group: body.group,
+          organizationId: orgId,
           deletedAt: null,
         },
         data: {

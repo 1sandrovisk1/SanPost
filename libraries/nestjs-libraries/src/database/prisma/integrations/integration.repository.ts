@@ -796,6 +796,14 @@ export class IntegrationRepository {
     });
   }
 
+  // plug da propria org (so o necessario para validar o perfil do canal)
+  getPlugForOrg(orgId: string, plugId: string) {
+    return this._plugs.model.plugs.findFirst({
+      where: { id: plugId, organizationId: orgId },
+      select: { id: true, integrationId: true },
+    });
+  }
+
   changePlugActivation(orgId: string, plugId: string, status: boolean) {
     return this._plugs.model.plugs.update({
       where: {

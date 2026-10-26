@@ -209,3 +209,71 @@ describe('PostsRepository.getPost for publishing', () => {
     ]);
   });
 });
+
+describe('PostsRepository.updateReleaseId', () => {
+  it('so grava quando o releaseId ainda e missing e devolve apenas o id', async () => {
+    const prismaMock = createPrismaRepositoryMock('post');
+    (prismaMock.model.post as any).update = jest.fn().mockResolvedValue({ id: 'post-1' } as any);
+    const repo = new PostsRepository(
+      prismaMock as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any
+    );
+
+    await repo.updateReleaseId('post-1', 'org-1', '123');
+
+    expect(prismaMock.model.post.update).toHaveBeenCalledWith({
+      where: { id: 'post-1', organizationId: 'org-1', releaseId: 'missing' },
+      data: { releaseId: '123' },
+      select: { id: true },
+    });
+  });
+});
+
+// group e controlado pelo cliente: a troca de grupo (soft delete do grupo
+// anterior) precisa ficar restrita a org, senao um grupo alheio e apagado.
+describe('PostsRepository.createOrUpdatePost (troca de grupo restrita a org)', () => {
+  it('busca e apaga o grupo anterior so dentro da org', async () => {
+    const prismaMock = createPrismaRepositoryMock('post');
+    (prismaMock.model.post as any).upsert = jest.fn().mockResolvedValue({ id: 'p1' } as any);
+    (prismaMock.model.post as any).findFirst = jest.fn().mockResolvedValue(null as any);
+    (prismaMock.model.post as any).updateMany = jest.fn().mockResolvedValue({ count: 0 } as any);
+    const tagsPostsMock = createPrismaRepositoryMock('tagsPosts');
+    (tagsPostsMock.model.tagsPosts as any).deleteMany = jest.fn().mockResolvedValue({ count: 0 } as any);
+    const repo = new PostsRepository(
+      prismaMock as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      tagsPostsMock as any,
+      {} as any
+    );
+
+    await repo.createOrUpdatePost(
+      'draft',
+      'org-1',
+      '2026-10-26T10:00:00',
+      {
+        group: 'g-alheio',
+        integration: { id: 'int-1' },
+        settings: {},
+        value: [{ id: 'p1', content: 'x', image: [] }],
+      } as any,
+      []
+    );
+
+    expect(prismaMock.model.post.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ group: 'g-alheio', organizationId: 'org-1' }),
+      })
+    );
+    expect(prismaMock.model.post.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ group: 'g-alheio', organizationId: 'org-1' }),
+      })
+    );
+  });
+});
