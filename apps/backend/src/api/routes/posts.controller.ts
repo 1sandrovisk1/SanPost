@@ -66,6 +66,16 @@ export class PostsController {
     return this._postsService.getMissingContent(org.id, id, false, profile?.id);
   }
 
+  // link do post publicado, resolvido no clique (upstream #2194)
+  @Get('/:id/release-url')
+  async getReleaseURL(
+    @GetOrgFromRequest() org: Organization,
+    @GetProfileFromRequest() profile: Profile | null,
+    @Param('id') id: string
+  ) {
+    return this._postsService.getReleaseURL(org.id, id, profile?.id);
+  }
+
   @Put('/:id/release-id')
   async updateReleaseId(
     @GetOrgFromRequest() org: Organization,

@@ -2524,5 +2524,9 @@
   "automation_active_edit_hint": "As alterações entram em vigor ao salvar. Envios pendentes da versão anterior serão cancelados.",
   "edit_tag": "Editar tag",
   "select_channels_tooltip": "Selecionar canais",
-  "select_all": "Selecionar todos"
+  "select_all": "Selecionar todos",
+  "open_post": "Abrir post",
+  "post_has_no_public_link": "Este post não tem link público",
+  "post_link_reconnect_channel": "Reconecte este canal para abrir o link do post",
+  "post_link_not_ready": "O link do post ainda não está disponível, tente de novo em um minuto"
 }

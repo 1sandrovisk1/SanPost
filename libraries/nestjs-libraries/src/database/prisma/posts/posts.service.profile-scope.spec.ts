@@ -215,7 +215,8 @@ describe('PostsService.updateReleaseId (escopo por perfil)', () => {
     await service.updateReleaseId('org-1', 'post-1', '123', 'prof-2');
     await service.updateReleaseId('org-1', 'post-1', '123');
     expect(postRepository.updateReleaseId).toHaveBeenCalledTimes(2);
-    expect(postRepository.updateReleaseId).toHaveBeenCalledWith('post-1', 'org-1', '123');
+    // post ja conectado (releaseId != 'missing'): sem URL nova
+    expect(postRepository.updateReleaseId).toHaveBeenCalledWith('post-1', 'org-1', '123', undefined);
   });
 });
 

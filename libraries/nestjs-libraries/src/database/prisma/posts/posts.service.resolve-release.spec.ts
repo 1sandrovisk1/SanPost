@@ -136,7 +136,9 @@ describe('PostsService.resolveRelease', () => {
     expect(provider.resolveReleaseId).toHaveBeenCalledWith(
       post.integration.token,
       'v_pub_url~abc',
-      post.integration
+      post.integration,
+      {},
+      post.releaseURL
     );
     expect(postRepository.updateResolvedRelease).toHaveBeenCalledWith(
       'post-1',
@@ -166,7 +168,9 @@ describe('PostsService.checkPostAnalytics com resolucao do releaseId', () => {
     expect(provider.resolveReleaseId).toHaveBeenCalledWith(
       'PLAIN',
       'v_pub_url~abc',
-      expect.objectContaining({ id: 'int-1', token: 'PLAIN' })
+      expect.objectContaining({ id: 'int-1', token: 'PLAIN' }),
+      {},
+      expect.any(String)
     );
     expect(postRepository.updateResolvedRelease).toHaveBeenCalledWith(
       'post-1',
@@ -207,5 +211,122 @@ describe('PostsService.checkPostAnalytics com resolucao do releaseId', () => {
       7,
       expect.anything()
     );
+  });
+});
+
+// Porte do upstream #2194/#2211: link do post resolvido no clique do calendario.
+describe('PostsService.getReleaseURL', () => {
+  beforeEach(() => {
+    (ioRedis.get as jest.Mock).mockReset().mockResolvedValue(null);
+    (ioRedis.set as jest.Mock).mockReset();
+  });
+
+  it('provider sem resolucao devolve a URL guardada sem consultar a plataforma', async () => {
+    const { service, encryption } = build({});
+
+    await expect(service.getReleaseURL('org-1', 'post-1')).resolves.toEqual({
+      releaseURL: 'https://www.tiktok.com/@perfil',
+    });
+    expect(encryption.decrypt).not.toHaveBeenCalled();
+  });
+
+  it('resolve com o token descriptografado e devolve o link definitivo', async () => {
+    const provider = {
+      resolveReleaseId: jest
+        .fn()
+        .mockResolvedValue({ postId: BIG_ID, releaseURL: RELEASE_URL }),
+    };
+    const { service } = build(provider);
+
+    await expect(service.getReleaseURL('org-1', 'post-1')).resolves.toEqual({
+      releaseURL: RELEASE_URL,
+      pending: undefined,
+      unavailable: undefined,
+    });
+    expect(provider.resolveReleaseId.mock.calls[0][0]).toBe('PLAIN');
+  });
+
+  it('pending e unavailable chegam ao calendario para avisar o usuario', async () => {
+    const provider = {
+      resolveReleaseId: jest
+        .fn()
+        .mockResolvedValueOnce({ pending: true })
+        .mockResolvedValueOnce({ unavailable: true }),
+    };
+    const { service } = build(provider);
+
+    await expect(service.getReleaseURL('org-1', 'post-1')).resolves.toMatchObject({
+      pending: true,
+    });
+    expect(ioRedis.set).toHaveBeenCalledWith(
+      'release-resolve:org-1:post-1',
+      'pending',
+      'EX',
+      300
+    );
+    await expect(service.getReleaseURL('org-1', 'post-1')).resolves.toMatchObject({
+      unavailable: true,
+    });
+  });
+
+  it('post de outro perfil responde 404', async () => {
+    const provider = { resolveReleaseId: jest.fn() };
+    const { service, postRepository } = build(provider);
+    postRepository.getPostById.mockResolvedValue({
+      ...makePost(),
+      profileId: 'prof-1',
+    });
+
+    await expect(
+      service.getReleaseURL('org-1', 'post-1', 'prof-2')
+    ).rejects.toMatchObject({ status: 404 });
+    expect(provider.resolveReleaseId).not.toHaveBeenCalled();
+  });
+
+  it('token recusado renova e tenta de novo uma unica vez', async () => {
+    const provider = {
+      resolveReleaseId: jest
+        .fn()
+        .mockRejectedValue(new RefreshToken('tiktok', '{}', '{}')),
+    };
+    const { service, refreshIntegrationService } = build(provider);
+    const { postRepository } = { postRepository: (service as any)._postRepository };
+    postRepository.getPostById.mockImplementation(async () => makePost());
+
+    await expect(service.getReleaseURL('org-1', 'post-1')).resolves.toEqual({
+      releaseURL: 'https://www.tiktok.com/@perfil',
+      pending: true,
+    });
+    expect(refreshIntegrationService.refresh).toHaveBeenCalledTimes(1);
+    expect(provider.resolveReleaseId).toHaveBeenCalledTimes(2);
+  });
+});
+
+// Porte do upstream #2212: conectar o post a mao tambem grava o link.
+describe('PostsService.updateReleaseId (link do post conectado)', () => {
+  it('post missing busca a URL com o token descriptografado; falha nao impede conectar', async () => {
+    const provider = {
+      releaseUrl: jest
+        .fn()
+        .mockResolvedValueOnce('https://www.tiktok.com/@perfil/video/1')
+        .mockRejectedValueOnce(new Error('boom')),
+    };
+    const { service, postRepository } = build(provider);
+    const repo = postRepository as any;
+    repo.getPostById.mockResolvedValue({ ...makePost(), releaseId: 'missing' });
+    repo.updateReleaseId = jest.fn().mockResolvedValue({ id: 'post-1' });
+
+    await service.updateReleaseId('org-1', 'post-1', '1');
+    await service.updateReleaseId('org-1', 'post-1', '1');
+
+    expect(provider.releaseUrl.mock.calls[0][0]).toBe('PLAIN');
+    expect(repo.updateReleaseId).toHaveBeenNthCalledWith(
+      1,
+      'post-1',
+      'org-1',
+      '1',
+      'https://www.tiktok.com/@perfil/video/1'
+    );
+    expect(repo.updateReleaseId).toHaveBeenNthCalledWith(2, 'post-1', 'org-1', '1', undefined);
   });
 });

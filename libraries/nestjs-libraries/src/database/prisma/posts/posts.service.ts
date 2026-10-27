@@ -205,7 +205,32 @@ export class PostsService {
   ) {
     const post = await this._postRepository.getPostById(postId, orgId);
     this.assertPostInProfile(post, profileId);
-    return this._postRepository.updateReleaseId(postId, orgId, releaseId);
+
+    // a URL e um bonus: conectar nao pode falhar quando ela nao vem
+    // (upstream #2212)
+    let releaseURL: string | undefined;
+    if (post?.releaseId === 'missing') {
+      try {
+        releaseURL = await this._integrationManager
+          .getSocialIntegration(post.integration.providerIdentifier)
+          .releaseUrl?.(
+            decryptIntegrationToken(this._encryption, post.integration.token),
+            String(releaseId),
+            post.integration
+          );
+      } catch (e) {
+        this._logger.warn(
+          `releaseUrl falhou para o post ${postId}: ${summarizeError(e)}`
+        );
+      }
+    }
+
+    return this._postRepository.updateReleaseId(
+      postId,
+      orgId,
+      releaseId,
+      releaseURL
+    );
   }
 
   // Porte do upstream #2186: providers que publicam antes de ter o id publico
@@ -218,9 +243,15 @@ export class PostsService {
       id: string;
       releaseId: string;
       releaseURL: string | null;
+      settings?: string | null;
       integration: Integration;
     }
-  ): Promise<{ releaseId: string; releaseURL: string | null }> {
+  ): Promise<{
+    releaseId: string;
+    releaseURL: string | null;
+    pending?: boolean;
+    unavailable?: boolean;
+  }> {
     const stored = { releaseId: post.releaseId, releaseURL: post.releaseURL };
     const integrationProvider = this._integrationManager.getSocialIntegration(
       post.integration.providerIdentifier
@@ -233,18 +264,33 @@ export class PostsService {
     // plataforma a cada abertura das estatisticas (GET sem throttle, mesmo
     // token e endpoint do polling de publicacao, rate limit por token).
     const unresolvedKey = `release-resolve:${orgId}:${post.id}`;
-    if (await ioRedis.get(unresolvedKey)) {
-      return stored;
+    const cached = await ioRedis.get(unresolvedKey);
+    if (cached) {
+      // 'pending': a plataforma ainda nao liberou o link; outro valor: nada a
+      // resolver por enquanto (ex.: rascunho do TikTok ainda na caixa de entrada)
+      return cached === 'pending' ? { ...stored, pending: true } : stored;
+    }
+
+    let settings: any = {};
+    try {
+      settings = JSON.parse(post.settings || '{}');
+    } catch {
+      settings = {};
     }
 
     const resolved = await integrationProvider.resolveReleaseId(
       post.integration.token,
       post.releaseId,
-      post.integration
+      post.integration,
+      settings,
+      post.releaseURL
     );
-    if (!resolved) {
-      await ioRedis.set(unresolvedKey, '1', 'EX', 300);
-      return stored;
+    if (!resolved || 'pending' in resolved) {
+      await ioRedis.set(unresolvedKey, resolved ? 'pending' : '1', 'EX', 300);
+      return { ...stored, pending: !!resolved };
+    }
+    if ('unavailable' in resolved) {
+      return { ...stored, unavailable: true };
     }
     if (resolved.postId === post.releaseId) {
       return stored;
@@ -258,6 +304,86 @@ export class PostsService {
       resolved.releaseURL
     );
     return { releaseId: resolved.postId, releaseURL: resolved.releaseURL };
+  }
+
+  // link do post publicado, resolvido no clique do icone do calendario
+  // (upstream #2194, #2211): plataformas que liberam o id publico depois da
+  // publicacao (TikTok) so sao consultadas aqui ou nas estatisticas
+  async getReleaseURL(
+    orgId: string,
+    postId: string,
+    profileId?: string,
+    forceRefresh = false
+  ): Promise<{
+    releaseURL: string;
+    pending?: boolean;
+    unavailable?: boolean;
+    reconnect?: boolean;
+  }> {
+    const post = await this._postRepository.getPostById(postId, orgId);
+    this.assertPostInProfile(post, profileId);
+    if (!post?.releaseURL) {
+      return { releaseURL: '' };
+    }
+
+    const integrationProvider = this._integrationManager.getSocialIntegration(
+      post.integration.providerIdentifier
+    );
+    if (!integrationProvider.resolveReleaseId) {
+      return { releaseURL: post.releaseURL };
+    }
+
+    const getIntegration = post.integration!;
+
+    // so renova depois que a plataforma recusar o token: post ja resolvido
+    // nunca chega a plataforma
+    if (forceRefresh) {
+      const data = await this._refreshIntegrationService.refresh(
+        getIntegration
+      );
+      if (!data) {
+        return { releaseURL: post.releaseURL, reconnect: true };
+      }
+
+      if (data.accessToken) {
+        getIntegration.token = data.accessToken;
+
+        if (integrationProvider.refreshWait) {
+          await timer(10000);
+        }
+      } else {
+        await this._integrationService.disconnectChannel(orgId, getIntegration);
+        return { releaseURL: post.releaseURL, reconnect: true };
+      }
+    }
+
+    getIntegration.token = decryptIntegrationToken(
+      this._encryption,
+      getIntegration.token
+    );
+
+    try {
+      const { releaseURL, pending, unavailable } = await this.resolveRelease(
+        orgId,
+        {
+          id: post.id,
+          releaseId: post.releaseId!,
+          releaseURL: post.releaseURL,
+          settings: post.settings,
+          integration: getIntegration,
+        }
+      );
+      return { releaseURL: releaseURL || post.releaseURL, pending, unavailable };
+    } catch (e) {
+      if (e instanceof RefreshToken && !forceRefresh) {
+        return this.getReleaseURL(orgId, postId, profileId, true);
+      }
+      this._logger.warn(
+        `getReleaseURL falhou para o post ${postId}: ${summarizeError(e)}`
+      );
+    }
+
+    return { releaseURL: post.releaseURL, pending: true };
   }
 
   async checkPostAnalytics(
@@ -333,6 +459,7 @@ export class PostsService {
         id: post.id,
         releaseId: post.releaseId,
         releaseURL: post.releaseURL,
+        settings: post.settings,
         integration: getIntegration,
       });
 

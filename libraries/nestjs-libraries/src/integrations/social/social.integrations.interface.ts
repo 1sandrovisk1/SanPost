@@ -42,12 +42,27 @@ export interface IAuthenticator {
     integration?: Integration
   ): Promise<AnalyticsData[]>;
   // Id publico + URL definitiva para persistir quando o releaseId guardado
-  // ainda e um publish id; undefined quando nao ha (ainda) o que resolver.
+  // ainda e um publish id; pending quando a plataforma ainda nao liberou o id,
+  // unavailable quando o post nunca tera link publico, undefined quando nao ha
+  // o que resolver (upstream #2186, #2211, #2212).
   resolveReleaseId?(
     accessToken: string,
     releaseId: string,
+    integration: Integration,
+    settings?: any,
+    releaseURL?: string | null
+  ): Promise<
+    | { postId: string; releaseURL: string }
+    | { pending: true }
+    | { unavailable: true }
+    | undefined
+  >;
+  // URL de um post que o usuario conectou a mao ("Conectar post")
+  releaseUrl?(
+    accessToken: string,
+    releaseId: string,
     integration: Integration
-  ): Promise<{ postId: string; releaseURL: string } | undefined>;
+  ): Promise<string | undefined>;
   changeNickname?(
     id: string,
     accessToken: string,

@@ -448,8 +448,11 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
       const { status } = post.data;
 
       if (status === 'SEND_TO_USER_INBOX') {
+        // o id fica 'missing' ate o usuario publicar o rascunho; o publish id
+        // vai no fragmento da URL para o resolveReleaseId consultar depois
+        // (upstream #2212)
         return {
-          url: 'https://www.tiktok.com/messages?lang=en',
+          url: `https://www.tiktok.com/messages?lang=en#${publishId}`,
           id: 'missing',
         };
       }
@@ -462,7 +465,7 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
         return {
           url: !publicPostId
             ? `https://www.tiktok.com/@${handle}`
-            : `https://www.tiktok.com/@${handle}/video/${publicPostId}`,
+            : this.postUrl(id, publishId, publicPostId),
           id: !publicPostId ? publishId : publicPostId,
         };
       }
@@ -515,10 +518,33 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
   async resolveReleaseId(
     accessToken: string,
     releaseId: string,
-    integration: Integration
-  ): Promise<{ postId: string; releaseURL: string } | undefined> {
-    if (releaseId.indexOf('_pub_') === -1) {
+    integration: Integration,
+    settings?: any,
+    releaseURL?: string | null
+  ): Promise<
+    | { postId: string; releaseURL: string }
+    | { pending: true }
+    | { unavailable: true }
+    | undefined
+  > {
+    // rascunho enviado para a caixa de entrada (UPLOAD): releaseId 'missing'
+    // com o publish id no fragmento da URL (upstream #2212)
+    const draft = releaseId === 'missing';
+    const publishId = draft ? releaseURL?.split('#')[1] || '' : releaseId;
+    if (
+      publishId.indexOf('_pub_') === -1 &&
+      publishId.indexOf('_inbox_') === -1
+    ) {
       return undefined;
+    }
+
+    // o TikTok so da id publico a post com visibilidade publica (o rascunho
+    // ignora a configuracao: o usuario escolhe no app) (upstream #2211)
+    if (
+      !draft &&
+      ['SELF_ONLY', 'MUTUAL_FOLLOW_FRIENDS'].includes(settings?.privacy_level)
+    ) {
+      return { unavailable: true };
     }
 
     const raw = await (
@@ -530,7 +556,7 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
             'Content-Type': 'application/json; charset=UTF-8',
             Authorization: `Bearer ${accessToken}`,
           },
-          body: JSON.stringify({ publish_id: releaseId }),
+          body: JSON.stringify({ publish_id: publishId }),
         }
       )
     ).text();
@@ -539,16 +565,47 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
     // sem perfil (Integration.profile e opcional) a URL ficaria /@null/...
     // persistida para sempre: melhor nao resolver agora
     if (!publicPostId || !integration.profile) {
-      return undefined;
+      // rascunho ainda nao publicado (ou publicado como nao publico) continua
+      // abrindo a caixa de entrada em vez de pedir para tentar de novo
+      return draft ? undefined : { pending: true };
     }
 
     return {
       postId: publicPostId,
-      // handle codificado: a URL e persistida e reinjetada em posts (updateTags)
-      releaseURL: `https://www.tiktok.com/@${encodeURIComponent(
-        integration.profile
-      )}/video/${publicPostId}`,
+      releaseURL: this.postUrl(integration.profile, publishId, publicPostId),
     };
+  }
+
+  // post de foto (p_pub_... / p_inbox_...) fica em /photo/; o TikTok recusa
+  // /video/ para ele (upstream #2211). Handle codificado: a URL e persistida e
+  // reinjetada em posts (updateTags).
+  private postUrl(profile: string, publishId: string, postId: string) {
+    return `https://www.tiktok.com/@${encodeURIComponent(profile)}/${
+      publishId.indexOf('p_') === 0 ? 'photo' : 'video'
+    }/${postId}`;
+  }
+
+  // URL de um video conectado a mao (rascunho publicado pelo app); leitura,
+  // por isso analyticsFetch (upstream #2212)
+  async releaseUrl(accessToken: string, releaseId: string) {
+    const data = await (
+      await this.analyticsFetch(
+        'https://open.tiktokapis.com/v2/video/query/?fields=id,share_url',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({ filters: { video_ids: [releaseId] } }),
+        }
+      )
+    ).json();
+
+    // share_url traz parametros de rastreio (inclusive o client key do app);
+    // so aceita link https do proprio TikTok, que e aberto pelo navegador
+    const url = String(data?.data?.videos?.[0]?.share_url || '').split('?')[0];
+    return /^https:\/\/(www\.)?tiktok\.com\//.test(url) ? url : undefined;
   }
 
   private postingMethod(

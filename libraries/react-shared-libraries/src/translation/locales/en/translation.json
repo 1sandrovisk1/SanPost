@@ -2524,5 +2524,9 @@
   "automation_active_edit_hint": "Changes take effect when saved. Pending sends from the previous version will be cancelled.",
   "edit_tag": "Edit Tag",
   "select_channels_tooltip": "Select Channels",
-  "select_all": "Select all"
+  "select_all": "Select all",
+  "open_post": "Open Post",
+  "post_has_no_public_link": "This post has no public link",
+  "post_link_reconnect_channel": "Reconnect this channel to open the post link",
+  "post_link_not_ready": "The post link is not available yet, please try again in a minute"
 }

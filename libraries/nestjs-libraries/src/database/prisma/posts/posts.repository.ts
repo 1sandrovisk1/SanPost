@@ -487,9 +487,19 @@ export class PostsRepository {
     });
   }
 
-  updateReleaseId(id: string, orgId: string, releaseId: string) {
+  updateReleaseId(
+    id: string,
+    orgId: string,
+    releaseId: string,
+    releaseURL?: string
+  ) {
+    // a URL vem do provider quando o post e conectado a mao (upstream #2212)
+    const data = {
+      releaseId: String(releaseId),
+      ...(releaseURL ? { releaseURL } : {}),
+    };
     if (this.transaction) return this.transaction.model.$transaction(async tx => {
-      const post = await tx.post.update({ where: { id, organizationId: orgId, releaseId: 'missing' }, data: { releaseId: String(releaseId) } });
+      const post = await tx.post.update({ where: { id, organizationId: orgId, releaseId: 'missing' }, data });
       if (releaseId && releaseId !== 'missing') await tx.scheduledAutomationTarget.updateMany({ where: { postId: id, integrationId: post.integrationId, publishedReleaseId: null, flow: { organizationId: post.organizationId, profileId: post.profileId } }, data: { publishedReleaseId: String(releaseId) } });
       return { id: post.id };
     });
@@ -499,9 +509,7 @@ export class PostsRepository {
         organizationId: orgId,
         releaseId: 'missing',
       },
-      data: {
-        releaseId: String(releaseId),
-      },
+      data,
       // a resposta vai para a API publica/dashboard: nunca a linha inteira
       select: { id: true },
     });
