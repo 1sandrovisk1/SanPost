@@ -5,6 +5,8 @@ import {
   type TavilySearchResponse,
 } from '@tavily/core';
 import { AiProviderResolverService } from './ai-provider-resolver.service';
+import net from 'node:net';
+import { isBlockedIp } from '@gitroom/nestjs-libraries/dtos/webhooks/webhook.url.validator';
 import { WebSearchOptions } from './ai-credential.schemas';
 
 const TAVILY_TIMEOUT_MS = 45_000;
@@ -13,21 +15,25 @@ export const MAX_EXTRACT_URLS = 20;
 /**
  * Hosts privados/local-only que NUNCA devem virar destino de extract
  * (defesa em profundidade contra SSRF, mesmo o Tavily sendo remoto —
- * pode ser reusado por outro consumer no futuro).
+ * pode ser reusado por outro consumer no futuro). IP literal usa a mesma
+ * regra do guard SSRF (`isBlockedIp`: IPv6 com colchetes, v4-mapped, CGNAT,
+ * metadata...); a URL WHATWG ja normaliza `127.1`/`0x7f000001`.
  */
-const PRIVATE_HOST_PATTERNS: Array<RegExp> = [
-  /^localhost$/i,
-  /^127\./, // 127.0.0.0/8
-  /^10\./, // 10.0.0.0/8
-  /^192\.168\./, // 192.168.0.0/16
-  /^172\.(1[6-9]|2\d|3[01])\./, // 172.16.0.0/12
-  /^169\.254\./, // link-local
-  /^0\./, // 0.0.0.0/8
-  /^::1$/, // IPv6 loopback
-  /^fe80:/i, // IPv6 link-local
-  /^fc00:/i, // IPv6 unique local
-  /^fd00:/i, // IPv6 unique local
-];
+const LOCAL_SUFFIXES = ['.localhost', '.local', '.internal', '.lan', '.home.arpa'];
+const isPrivateHost = (hostname: string): boolean => {
+  const host = hostname
+    .toLowerCase()
+    .replace(/^\[|\]$/g, '')
+    .replace(/\.+$/, '');
+  if (net.isIP(host) !== 0) {
+    return isBlockedIp(host);
+  }
+  // nome de um rotulo so (intranet, db) so resolve na rede local
+  if (host === 'localhost' || !host.includes('.')) {
+    return true;
+  }
+  return LOCAL_SUFFIXES.some((suffix) => host.endsWith(suffix));
+};
 
 export interface SearchOpts {
   maxResults?: number;
@@ -97,10 +103,8 @@ export class AiWebSearchService {
     } catch (e) {
       if (e instanceof HttpException) throw e;
       this.logSanitized('search', e);
-      throw new HttpException(
-        `Tavily search falhou: ${(e as Error).message?.slice(0, 200) ?? 'erro desconhecido'}`,
-        502
-      );
+      // o Tavily ecoa a chave em 401/403: detalhe so no log sanitizado
+      throw new HttpException('Tavily search falhou.', 502);
     }
   }
 
@@ -161,10 +165,7 @@ export class AiWebSearchService {
     } catch (e) {
       if (e instanceof HttpException) throw e;
       this.logSanitized('extract', e);
-      throw new HttpException(
-        `Tavily extract falhou: ${(e as Error).message?.slice(0, 200) ?? 'erro desconhecido'}`,
-        502
-      );
+      throw new HttpException('Tavily extract falhou.', 502);
     }
   }
 
@@ -188,10 +189,8 @@ export class AiWebSearchService {
       );
     }
     const host = parsed.hostname;
-    for (const pattern of PRIVATE_HOST_PATTERNS) {
-      if (pattern.test(host)) {
-        throw new HttpException(`Host privado nao aceito: ${host}`, 400);
-      }
+    if (isPrivateHost(host)) {
+      throw new HttpException(`Host privado nao aceito: ${host}`, 400);
     }
   }
 

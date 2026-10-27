@@ -35,6 +35,24 @@ describe('NostrProvider.secretKey', () => {
     expect(() => (new NostrProvider() as any).secretKey('0a0bff')).toThrow(BadBody);
   });
 
+  it('authenticate com corpo malformado nao loga o conteudo (pode conter a chave)', async () => {
+    const consoleLog = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+    // JSON.parse ecoa um trecho da entrada na mensagem de erro
+    const code = Buffer.from('{"password":x' + HEX_KEY + '}').toString('base64');
+    try {
+      await expect(new NostrProvider().authenticate({ code } as any)).resolves.toBe(
+        'Invalid credentials'
+      );
+      const logged = consoleLog.mock.calls
+        .flat()
+        .map((arg) => (arg instanceof Error ? `${arg.message} ${arg.stack}` : String(arg)))
+        .join(' ');
+      expect(logged).not.toContain(HEX_KEY.slice(0, 8));
+    } finally {
+      consoleLog.mockRestore();
+    }
+  });
+
   it('authenticate com chave invalida devolve Invalid credentials', async () => {
     const code = Buffer.from(JSON.stringify({ password: 'nsec1' + 'x'.repeat(58) })).toString('base64');
     await expect(new NostrProvider().authenticate({ code } as any)).resolves.toBe('Invalid credentials');

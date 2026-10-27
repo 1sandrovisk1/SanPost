@@ -4,7 +4,9 @@ import {
   HttpStatus,
   Injectable,
   ValidationPipe,
+  Logger,
 } from '@nestjs/common';
+import { summarizeError } from '@gitroom/nestjs-libraries/services/error.summary';
 import { PostsRepository } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.repository';
 import { CreatePostDto } from '@gitroom/nestjs-libraries/dtos/posts/create.post.dto';
 import dayjs from 'dayjs';
@@ -66,6 +68,8 @@ type PostWithConditionals = Post & {
 @Injectable()
 export class PostsService {
   private storage = UploadFactory.createStorage();
+  private readonly _logger = new Logger(PostsService.name);
+
   constructor(
     private _postRepository: PostsRepository,
     private _integrationManager: IntegrationManager,
@@ -156,7 +160,9 @@ export class PostsService {
         getIntegration.token
       );
     } catch (e) {
-      console.log(e);
+      this._logger.warn(
+        `getMissingContent failed (post=${postId}): ${summarizeError(e)}`
+      );
       if (e instanceof RefreshToken) {
         return this.getMissingContent(orgId, postId, true, profileId);
       }
@@ -340,7 +346,9 @@ export class PostsService {
       );
       return loadAnalytics;
     } catch (e) {
-      console.log(e);
+      this._logger.warn(
+        `checkPostAnalytics failed (post=${postId}): ${summarizeError(e)}`
+      );
       if (e instanceof RefreshToken) {
         return this.checkPostAnalytics(orgId, postId, date, true, profileId);
       }
@@ -349,7 +357,14 @@ export class PostsService {
     return [];
   }
 
-  async getStatistics(orgId: string, id: string) {
+  // `requireProfileId`: mesma regra das rotas de revisao (membro USER so no
+  // proprio perfil -> 403; undefined = admin; post inexistente -> 404).
+  async getStatistics(
+    orgId: string,
+    id: string,
+    requireProfileId?: string | null
+  ) {
+    await this.assertPostReviewAccess(orgId, id, requireProfileId);
     const getPost = await this.getPostsRecursively(id, true, orgId, true);
     const content = getPost.map((p) => p.content);
     const shortLinksTracking = await this._shortLinkService.getStatistics(
@@ -701,8 +716,8 @@ export class PostsService {
     return list;
   }
 
-  async getOldPosts(orgId: string, date: string) {
-    return this._postRepository.getOldPosts(orgId, date);
+  async getOldPosts(orgId: string, date: string, profileId?: string | null) {
+    return this._postRepository.getOldPosts(orgId, date, profileId);
   }
 
   public async updateTags(orgId: string, post: Post[]): Promise<Post[]> {

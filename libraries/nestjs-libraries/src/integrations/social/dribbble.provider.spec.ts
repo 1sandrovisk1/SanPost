@@ -44,3 +44,27 @@ describe('DribbbleProvider.post', () => {
     }
   });
 });
+
+// refreshToken era copia do fluxo do Pinterest (sandbox): mandaria
+// PINTEREST_CLIENT_ID/SECRET e o refresh token para api-sandbox.pinterest.com.
+// O Dribbble nao emite refresh token (authenticate devolve ''), entao o canal
+// segue o caminho de "nao renovavel" (desconecta e pede reconexao).
+describe('DribbbleProvider.refreshToken', () => {
+  it('nao faz chamada de rede e devolve token vazio', async () => {
+    const provider = new DribbbleProvider();
+    const fetchSpy = jest.spyOn(provider, 'fetch');
+    const axiosSpy = jest.spyOn(provider as any, 'getSsrfSafeAxios');
+
+    await expect(provider.refreshToken('qualquer')).resolves.toEqual({
+      refreshToken: '',
+      expiresIn: 0,
+      accessToken: '',
+      id: '',
+      name: '',
+      picture: '',
+      username: '',
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(axiosSpy).not.toHaveBeenCalled();
+  });
+});

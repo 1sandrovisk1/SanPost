@@ -9,7 +9,9 @@ import {
   Query,
   Res,
   UseFilters,
+  Logger,
 } from '@nestjs/common';
+import { summarizeError } from '@gitroom/nestjs-libraries/services/error.summary';
 import { Response } from 'express';
 import { ioRedis } from '@gitroom/nestjs-libraries/redis/redis.service';
 import { ConnectIntegrationDto } from '@gitroom/nestjs-libraries/dtos/integrations/connect.integration.dto';
@@ -115,8 +117,7 @@ export class NoAuthIntegrationsController {
       picture,
       username,
       additionalSettings,
-      // eslint-disable-next-line no-async-promise-executor
-    } = await new Promise<AuthTokenDetails>(async (res) => {
+    } = await (async (): Promise<AuthTokenDetails> => {
       try {
         const auth = await integrationProvider.authenticate(
           {
@@ -128,7 +129,7 @@ export class NoAuthIntegrationsController {
         );
 
         if (typeof auth === 'string') {
-          return res({
+          return ({
             error: auth,
             accessToken: '',
             id: '',
@@ -140,7 +141,6 @@ export class NoAuthIntegrationsController {
         }
 
         if (refresh && integrationProvider.reConnect) {
-          console.log('reconnect');
           try {
             const newAuth = await integrationProvider.reConnect(
               auth.id,
@@ -152,15 +152,15 @@ export class NoAuthIntegrationsController {
             // default sobrescreve com body.refresh, descartando o refresh_token
             // e quebrando a renovacao automatica horas depois.
             if (integrationProvider.keepReconnectAuthTokens) {
-              return res({
+              return ({
                 ...newAuth,
                 refreshToken: auth.refreshToken,
                 expiresIn: auth.expiresIn,
               });
             }
-            return res({ ...newAuth, refreshToken: body.refresh });
+            return ({ ...newAuth, refreshToken: body.refresh });
           } catch (err: any) {
-            return res({
+            return ({
               error: err.message,
               accessToken: '',
               id: '',
@@ -172,10 +172,10 @@ export class NoAuthIntegrationsController {
           }
         }
 
-        return res(auth);
+        return (auth);
       } catch (err) {
         if (err instanceof NotEnoughScopes) {
-          return res({
+          return ({
             error: err.message,
             accessToken: '',
             id: '',
@@ -186,20 +186,17 @@ export class NoAuthIntegrationsController {
           });
         }
 
-        // Log full error so we can diagnose silent failures in OAuth
-        // (token-exchange errors from Meta, JSON parse failures, missing
-        // credentials, etc.) instead of swallowing them as "Authentication failed".
-        console.error(
-          `[connectSocialMedia] ${integration} authenticate() failed:`,
-          {
-            name: (err as Error)?.name,
-            message: (err as Error)?.message,
-            stack: (err as Error)?.stack,
-            cause: (err as any)?.cause,
-          }
+        // Loga a causa para diagnosticar falhas silenciosas do OAuth (troca de
+        // token da Meta, JSON invalido, credencial ausente...) em vez de so
+        // "Authentication failed" — resumida: stack/cause/objeto inteiro
+        // podiam levar o corpo da troca de token ao log.
+        Logger.error(
+          `[connectSocialMedia] ${integration} authenticate() failed: ${summarizeError(err)}`,
+          undefined,
+          'NoAuthIntegrationsController'
         );
 
-        return res({
+        return ({
           error: 'Authentication failed',
           accessToken: '',
           id: '',
@@ -209,7 +206,7 @@ export class NoAuthIntegrationsController {
           additionalSettings: [],
         });
       }
-    });
+    })();
 
     if (error) {
       throw new NotEnoughScopes(error);
@@ -279,7 +276,10 @@ export class NoAuthIntegrationsController {
     this._refreshIntegrationService
       .startRefreshWorkflow(org.id, createUpdate.id, integrationProvider)
       .catch((err) => {
-        console.log(err);
+        Logger.warn(
+          `startRefreshWorkflow failed: ${summarizeError(err)}`,
+          'NoAuthIntegrationsController'
+        );
       });
 
     // Fetch pages if this is a two-step provider and not a refresh
@@ -299,7 +299,10 @@ export class NoAuthIntegrationsController {
           pages = await integrationProvider[fetchMethod](accessToken);
         }
       } catch (err) {
-        console.log('Failed to fetch pages:', err);
+        Logger.warn(
+          `Failed to fetch pages: ${summarizeError(err)}`,
+          'NoAuthIntegrationsController'
+        );
       }
     }
 

@@ -33,6 +33,22 @@ downloads de mídia por Axios, o SDK do Bluesky, providers self-hosted como
 WordPress, Mastodon, Lemmy, Listmonk e MeWe, uploads intermediários entregues
 pelas APIs dos providers e os webhooks de saída.
 
+URLs digitadas por usuários ou publicadas por terceiros são baixadas por
+`fetchPublicUrl`, que soma ao guard um timeout de 30 s, um teto de bytes lido
+em streaming e redirects seguidos manualmente (até 5), com protocolo e DNS
+revalidados em cada salto:
+
+| Origem | Protocolo | Teto | Opt-out |
+|---|---|---|---|
+| Imagem de referência da geração I2I (OpenAI) — mídia do storage local é lida do disco | HTTPS | 25 MB | não herda |
+| Feed do autopost (`POST /autopost/send` e agendamento) | HTTPS | 5 MB | herda só na URL configurada; redirects voltam ao guard |
+| Página do artigo de cada item do feed | HTTP ou HTTPS | 5 MB | não herda (link de terceiro) |
+| Página para extração de conteúdo (`ExtractContentService`) | HTTP ou HTTPS | 5 MB | não herda |
+| `uploadSimple` por URL (repost, IA, foto de perfil do canal) | HTTPS | 1 GB | não herda |
+
+O erro devolvido ao usuário informa só o motivo (URL não pública, arquivo
+grande demais, falha no download), sem ecoar a URL nem o status remoto.
+
 ## Instalações self-hosted em rede privada
 
 Se o Robô MultiPost precisar alcançar um WordPress, Mastodon ou webhook HTTPS
@@ -58,4 +74,6 @@ Os testes automatizados cobrem IP literal privado (IPv4/IPv6), a abertura de
 conexão para IP literal (um servidor local em `127.0.0.1` recusado por `fetch` e
 Axios, sem nenhuma requisição recebida), resposta DNS mista, DNS rebinding entre
 validação e conexão, os agentes Axios/Undici, o opt-out e a separação entre
-webhook confiável e upload público.
+webhook confiável e upload público, além do `fetchPublicUrl` (protocolo, teto
+lido em streaming, `content-length` acima do teto, resposta de erro, opt-out só
+quando o chamador permite e um servidor local que nunca recebe a requisição).

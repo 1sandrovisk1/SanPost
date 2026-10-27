@@ -26,6 +26,7 @@ Authorization: SUA_CHAVE_DE_API
 |---|---|---|
 | `GET` | `/public/v1/profiles` | Listar perfis (id, name, isDefault) |
 | `GET` | `/public/v1/integrations` | Listar canais conectados (use `id` como `integrationId`) |
+| `GET` | `/public/v1/social/:integration` | URL de OAuth para conectar um canal; com chave de perfil, o canal conectado nasce no perfil da chave (canais sem perfil criados antes continuam sem perfil; reconectar um deles por chave de perfil em provider de duas etapas pode responder 409) |
 | `GET` | `/public/v1/find-slot/:id` | Próximo horário livre para agendar |
 | `POST` | `/public/v1/upload` | Upload de arquivo (multipart, campo `file`) |
 | `POST` | `/public/v1/upload-from-url` | Upload de mídia a partir de uma URL |

@@ -12,6 +12,10 @@ import { z } from 'zod';
 import { ChatPromptTemplate } from '@langchain/core/prompts';
 import { PostsService } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.service';
 import Parser from 'rss-parser';
+import {
+  decodeText,
+  fetchPublicUrl,
+} from '@gitroom/nestjs-libraries/upload/public-url.fetch';
 import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.service';
 import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import { TemporalService } from 'nestjs-temporal-core';
@@ -20,6 +24,21 @@ import {
   organizationId,
 } from '@gitroom/nestjs-libraries/temporal/temporal.search.attribute';
 const parser = new Parser();
+
+// Feed e pagina do artigo vem de terceiros: SSRF-safe, com teto de bytes (o
+// `parseURL` do rss-parser fazia http cru, seguia 5 redirects e nao limitava).
+const MAX_FEED_BYTES = 5 * 1024 * 1024;
+const MAX_ARTICLE_BYTES = 5 * 1024 * 1024;
+// o rss-parser mandava UA/Accept proprios; sem eles, feeds atras de WAF
+// respondem 403 ou HTML
+const FEED_HEADERS = {
+  'User-Agent': 'RoboMultipost/1.0 (+https://github.com/maiconramos/robo-multipost)',
+  Accept: 'application/rss+xml, application/atom+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.5',
+};
+const ARTICLE_HEADERS = {
+  'User-Agent': FEED_HEADERS['User-Agent'],
+  Accept: 'text/html, application/xhtml+xml;q=0.9, */*;q=0.5',
+};
 
 interface WorkflowChannelsState {
   messages: BaseMessage[];
@@ -136,7 +155,16 @@ export class AutopostService {
 
   async loadXML(url: string) {
     try {
-      const { items } = await parser.parseURL(url);
+      // URL do feed e configurada pelo usuario (como um webhook): respeita o
+      // opt-out self-hosted, igual ao `OnlyURL` de `POST /autopost/send`.
+      const feed = await fetchPublicUrl(url, {
+        maxBytes: MAX_FEED_BYTES,
+        honorSsrfOptOut: true,
+        headers: FEED_HEADERS,
+      });
+      const { items } = await parser.parseString(
+        decodeText(feed.buffer, feed.contentType)
+      );
       const findLast = items.reduce(
         (all: any, current: any) => {
           if (dayjs(current.pubDate).isAfter(all.pubDate)) {
@@ -173,7 +201,7 @@ export class AutopostService {
         messages: {
           reducer: (currentState, updateValue) =>
             currentState.concat(updateValue),
-          default: () => [],
+          default: (): BaseMessage[] => [],
         },
         body: null,
         description: null,
@@ -186,7 +214,14 @@ export class AutopostService {
 
   async loadUrl(url: string) {
     try {
-      const loadDom = new JSDOM(await (await fetch(url)).text());
+      // link do item vem do publicador do feed: nunca herda o opt-out, pode
+      // ser http (blogs antigos) — o guard roda na conexao de qualquer forma
+      const page = await fetchPublicUrl(url, {
+        maxBytes: MAX_ARTICLE_BYTES,
+        allowHttp: true,
+        headers: ARTICLE_HEADERS,
+      });
+      const loadDom = new JSDOM(decodeText(page.buffer, page.contentType));
       loadDom.window.document
         .querySelectorAll('script')
         .forEach((s) => s.remove());

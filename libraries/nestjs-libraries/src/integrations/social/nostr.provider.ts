@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import {
   AuthTokenDetails,
   PostDetails,
@@ -154,7 +155,11 @@ export class NostrProvider extends SocialAbstract implements SocialProvider {
         username: user.name || 'nousername',
       };
     } catch (e) {
-      console.log(e);
+      // so o nome: a mensagem de JSON.parse ecoa trecho da entrada (a chave)
+      Logger.warn(
+        `authenticate failed: ${(e as Error)?.name || 'Error'}`,
+        'NostrProvider'
+      );
       return 'Invalid credentials';
     }
   }

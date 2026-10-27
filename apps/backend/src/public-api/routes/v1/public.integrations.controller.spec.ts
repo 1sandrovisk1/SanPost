@@ -42,6 +42,7 @@ jest.mock('@gitroom/nestjs-libraries/upload/allowed.upload.mime', () => ({
 }));
 
 import { PublicIntegrationsController } from './public.integrations.controller';
+import { ioRedis } from '@gitroom/nestjs-libraries/redis/redis.service';
 import { isSafePublicHttpsUrl } from '@gitroom/nestjs-libraries/dtos/webhooks/webhook.url.validator';
 import { CustomFileValidationPipe } from '@gitroom/nestjs-libraries/upload/custom.upload.validation';
 import { detectAllowedUploadMime } from '@gitroom/nestjs-libraries/upload/allowed.upload.mime';
@@ -551,5 +552,51 @@ describe('PublicIntegrationsController - rotas por id com chave de perfil', () =
       controller.getIntegrationSettings(org, 'prof-1', 'int-1')
     ).rejects.toBeInstanceOf(HttpException);
     expect(integrationService.getIntegrationById).not.toHaveBeenCalled();
+  });
+});
+
+// Canal conectado com chave de perfil precisa nascer no perfil da chave: o
+// callback (`/integrations/social-connect`) le `profile:${state}`, que so o
+// dashboard gravava.
+describe('PublicIntegrationsController - getIntegrationUrl (perfil da chave)', () => {
+  const build = () => {
+    const provider = {
+      generateAuthUrl: jest
+        .fn()
+        .mockResolvedValue({ codeVerifier: 'cv', state: 'st-1', url: 'https://auth.example' }),
+    };
+    const integrationManager = {
+      getAllowedSocialsIntegrations: () => ['x'],
+      getSocialIntegration: () => provider,
+    };
+    return new PublicIntegrationsController(
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      integrationManager as any,
+      {} as any,
+      {} as any
+    );
+  };
+
+  beforeEach(() => {
+    (ioRedis.set as jest.Mock).mockClear();
+  });
+
+  it('chave de perfil grava profile:<state> com o perfil da chave', async () => {
+    await expect(
+      build().getIntegrationUrl('x', '', { id: 'org-1' } as any, 'prof-1')
+    ).resolves.toEqual({ url: 'https://auth.example' });
+
+    expect(ioRedis.set).toHaveBeenCalledWith('profile:st-1', 'prof-1', 'EX', 3600);
+    expect(ioRedis.set).toHaveBeenCalledWith('organization:st-1', 'org-1', 'EX', 3600);
+  });
+
+  it('chave de organizacao nao grava perfil', async () => {
+    await build().getIntegrationUrl('x', '', { id: 'org-1' } as any, undefined);
+
+    const keys = (ioRedis.set as jest.Mock).mock.calls.map((c) => c[0]);
+    expect(keys).not.toContain('profile:st-1');
   });
 });

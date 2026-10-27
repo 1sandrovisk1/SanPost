@@ -1,5 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { JSDOM } from 'jsdom';
+import {
+  decodeText,
+  fetchPublicUrl,
+} from '@gitroom/nestjs-libraries/upload/public-url.fetch';
+
+const MAX_PAGE_BYTES = 5 * 1024 * 1024;
 
 function findDepth(element: Element) {
   let depth = 0;
@@ -15,8 +21,12 @@ function findDepth(element: Element) {
 @Injectable()
 export class ExtractContentService {
   async extractContent(url: string) {
-    const load = await (await fetch(url)).text();
-    const dom = new JSDOM(load);
+    // URL arbitraria: SSRF-safe, com timeout e teto (antes fetch cru)
+    const page = await fetchPublicUrl(url, {
+      maxBytes: MAX_PAGE_BYTES,
+      allowHttp: true,
+    });
+    const dom = new JSDOM(decodeText(page.buffer, page.contentType));
 
     // only element that has a title
     const allTitles = Array.from(dom.window.document.querySelectorAll('*'))

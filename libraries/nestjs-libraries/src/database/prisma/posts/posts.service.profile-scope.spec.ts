@@ -18,7 +18,8 @@ jest.mock('@gitroom/nestjs-libraries/redis/redis.service', () => ({
   ioRedis: { set: jest.fn(), get: jest.fn() },
 }));
 
-import { HttpException } from '@nestjs/common';
+import { HttpException, Logger } from '@nestjs/common';
+import { BadBody } from '@gitroom/nestjs-libraries/integrations/social.abstract';
 import { PostsService } from './posts.service';
 
 const makePost = (overrides: Record<string, unknown> = {}) => ({
@@ -159,6 +160,31 @@ describe('PostsService.getMissingContent (escopo por perfil)', () => {
     expect(provider.missing).not.toHaveBeenCalled();
   });
 
+  it('erro do provider e logado resumido, sem o corpo da resposta', async () => {
+    const provider = {
+      missing: jest
+        .fn()
+        .mockRejectedValue(
+          new BadBody('tiktok', '{"refresh_token":"SECRET"}', Buffer.from('SECRET'), '')
+        ),
+    };
+    const { service } = build(makePost(), provider);
+    const consoleLog = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+    try {
+      await expect(
+        service.getMissingContent('org-1', 'post-1', false, 'prof-2')
+      ).resolves.toEqual([]);
+      expect(consoleLog).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('provider=tiktok'));
+      expect(JSON.stringify(warn.mock.calls)).not.toMatch(/SECRET/);
+    } finally {
+      consoleLog.mockRestore();
+      warn.mockRestore();
+    }
+  });
+
   it('perfil igual consulta o provider', async () => {
     const provider = { missing: jest.fn().mockResolvedValue([{ id: '1', url: 'u' }]) };
     const { service } = build(makePost(), provider);
@@ -190,5 +216,63 @@ describe('PostsService.updateReleaseId (escopo por perfil)', () => {
     await service.updateReleaseId('org-1', 'post-1', '123');
     expect(postRepository.updateReleaseId).toHaveBeenCalledTimes(2);
     expect(postRepository.updateReleaseId).toHaveBeenCalledWith('post-1', 'org-1', '123');
+  });
+});
+
+// /posts/:id/statistics e /posts/old: mesma regra das rotas de revisao do post
+// (membro USER so no proprio perfil -> 403; admin sem restricao; 404 se nao existe).
+describe('PostsService.getStatistics / getOldPosts (escopo por perfil)', () => {
+  const buildStats = (scope: { id: string; profileId: string | null } | null) => {
+    const postRepository = {
+      getPostProfileScope: jest.fn().mockResolvedValue(scope),
+      getPost: jest
+        .fn()
+        .mockResolvedValue(scope ? { id: 'post-1', content: 'c', childrenPost: [] } : null),
+      getOldPosts: jest.fn().mockResolvedValue([]),
+    };
+    const shortLinkService = {
+      getStatistics: jest.fn().mockResolvedValue([{ short: 's', original: 'o', clicks: 3 }]),
+    };
+    const service = new PostsService(
+      postRepository as any,
+      {} as any,
+      {} as any,
+      null as any,
+      shortLinkService as any,
+      null as any,
+      null as any,
+      null as any,
+      null as any,
+      { decrypt: jest.fn() } as any,
+      {} as any
+    );
+    return { service, postRepository, shortLinkService };
+  };
+
+  it('USER de outro perfil recebe 403 sem consultar os cliques', async () => {
+    const { service, shortLinkService } = buildStats({ id: 'post-1', profileId: 'prof-2' });
+    await expectHttp(service.getStatistics('org-1', 'post-1', 'prof-1'), 403);
+    expect(shortLinkService.getStatistics).not.toHaveBeenCalled();
+  });
+
+  it('USER do mesmo perfil e admin (sem restricao) recebem os cliques', async () => {
+    const { service } = buildStats({ id: 'post-1', profileId: 'prof-2' });
+    await expect(service.getStatistics('org-1', 'post-1', 'prof-2')).resolves.toEqual({
+      clicks: [{ short: 's', original: 'o', clicks: 3 }],
+    });
+    await expect(service.getStatistics('org-1', 'post-1')).resolves.toMatchObject({
+      clicks: expect.any(Array),
+    });
+  });
+
+  it('post inexistente responde 404', async () => {
+    const { service } = buildStats(null);
+    await expectHttp(service.getStatistics('org-1', 'post-x'), 404);
+  });
+
+  it('getOldPosts repassa o perfil ao repositorio', async () => {
+    const { service, postRepository } = buildStats(null);
+    await service.getOldPosts('org-1', '2026-10-26', 'prof-1');
+    expect(postRepository.getOldPosts).toHaveBeenCalledWith('org-1', '2026-10-26', 'prof-1');
   });
 });

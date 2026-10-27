@@ -22,13 +22,18 @@ import { PostsController } from './posts.controller';
 
 const build = () => {
   const postsService = createMock<PostsService>();
+  const reviewLinksService = {
+    createForPost: jest.fn(),
+    listForPost: jest.fn().mockResolvedValue([]),
+    revoke: jest.fn(),
+  };
   const controller = new PostsController(
     postsService,
     null as any,
     null as any,
-    null as any
+    reviewLinksService as any
   );
-  return { controller, postsService };
+  return { controller, postsService, reviewLinksService };
 };
 const org = { id: 'org-1' } as any;
 const profile = { id: 'prof-1' } as any;
@@ -66,5 +71,44 @@ describe('PostsController - escopo por perfil nas rotas por id', () => {
     const { controller, postsService } = build();
     await controller.getPost(org, null, 'post-1');
     expect(postsService.getPost).toHaveBeenCalledWith('org-1', 'post-1', false, undefined);
+  });
+});
+
+// statistics, review-links e /old: membro USER fica no proprio perfil (mesma
+// regra de /:id/comments); admin/superadmin sem restricao.
+describe('PostsController - escopo por perfil em statistics, review-links e /old', () => {
+  const userOrg = { id: 'org-1', users: [{ role: 'USER' }] } as any;
+  const adminOrg = { id: 'org-1', users: [{ role: 'ADMIN' }] } as any;
+  const user = { id: 'user-1' } as any;
+
+  it('GET /:id/statistics', async () => {
+    const { controller, postsService } = build();
+    await controller.getStatistics(userOrg, profile, 'post-1');
+    expect(postsService.getStatistics).toHaveBeenLastCalledWith('org-1', 'post-1', 'prof-1');
+    await controller.getStatistics(adminOrg, profile, 'post-1');
+    expect(postsService.getStatistics).toHaveBeenLastCalledWith('org-1', 'post-1', undefined);
+  });
+
+  it('GET /old', async () => {
+    const { controller, postsService } = build();
+    await controller.oldPosts(userOrg, profile, '2026-10-26');
+    expect(postsService.getOldPosts).toHaveBeenLastCalledWith('org-1', '2026-10-26', 'prof-1');
+    await controller.oldPosts(adminOrg, profile, '2026-10-26');
+    expect(postsService.getOldPosts).toHaveBeenLastCalledWith('org-1', '2026-10-26', undefined);
+  });
+
+  it('POST, GET e DELETE de review-links', async () => {
+    const { controller, reviewLinksService } = build();
+    await controller.createReviewLink(userOrg, user, profile, 'post-1', {});
+    expect(reviewLinksService.createForPost).toHaveBeenLastCalledWith(
+      expect.objectContaining({ postId: 'post-1', orgId: 'org-1', requireProfileId: 'prof-1' })
+    );
+    await controller.listReviewLinks(userOrg, profile, 'post-1');
+    expect(reviewLinksService.listForPost).toHaveBeenLastCalledWith('post-1', 'org-1', 'prof-1');
+    await controller.revokeReviewLink(userOrg, profile, 'link-1');
+    expect(reviewLinksService.revoke).toHaveBeenLastCalledWith('link-1', 'org-1', 'prof-1');
+
+    await controller.revokeReviewLink(adminOrg, profile, 'link-1');
+    expect(reviewLinksService.revoke).toHaveBeenLastCalledWith('link-1', 'org-1', undefined);
   });
 });

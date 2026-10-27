@@ -7,7 +7,9 @@ import {
   Post,
   Put,
   Query,
+  Logger,
 } from '@nestjs/common';
+import { summarizeError } from '@gitroom/nestjs-libraries/services/error.summary';
 import { ioRedis } from '@gitroom/nestjs-libraries/redis/redis.service';
 import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
 import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.service';
@@ -26,6 +28,7 @@ import { RefreshToken } from '@gitroom/nestjs-libraries/integrations/social.abst
 
 import { timer } from '@gitroom/helpers/utils/timer';
 import { TelegramProvider } from '@gitroom/nestjs-libraries/integrations/social/telegram.provider';
+import { TelegramUpdatesDto } from '@gitroom/nestjs-libraries/dtos/integrations/telegram.updates.dto';
 import { MoltbookProvider } from '@gitroom/nestjs-libraries/integrations/social/moltbook.provider';
 import {
   AuthorizationActions,
@@ -341,7 +344,17 @@ export class IntegrationsController {
       if (refresh && integrationProvider.revokeToken) {
         const matches =
           await this._integrationService.getIntegrationsByInternalId(refresh);
-        const existing = matches.find((i) => i.organizationId === org.id);
+        // membro USER so revoga o token de canal que alcanca (proprio perfil
+        // ou canal legado sem perfil); admin sem restricao
+        const restrictTo =
+          getOrgRole(org) === 'USER' ? profile?.id ?? null : undefined;
+        const existing = matches.find(
+          (i) =>
+            i.organizationId === org.id &&
+            (restrictTo === undefined ||
+              !i.profileId ||
+              i.profileId === restrictTo)
+        );
         if (existing?.token) {
           await integrationProvider.revokeToken(
             decryptIntegrationToken(this._encryption, existing.token)
@@ -425,7 +438,10 @@ export class IntegrationsController {
           name: 'mention',
         })) || [];
     } catch (err) {
-      console.log(err);
+      Logger.warn(
+        `mention lookup failed: ${summarizeError(err)}`,
+        'IntegrationsController'
+      );
     }
 
     if (!Array.isArray(newList) && newList?.none) {
@@ -655,7 +671,7 @@ export class IntegrationsController {
   }
 
   @Get('/telegram/updates')
-  async getUpdates(@Query() query: { word: string; id?: number }) {
+  async getUpdates(@Query() query: TelegramUpdatesDto) {
     return new TelegramProvider().getBotId(query);
   }
 
