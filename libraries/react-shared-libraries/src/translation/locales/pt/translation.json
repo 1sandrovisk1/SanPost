@@ -2521,5 +2521,8 @@
   "automation_keyword_price": "Preço",
   "automation_keyword_link": "Link",
   "automation_keyword_buy": "Comprar",
-  "automation_active_edit_hint": "As alterações entram em vigor ao salvar. Envios pendentes da versão anterior serão cancelados."
+  "automation_active_edit_hint": "As alterações entram em vigor ao salvar. Envios pendentes da versão anterior serão cancelados.",
+  "edit_tag": "Editar tag",
+  "select_channels_tooltip": "Selecionar canais",
+  "select_all": "Selecionar todos"
 }

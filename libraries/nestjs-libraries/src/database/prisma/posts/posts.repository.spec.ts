@@ -265,3 +265,52 @@ describe('PostsRepository - tags apagadas', () => {
     expect(tagsPosts.deleteMany).toHaveBeenCalledWith({ where: { tagId: 'tag-1' } });
   });
 });
+
+// Porte do upstream #2205: filtro de canais acima do calendario.
+describe('PostsRepository.getPostsList (filtro de canais)', () => {
+  const build = () => {
+    const prismaMock = createPrismaRepositoryMock('post');
+    prismaMock.model.post.findMany.mockResolvedValue([]);
+    prismaMock.model.post.count.mockResolvedValue(0);
+    const repo = new PostsRepository(
+      prismaMock as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any
+    );
+    return { prismaMock, repo };
+  };
+
+  it('restringe aos canais escolhidos sem perder org, perfil e cliente', async () => {
+    const { prismaMock, repo } = build();
+
+    await repo.getPostsList(
+      'org-1',
+      { customer: 'cli-1', integrations: ['int-1', 'int-2'] } as any,
+      'perfil-1'
+    );
+
+    const where = prismaMock.model.post.findMany.mock.calls[0][0]!.where as any;
+    expect(where.AND).toEqual(
+      expect.arrayContaining([
+        { OR: [{ organizationId: 'org-1' }] },
+        { profileId: 'perfil-1' },
+      ])
+    );
+    expect(where.integration).toEqual({
+      customerId: 'cli-1',
+      id: { in: ['int-1', 'int-2'] },
+    });
+  });
+
+  it('sem canais escolhidos nao filtra por canal', async () => {
+    const { prismaMock, repo } = build();
+
+    await repo.getPostsList('org-1', { integrations: [] } as any);
+
+    const where = prismaMock.model.post.findMany.mock.calls[0][0]!.where as any;
+    expect(where.integration).toBeUndefined();
+  });
+});

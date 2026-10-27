@@ -2521,5 +2521,8 @@
   "automation_keyword_price": "Price",
   "automation_keyword_link": "Link",
   "automation_keyword_buy": "Buy",
-  "automation_active_edit_hint": "Changes take effect when saved. Pending sends from the previous version will be cancelled."
+  "automation_active_edit_hint": "Changes take effect when saved. Pending sends from the previous version will be cancelled.",
+  "edit_tag": "Edit Tag",
+  "select_channels_tooltip": "Select Channels",
+  "select_all": "Select all"
 }

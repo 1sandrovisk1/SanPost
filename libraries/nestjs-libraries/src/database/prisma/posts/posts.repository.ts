@@ -306,10 +306,13 @@ export class PostsRepository {
       deletedAt: null as Date | null,
       parentPostId: null as string | null,
       intervalInDays: null as number | null,
-      ...(query.customer
+      ...(query.customer || query.integrations?.length
         ? {
             integration: {
-              customerId: query.customer,
+              ...(query.customer ? { customerId: query.customer } : {}),
+              ...(query.integrations?.length
+                ? { id: { in: query.integrations } }
+                : {}),
             },
           }
         : {}),

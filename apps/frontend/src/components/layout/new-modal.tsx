@@ -25,6 +25,7 @@ interface OpenModalInterface {
   top?: string | number;
   closeOnEscape?: boolean;
   withCloseButton?: boolean;
+  destructive?: boolean;
   askClose?: boolean;
   onClose?: () => void;
   children: ReactNode | ((close: () => void) => ReactNode);
@@ -198,6 +199,7 @@ export const Component: FC<{
               className={clsx(
                 !modal.removeLayout && 'gap-[40px] p-[32px]',
                 'bg-newBgColorInner mx-auto flex flex-col w-fit rounded-[24px] relative',
+                modal.destructive && 'border-2 border-red-700',
                 modal.size ? '' : 'min-w-[600px]',
                 modal.fullScreen && 'h-full'
               )}
@@ -335,14 +337,23 @@ export const DecisionModal: FC<{
   approveLabel: string;
   cancelLabel: string;
   onlyApprove: boolean;
+  destructive?: boolean;
   resolution: (value: boolean) => void;
-}> = ({ description, cancelLabel, approveLabel, resolution, onlyApprove }) => {
+}> = ({
+  description,
+  cancelLabel,
+  approveLabel,
+  resolution,
+  onlyApprove,
+  destructive,
+}) => {
   const { closeCurrent } = useModals();
   return (
     <div className="flex flex-col">
       <div>{description}</div>
       <div className="flex gap-[12px] mt-[16px]">
         <Button
+          className={destructive ? '!bg-red-800' : undefined}
           onClick={() => {
             resolution(true);
             closeCurrent();
@@ -372,6 +383,7 @@ export const areYouSure = ({
   description = 'Are you sure you want to close this modal?' as any,
   approveLabel = 'Yes',
   cancelLabel = 'No',
+  destructive = false,
 } = {}): Promise<boolean> => {
   return new Promise<boolean>((newRes) => {
     decisionModalEmitter.emit('open', {
@@ -379,6 +391,7 @@ export const areYouSure = ({
       description,
       approveLabel,
       cancelLabel,
+      destructive,
       newRes,
     });
   });
@@ -402,16 +415,19 @@ export const useDecisionModal = () => {
       onlyApprove = false,
       approveLabel = t('yes', 'Yes'),
       cancelLabel = t('no', 'No'),
+      destructive = false,
       newRes = undefined as any,
     } = {}) => {
       return new Promise<boolean>((res) => {
         modals.openModal({
           title,
           askClose: false,
+          destructive,
           onClose: () => res(false),
           children: (
             <DecisionModal
               onlyApprove={onlyApprove}
+              destructive={destructive}
               resolution={(value) => (newRes ? newRes(value) : res(value))}
               description={description}
               approveLabel={approveLabel}
