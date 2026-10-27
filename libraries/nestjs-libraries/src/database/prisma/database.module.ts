@@ -1,3 +1,9 @@
+import { PostManagementService } from './posts/post-management.service';
+import { PostManagementRepository } from './posts/post-management.repository';
+import { ScheduledPostsService } from './scheduled-automations/scheduled-posts.service';
+import { ScheduledPostsRepository } from './scheduled-automations/scheduled-posts.repository';
+import { SharedFlowEventsService } from './flows-v2/shared-flow-events.service';
+import { SharedFlowsRepository } from './flows-v2/shared-flows.repository';
 import { Global, Module } from '@nestjs/common';
 import { PrismaRepository, PrismaService, PrismaTransaction } from './prisma.service';
 import { OrganizationRepository } from '@gitroom/nestjs-libraries/database/prisma/organizations/organization.repository';
@@ -71,7 +77,11 @@ import { AiModule } from '@gitroom/nestjs-libraries/ai/ai.module';
   imports: [AiModule],
   controllers: [],
   providers: [
+    PostManagementService,
+    PostManagementRepository,
     PrismaService,
+    ScheduledPostsService,
+    ScheduledPostsRepository,
     PrismaRepository,
     PrismaTransaction,
     UsersService,
@@ -125,6 +135,8 @@ import { AiModule } from '@gitroom/nestjs-libraries/ai/ai.module';
     AnnouncementsRepository,
     AnnouncementsService,
     FlowsRepository,
+    SharedFlowsRepository,
+    SharedFlowEventsService,
     FlowsService,
     UnmatchedCommentService,
     InstagramProvider,

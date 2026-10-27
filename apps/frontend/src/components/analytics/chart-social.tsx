@@ -3,37 +3,32 @@
 import { FC, useEffect, useMemo, useRef } from 'react';
 import DrawChart from 'chart.js/auto';
 import { TotalList } from '@gitroom/frontend/components/analytics/stars.and.forks.interface';
-import { chunk } from 'lodash';
 import useCookie from 'react-use-cookie';
-
-function mergeDataPoints(data: TotalList[], numPoints: number): TotalList[] {
-  const res = chunk(data, Math.ceil(data.length / numPoints));
-  return res.map((row) => {
-    return {
-      date: `${row[0].date} - ${row?.at(-1)?.date}`,
-      total: row.reduce((acc, curr) => acc + curr.total, 0),
-    };
-  });
-}
+import {
+  mergeAnalyticsPoints,
+  normalizeAnalyticsPoints,
+} from './analytics-data';
+import { useT } from '@gitroom/react/translation/get.transation.service.client';
 
 export const ChartSocial: FC<{
   data: TotalList[];
   color?: 'purple' | 'green' | 'blue';
+  average?: boolean;
 }> = (props) => {
-  const { data, color = 'purple' } = props;
+  const { data, color = 'purple', average = false } = props;
   const [mode] = useCookie('mode', 'dark');
+  const t = useT();
 
   const list = useMemo(() => {
-    const merged = data.length < 7 ? data : mergeDataPoints(data, 7);
-    if (merged.length === 1) {
-      return [
-        // duplicating single datapoints metrics for chart to display a line on analytics
-        merged[0],
-        merged[0],
-      ];
+    try {
+      const points = normalizeAnalyticsPoints(data);
+      const merged =
+        points.length < 7 ? points : mergeAnalyticsPoints(points, 7, average);
+      return merged.length === 1 ? [merged[0], merged[0]] : merged;
+    } catch {
+      return null;
     }
-    return merged;
-  }, [data]);
+  }, [data, average]);
 
   const ref = useRef<any>(null);
   const chart = useRef<null | DrawChart>(null);
@@ -56,13 +51,15 @@ export const ChartSocial: FC<{
     },
   };
 
-  const colors = colorSchemes[color];
+  const { start, end, border } = colorSchemes[color];
 
   useEffect(() => {
+    if (!list || !ref.current) return;
     const ctx = ref.current.getContext('2d');
+    if (!ctx) return;
     const gradient = ctx.createLinearGradient(0, 0, 0, ref.current.height);
-    gradient.addColorStop(0, colors.start);
-    gradient.addColorStop(1, colors.end);
+    gradient.addColorStop(0, start);
+    gradient.addColorStop(1, end);
 
     chart.current = new DrawChart(ref.current!, {
       type: 'line',
@@ -127,7 +124,7 @@ export const ChartSocial: FC<{
         labels: list.map((row) => row.date),
         datasets: [
           {
-            borderColor: colors.border,
+            borderColor: border,
             borderWidth: 2,
             label: 'Total',
             backgroundColor: gradient,
@@ -136,7 +133,7 @@ export const ChartSocial: FC<{
             tension: 0.4,
             pointRadius: 0,
             pointHoverRadius: 6,
-            pointHoverBackgroundColor: colors.border,
+            pointHoverBackgroundColor: border,
             pointHoverBorderColor: mode === 'dark' ? '#1e1d1d' : '#fff',
             pointHoverBorderWidth: 2,
           },
@@ -146,7 +143,16 @@ export const ChartSocial: FC<{
     return () => {
       chart?.current?.destroy();
     };
-  }, []);
+  }, [list, start, end, border, mode]);
 
+  if (!list)
+    return (
+      <p role="alert">
+        {t(
+          'analytics_load_failed',
+          'Could not load metrics. Please try again.'
+        )}
+      </p>
+    );
   return <canvas className="w-full h-full" ref={ref} />;
 };

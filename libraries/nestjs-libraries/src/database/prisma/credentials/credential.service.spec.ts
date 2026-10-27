@@ -53,6 +53,27 @@ describe('CredentialService', () => {
   });
 
   describe('configureInstagramWebhook', () => {
+    it('bloqueia namespace interno de automacao no CRUD generico', async () => {
+      const provider = 'facebook-automation:456:123';
+      for (const operation of [
+        () => service.getRaw('org', provider, 'profile'),
+        () => service.getRedacted('org', provider, 'profile'),
+        () => service.save('org', provider, { pageToken: 'ATTACK' }, 'profile'),
+        () => service.delete('org', provider, 'profile'),
+        () => service.test('org', provider, 'profile'),
+      ]) await expect(operation()).rejects.toMatchObject({ status: 404 });
+      expect(repository.upsert).not.toHaveBeenCalled();
+      expect(repository.delete).not.toHaveBeenCalled();
+    });
+
+    it('nao lista registros internos de automacao como providers', async () => {
+      repository.findAllByOrg.mockResolvedValue([
+        { provider: 'facebook', updatedAt: new Date() },
+        { provider: 'facebook-automation:456:123', updatedAt: new Date() },
+      ]);
+      expect(await service.listByOrg('org', 'profile')).toHaveLength(1);
+    });
+
     it('configura a assinatura do app pela Graph v25', async () => {
       repository.findByProvider.mockResolvedValue(
         buildExistingRecord({
@@ -109,6 +130,30 @@ describe('CredentialService', () => {
   });
 
   describe('save', () => {
+    it.each(['removed', 'rotated', 'revalidated'])('nao restaura token %s durante refresh', async (change) => {
+      const old = { igUserId: '123', token: 'OLD', refreshedAt: 'before' };
+      const tokens = change === 'removed' ? [] : [{ ...old, ...(change === 'rotated' ? { token: 'NEW' } : { refreshedAt: 'after' }) }];
+      repository.findExactByProvider.mockResolvedValue(buildExistingRecord({ instagramTokens: JSON.stringify(tokens) }));
+      expect(await service.replaceInstagramTokenAfterRefresh('org-1', undefined, old, 'REFRESHED')).toBe(false);
+      expect(repository.replaceIfUnchanged).not.toHaveBeenCalled();
+      expect(repository.upsert).not.toHaveBeenCalled();
+    });
+    it('renova somente a entrada original preservando demais campos atuais com CAS', async () => {
+      const old = { igUserId: '123', token: 'OLD', refreshedAt: 'before' };
+      const other = { igUserId: '456', token: 'OTHER-NEW', refreshedAt: 'now' };
+      const record = { ...buildExistingRecord({ clientId: 'NEW-APP', instagramTokens: JSON.stringify([old, other]) }), profileId: 'p' };
+      repository.findExactByProvider.mockResolvedValue(record);
+      repository.replaceIfUnchanged.mockResolvedValue({ count: 1 });
+      expect(await service.replaceInstagramTokenAfterRefresh('org-1', 'p', old, 'REFRESHED')).toBe(true);
+      expect(repository.findExactByProvider).toHaveBeenCalledWith('org-1', 'facebook', 'p');
+      const merged = encryption.encryptJson.mock.calls[0][0];
+      expect(merged.clientId).toBe('NEW-APP');
+      expect(JSON.parse(merged.instagramTokens)).toEqual([expect.objectContaining({ igUserId: '123', token: 'REFRESHED' }), other]);
+      expect(repository.replaceIfUnchanged).toHaveBeenCalledWith('org-1', 'facebook', 'p', record.id, record.encryptedData, expect.any(String));
+      repository.replaceIfUnchanged.mockResolvedValue({ count: 0 });
+      expect(await service.replaceInstagramTokenAfterRefresh('org-1', 'p', old, 'REFRESHED')).toBe(false);
+      expect(repository.upsert).not.toHaveBeenCalled();
+    });
     it('preserva campos existentes que nao vieram no body parcial (regressao do bug de wipe de messaging tokens)', async () => {
       const existingPayload = {
         clientId: 'app-id',

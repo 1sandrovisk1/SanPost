@@ -100,6 +100,7 @@ describe('FlowsRepository', () => {
       expect(mockFlowModel.findMany).toHaveBeenCalledWith({
         where: {
           organizationId: 'org-1',
+          executionVersion: 1,
           deletedAt: null,
         },
         include: {
@@ -150,6 +151,7 @@ describe('FlowsRepository', () => {
       expect(mockFlowModel.create).toHaveBeenCalledWith({
         data: {
           organizationId: 'org-1',
+          executionVersion: 1,
           name: 'My Flow',
           description: 'Test description',
           integrationId: 'int-1',
@@ -201,6 +203,7 @@ describe('FlowsRepository', () => {
         where: {
           id: 'flow-1',
           organizationId: 'org-1',
+          executionVersion: 1,
         },
         data: {
           deletedAt: expect.any(Date),
@@ -328,7 +331,7 @@ describe('FlowsRepository', () => {
 
   describe('getActiveFlowsForIntegration', () => {
     it('should return active flows for integration', async () => {
-      const flows = [{ id: 'flow-1', status: FlowStatus.ACTIVE }];
+      const flows = [{ id: 'flow-1', status: FlowStatus.ACTIVE, organizationId:'org-1', profileId:'p', integration:{organizationId:'org-1',profileId:'p',disabled:false,deletedAt:null as Date | null} }];
       mockFlowModel.findMany.mockResolvedValue(flows);
 
       const result = await repository.getActiveFlowsForIntegration('int-1');
@@ -336,11 +339,13 @@ describe('FlowsRepository', () => {
       expect(mockFlowModel.findMany).toHaveBeenCalledWith({
         where: {
           integrationId: 'int-1',
+          executionVersion: 1,
           status: FlowStatus.ACTIVE,
           deletedAt: null,
           OR: [{ profileId: null }, { profile: { deletedAt: null } }],
         },
         include: {
+          integration: {select:{organizationId:true,profileId:true,disabled:true,deletedAt:true,internalId:true}},
           nodes: true,
           edges: true,
         },
@@ -398,10 +403,11 @@ describe('FlowsRepository', () => {
 
     describe('findPostbackByPayload', () => {
       it('should find postback by unique payload', async () => {
-        const pb = { id: 'pb-1', status: PendingPostbackStatus.PENDING };
+        const pb = { id: 'pb-1', status: PendingPostbackStatus.PENDING,flowId:'f',integrationId:'i',organizationId:'o',igSenderId:'sender' };
+        mockFlowModel.findFirst.mockResolvedValue({id:'f',integrationId:'i',organizationId:'o',profileId:'p',integration:{organizationId:'o',profileId:'p',disabled:false,deletedAt:null,internalId:'account'}});
         mockPendingPostbackModel.findUnique.mockResolvedValue(pb);
 
-        const result = await repository.findPostbackByPayload('pb_abc_1234abcd');
+        const result = await repository.findPostbackByPayload('pb_abc_1234abcd', {senderIgsid:'sender',igAccountId:'account'});
 
         expect(mockPendingPostbackModel.findUnique).toHaveBeenCalledWith({
           where: { payload: 'pb_abc_1234abcd' },
@@ -412,14 +418,15 @@ describe('FlowsRepository', () => {
       it('should return null when payload does not exist', async () => {
         mockPendingPostbackModel.findUnique.mockResolvedValue(null);
 
-        const result = await repository.findPostbackByPayload('pb_nope_00000000');
+        const result = await repository.findPostbackByPayload('pb_nope_00000000', {senderIgsid:'sender',igAccountId:'account'});
         expect(result).toBeNull();
       });
     });
 
     describe('findPostbackById', () => {
       it('should find postback by id', async () => {
-        const pb = { id: 'pb-1' };
+        const pb = { id: 'pb-1',flowId:'f',integrationId:'i',organizationId:'o' };
+        mockFlowModel.findFirst.mockResolvedValue({id:'f',integrationId:'i',organizationId:'o',profileId:'p',integration:{organizationId:'o',profileId:'p',disabled:false,deletedAt:null,internalId:'account'}});
         mockPendingPostbackModel.findUnique.mockResolvedValue(pb);
 
         const result = await repository.findPostbackById('pb-1');
@@ -537,7 +544,7 @@ describe('FlowsRepository', () => {
       );
 
       expect(mockFlowMediaAliasModel.findMany).toHaveBeenCalledWith({
-        where: { integrationId: 'int-1', aliasMediaId: 'media-X' },
+        where: { integrationId: 'int-1', aliasMediaId: 'media-X', flow: { executionVersion: 1 } },
         select: { id: true, flowId: true },
       });
       expect(result).toEqual(aliases);
@@ -560,7 +567,7 @@ describe('FlowsRepository', () => {
         where: {
           integrationId: 'int-1',
           aliasMediaId: 'media-X',
-          flow: { organizationId: 'org-1', deletedAt: null },
+          flow: { organizationId: 'org-1', deletedAt: null, executionVersion: 1 },
         },
         select: {
           id: true,
@@ -629,7 +636,7 @@ describe('FlowsRepository', () => {
       expect(mockFlowMediaAliasModel.findMany).toHaveBeenCalledWith({
         where: {
           flowId: 'f-1',
-          flow: { organizationId: 'org-1', deletedAt: null },
+          flow: { organizationId: 'org-1', deletedAt: null, executionVersion: 1 },
         },
         orderBy: { createdAt: 'desc' },
       });

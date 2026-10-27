@@ -12,3 +12,5 @@ export * from './flow.execution.workflow';
 export * from './follow-gate-resolve.workflow';
 export * from './enrich-unmatched-comment.workflow';
 export * from './repost.workflow';
+
+export * from './shared-flow.workflow';

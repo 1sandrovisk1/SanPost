@@ -54,8 +54,8 @@ export class FlowActivity {
   }
 
   @ActivityMethod()
-  async getFlowWithNodes(flowId: string) {
-    return this._flowsService.getFlowById(flowId);
+  async getFlowWithNodes(flowId: string, guard?: { targetId: string; revision: number; updatedAt: string; externalPostId: string; kind?: 'next' }) {
+    return guard ? this._flowsService.getFlowById(flowId, guard) : this._flowsService.getFlowById(flowId);
   }
 
   @ActivityMethod()

@@ -5,7 +5,7 @@ jest.mock('@gitroom/nestjs-libraries/integrations/integration.manager', () => ({
   IntegrationManager: class {},
 }));
 jest.mock('@gitroom/nestjs-libraries/redis/redis.service', () => ({
-  ioRedis: {},
+  ioRedis: { get: jest.fn(), set: jest.fn() },
 }));
 jest.mock('@gitroom/nestjs-libraries/upload/upload.factory', () => ({
   UploadFactory: { createStorage: jest.fn().mockReturnValue({}) },
@@ -14,6 +14,7 @@ jest.mock('@gitroom/nestjs-libraries/upload/upload.factory', () => ({
 import { IntegrationService } from './integration.service';
 import { HttpException } from '@nestjs/common';
 import { SYSTEM_USER_PAGE_TOKEN_TTL } from '@gitroom/nestjs-libraries/integrations/meta-system-user.service';
+import { ioRedis } from '@gitroom/nestjs-libraries/redis/redis.service';
 
 const makeService = (repo: any) =>
   new IntegrationService(
@@ -29,6 +30,14 @@ const makeService = (repo: any) =>
   );
 
 describe('IntegrationService', () => {
+  it('usa namespace novo de analytics sem reutilizar variacao fabricada do cache antigo', async () => {
+    const metric = [{ label: 'Views', data: [{ total: '12', date: 'day' }] }];
+    const repo = { getIntegrationById: jest.fn().mockResolvedValue({ id: 'int', profileId: 'perfil', type: 'social', providerIdentifier: 'facebook', tokenExpiration: new Date(Date.now() + 86400000) }) };
+    const service = new IntegrationService(repo as any, {} as any, { getSocialIntegration: jest.fn().mockReturnValue({}) } as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any);
+    (ioRedis.get as jest.Mock).mockImplementation(async key => JSON.stringify(key === 'integration:analytics-v2:org:int:7' ? metric : [{ ...metric[0], percentageChange: 5 }]));
+    expect(await service.checkAnalytics({ id: 'org' } as any, 'int', '7', false, 'perfil')).toEqual(metric);
+    expect(ioRedis.get).toHaveBeenCalledWith('integration:analytics-v2:org:int:7');
+  });
   describe('validateIntegrationProfile', () => {
     it('retorna sem validar quando profileId ausente e perfil nao obrigatorio', async () => {
       const repo = { getIntegrationById: jest.fn() };

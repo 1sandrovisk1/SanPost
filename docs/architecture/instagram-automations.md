@@ -84,8 +84,26 @@ Apos o OAuth, salvo em `Integration.token`. Varia por `providerIdentifier`:
 
 ### Camada 3 — Messaging Tokens (por perfil, compartilhado entre integrations)
 
-Cadastrados em **Settings > Credenciais > Instagram** como "Tokens de
-messaging por conta" OU como "Meta System User Token".
+Cadastrados em **Configurações → Credenciais → Meta**: tokens individuais na
+aba **Instagram**; `metaSystemUserToken` na aba **Usuário de sistema**. A
+separação é visual: campos, APIs e resolução por perfil permanecem iguais.
+Cada aba usa **Ajuda → Como configurar / Diagnóstico**. Datas exibidas são
+registros da última validação/renovação, não confirmação remota atual.
+
+No diagnóstico, `refreshedAt` é apresentado como **Token cadastrado ou renovado
+em**, pois também é inicializado ao cadastrar um token novo. Esse campo continua
+sendo a referência de idade em `ensureFreshIgToken`; o ajuste de interface não
+altera a renovação nem cria um evento de renovação que não foi registrado.
+
+A ajuda do Instagram usa um seletor **Token da conta / Usuário de sistema**,
+no mesmo padrão visual do Facebook. A seleção muda apenas o conteúdo de ajuda.
+O caminho de sistema mostra as funções compatíveis de mensagens e oferece
+atalho à aba própria, preservando rascunhos. Cadastrar esse token não substitui automaticamente o token das
+automações de comentários do feed: `resolveIgRoute` mantém a precedência
+standalone → token individual cadastrado → token da integração. O webhook
+continua obrigatório. Já `sendStoryReply` e `isUserFollowingBusiness` priorizam
+o usuário de sistema quando cadastrado no perfil; não há fallback automático
+ao token individual após erro da Meta nesse caminho.
 
 Armazenados em `Credentials.instagramTokens` (JSON) e
 `Credentials.metaSystemUserToken`:
@@ -93,7 +111,7 @@ Armazenados em `Credentials.instagramTokens` (JSON) e
 ```ts
 // MessagingTokensState
 {
-  metaSystemUserToken?: string;   // token permanente do Business Manager
+  metaSystemUserToken?: string;   // token do usuário de sistema; conferir validade e permissões
   instagramTokens: [
     { igUserId, username, token, refreshedAt, validatedAt }  // IG User Token por conta (60d + lazy refresh)
   ]
@@ -168,8 +186,9 @@ Prioridade:
 
 `sendFinalDm` e `sendAlreadyFollowedGate` usam logica similar:
 - standalone -> `sendDmWithToken(integration.token, useInstagramGraph: true)`
-- caso contrario -> `sendStoryReply` (que internamente prefere System User
-  Token > IG User Token cadastrado, ambos em `/me/messages`).
+- caso contrário -> `sendStoryReply`, que prefere o token de usuário de
+  sistema em `graph.facebook.com/{igBusinessAccountId}/messages`; sem ele,
+  usa o token individual cadastrado em `graph.instagram.com/me/messages`.
 
 Story replies (`sendStoryDirectMessage`, `checkIgFollowStatus` com
 `source === 'story_reply'`) **sempre** usam `InstagramMessagingService`
@@ -224,6 +243,11 @@ nao afetem execucoes em andamento.
 formulario single-page que cria um flow "quick-create" com shape conhecido
 (TRIGGER -> REPLY_COMMENT -> SEND_DM). Caminho produtivo preferido.
 
+Desde 26/10/2026, o seletor inicial apenas navega para o editor novo de comentário ou Story, sem gravar flow. Nome/conta são preenchidos no editor. Para incluir aliases de anúncios antes da ativação, **Preparar rascunho para Dark Posts** cria um DRAFT explícito com nome e conta; o formulário preserva os demais campos em memória, fixa a integração e reutiliza esse ID em `quick-update`. `quick-create` e a primeira atualização de DRAFT ativam a regra. Repost permanece independente.
+
+Escopo `specific` sem IDs orgânicos é conservado no gatilho e não corresponde a publicações orgânicas. `saveCanvas` normaliza a lista vazia em `triggerPostIds: null`; o matcher consulta o modo explícito para distingui-lo do legado sem escopo. `FlowMediaAlias` é consultado separadamente: seus IDs não devem ser copiados para `triggerPostIds`, pois a remoção do alias precisa interromper a correspondência. Modos `all`, `next_publication` e regras antigas sem modo explícito preservam seu comportamento.
+
+
 **Flow Builder / Canvas**
 (`apps/frontend/src/components/automations/flow-editor.component.tsx` +
 `node-config-panel.tsx` + `nodes/*.tsx`): editor visual com nos arbitrarios.
@@ -256,6 +280,8 @@ e configuravel no canvas.
 
 ### 5.1 Criacao programatica (API publica / MCP / SDK)
 
+Desde 27/10/2026, agentes REST/MCP têm uma [referência unificada por gatilho](../api/automations-agent-api.md) em `/public/v1/automations`, incluindo campos completos de Instagram, Facebook, Messenger, grafo e descoberta. Os endpoints e wrappers legados descritos abaixo continuam próprios; não presumir que o SDK tenha os novos métodos.
+
 Alem da UI, automacoes podem ser criadas/gerenciadas sem JWT/cookie, por
 clientes externos (chave de API org ou por-perfil) e pelo agente de chat:
 
@@ -269,11 +295,15 @@ clientes externos (chave de API org ou por-perfil) e pelo agente de chat:
 - **SDK `@postiz/node`**: `createFlow`/`listFlows`/`getFlow`/`updateFlow`/
   `setFlowStatus`/`deleteFlow`.
 
-**Todos convergem para `FlowsService.quickCreateFlow`** (chokepoint unico). O
-guard `assertIntegrationAccess(orgId, integrationId, profileId)` garante:
-integracao existe + pertence a org; e Instagram; nao desativada; e — para chave
-por-perfil — pertence ao proprio perfil **ou** e org-wide (`profileId` null).
-Integracao de outro perfil -> `403`. `dmButtonUrl` deve ser **https publico**
+Os caminhos legados convergem para `FlowsService.quickCreateFlow`; a fachada
+nova usa criação de rascunho e atualização rápida, validando também o canal do
+perfil. Nos três caminhos de criação do serviço, o perfil efetivo é resolvido
+**antes** da guarda `assertIntegrationAccess`: chave de organização sem perfil
+usa Default e conta pertencente a outro perfil resulta em `403` antes de Meta
+ou gravação. Integração precisa existir na organização, estar habilitada e
+pertencer ao perfil efetivo **ou** ser legada org-wide (`profileId` null).
+Edição rápida e ativação validam contra o perfil armazenado no flow; pausar e
+arquivar continuam disponíveis. `dmButtonUrl` deve ser **https publico**
 (validador `is-public-https-url.validator.ts`, revalidado no service).
 
 **Encadeamento (cenario receita):** use `postMode='next_publication'` (default
@@ -355,7 +385,7 @@ apps/frontend/src/components/automations/
    `consumedMetaMid: null` para atomicidade.
 6. **Nao extender `FlowExecution` com campos de postback.** Use a tabela
    `PendingPostback` (snapshots imutaveis + TTL isolado).
-7. **System User Token > IG User Token > Page Access Token** e a ordem
+7. **System User Token > IG User Token** e a ordem
    de preferencia em `InstagramMessagingService.sendStoryReply`. Em
    `resolveIgRoute` do FlowActivity a ordem e outra (standalone > IG User
    Token cadastrado > Page Access Token) porque o contexto e diferente
@@ -402,3 +432,8 @@ pnpm --filter ./apps/frontend exec tsc --noEmit -p tsconfig.json
   FlowActivity permitem reusar o IG User Token cadastrado em Settings
   para integrations conectadas via Facebook Business, sem reconectar.
 - Paridade do Flow Builder com o wizard (follow gate fields + button CTA).
+
+
+## Posts agendados no MultiPost (27/10/2026)
+
+O gatilho de comentário aceita `postMode=scheduled` e `scheduledPostId=Post.id` interno. O alvo e a captura durável são compartilhados com Facebook V2, preservando o motor e os recursos legados do Instagram. O modo agendado nunca passa pelo vínculo de próxima publicação nem por aliases antigos. V1 comum, inclusive canvas legado sem perfil, mantém o caminho anterior; apenas os alvos agendados usam a persistência atômica e o guard de geração no workflow. Contratos, estados, retenção e operação em [Automações de posts agendados](../operations/automacoes-posts-agendados.md).

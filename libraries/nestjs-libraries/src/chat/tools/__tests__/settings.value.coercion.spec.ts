@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { PinterestSettingsDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/pinterest.dto';
 import {
   coerceSettingValue,
+  coerceJsonSettingValue,
   stringKeysOf,
   tryParseJson,
 } from '../settings.value.coercion';
@@ -18,6 +19,13 @@ describe('tryParseJson', () => {
 });
 
 describe('coerceSettingValue', () => {
+  it('contrato JSON novo preserva IDs string sem perder enums ou booleanos', () => {
+    const keys = stringKeysOf(PinterestSettingsDto);
+    expect(coerceJsonSettingValue(keys, 'board', '9007199254740993')).toBe('9007199254740993');
+    expect(coerceJsonSettingValue(keys, 'board', '"9007199254740993"')).toBe('9007199254740993');
+    expect(coerceJsonSettingValue(keys, 'post_type', '"post"')).toBe('post');
+    expect(coerceJsonSettingValue(keys, 'flag', 'false')).toBe(false);
+  });
   it('mantem crua a chave declarada como string no DTO (board do Pinterest)', () => {
     const keys = stringKeysOf(PinterestSettingsDto);
     expect(keys.has('board')).toBe(true);

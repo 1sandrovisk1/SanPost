@@ -1,3 +1,7 @@
+import { PublicPostManagementController } from './routes/v1/public.post-management.controller';
+import { PublicSharedFlowsController } from './routes/v1/public.shared-flows.controller';
+import { PublicAutomationsController } from './routes/v1/public.automations.controller';
+import { SharedAutomationsModule } from '@gitroom/nestjs-libraries/integrations/automations/shared-automations.module';
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { AuthService } from '@gitroom/backend/services/auth/auth.service';
 import { StripeService } from '@gitroom/nestjs-libraries/services/stripe.service';
@@ -14,12 +18,15 @@ import { PublicFlowsController } from '@gitroom/backend/public-api/routes/v1/pub
 import { PublicAuthMiddleware } from '@gitroom/backend/services/auth/public.auth.middleware';
 
 const authenticatedController = [
+  PublicPostManagementController,
   PublicIntegrationsController,
   PublicProfilesController,
   PublicFlowsController,
+  PublicSharedFlowsController,
+  PublicAutomationsController,
 ];
 @Module({
-  imports: [UploadModule],
+  imports: [UploadModule, SharedAutomationsModule],
   controllers: [...authenticatedController],
   providers: [
     AuthService,

@@ -41,3 +41,10 @@ export const coerceSettingValue = (
   key: string,
   value: string
 ): unknown => (stringKeys.has(key) ? value : tryParseJson(value));
+
+// The managed contract also accepts JSON-encoded strings. Keep numeric string
+// IDs exact, while retaining the legacy coercion rules for unquoted values.
+export function coerceJsonSettingValue(stringKeys: Set<string>, key: string, value: string): unknown {
+  if (stringKeys.has(key) && !value.trim().startsWith('"')) return coerceSettingValue(stringKeys, key, value);
+  try { return JSON.parse(value); } catch { return coerceSettingValue(stringKeys, key, value); }
+}

@@ -1,3 +1,4 @@
+import { ListPostsTool, GetPostTool, UpdatePostTool, ManagePostScheduleTool, GetPostOptionsTool } from './manage.posts.tool';
 import { IntegrationValidationTool } from '@gitroom/nestjs-libraries/chat/tools/integration.validation.tool';
 import { IntegrationTriggerTool } from '@gitroom/nestjs-libraries/chat/tools/integration.trigger.tool';
 import { IntegrationSchedulePostTool } from './integration.schedule.post';
@@ -12,8 +13,10 @@ import { ExtractUrlsTool } from '@gitroom/nestjs-libraries/chat/tools/extract-ur
 import { CreateCommentAutomationTool } from '@gitroom/nestjs-libraries/chat/tools/create.comment.automation.tool';
 import { ListCommentAutomationsTool } from '@gitroom/nestjs-libraries/chat/tools/list.comment.automations.tool';
 import { SetCommentAutomationStatusTool } from '@gitroom/nestjs-libraries/chat/tools/set.comment.automation.status.tool';
+import { GetCommentAutomationTool, UpdateCommentAutomationTool, GetAutomationOptionsTool, GetAutomationHistoryTool, ManageAutomationAliasesTool, SaveAutomationCanvasTool, ManageRepostAutomationTool } from './manage.automations.tool';
 
 export const toolList = [
+  ListPostsTool, GetPostTool, UpdatePostTool, ManagePostScheduleTool, GetPostOptionsTool,
   IntegrationListTool,
   IntegrationValidationTool,
   IntegrationTriggerTool,
@@ -28,4 +31,11 @@ export const toolList = [
   CreateCommentAutomationTool,
   ListCommentAutomationsTool,
   SetCommentAutomationStatusTool,
+  GetCommentAutomationTool,
+  UpdateCommentAutomationTool,
+  GetAutomationOptionsTool,
+  GetAutomationHistoryTool,
+  ManageAutomationAliasesTool,
+  SaveAutomationCanvasTool,
+  ManageRepostAutomationTool,
 ];

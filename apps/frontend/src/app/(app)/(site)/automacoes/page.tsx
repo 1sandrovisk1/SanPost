@@ -4,12 +4,12 @@ import { Metadata } from 'next';
 
 export const metadata: Metadata = {
   title: 'Automations',
-  description: 'Instagram comment automations',
+  description: 'Facebook and Instagram comment automations',
 };
 
 export default async function Index() {
   return (
-    <div className="bg-newBgColorInner flex-1 flex-col flex">
+    <div className="bg-newBgColorInner flex-1 flex-col flex min-w-0 w-full">
       <FlowListComponent />
     </div>
   );

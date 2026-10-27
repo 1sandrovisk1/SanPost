@@ -1,60 +1,11 @@
 jest.mock('@gitroom/nestjs-libraries/integrations/integration.manager', () => ({}));
-
 import { SetCommentAutomationStatusTool } from '../set.comment.automation.status.tool';
-
-const makeFlowsService = () => ({ updateFlowStatus: jest.fn() });
-
-const makeOptions = (org: any, profileId?: string) => ({
-  requestContext: {
-    get: (k: string) =>
-      ({
-        organization: org === null ? undefined : JSON.stringify(org),
-        profileId,
-      } as Record<string, any>)[k],
-  },
-});
-
+const scope = { organizationId: 'org', profileId: 'perfil' };
+const options = { requestContext: { get: (key: string) => ({ organization: '{"id":"org"}', profileId: 'perfil' }[key]) } };
 describe('SetCommentAutomationStatusTool', () => {
-  let tool: SetCommentAutomationStatusTool;
-  let flowsService: ReturnType<typeof makeFlowsService>;
-  let exec: (input: any, options: any) => Promise<any>;
-
-  beforeEach(() => {
-    flowsService = makeFlowsService();
-    tool = new SetCommentAutomationStatusTool(flowsService as any);
-    exec = (tool.run() as any).execute;
-  });
-
-  it('deve delegar para updateFlowStatus com org/profileId do contexto', async () => {
-    flowsService.updateFlowStatus.mockResolvedValue({ id: 'f1', status: 'PAUSED' });
-    const res = await exec(
-      { flowId: 'f1', status: 'PAUSED' },
-      makeOptions({ id: 'org-1' }, 'perfil-A')
-    );
-    expect(flowsService.updateFlowStatus).toHaveBeenCalledWith(
-      'org-1',
-      'f1',
-      'PAUSED',
-      'perfil-A'
-    );
-    expect(res.output).toEqual({ id: 'f1', status: 'PAUSED' });
-  });
-
-  it('deve retornar errors quando o service lanca', async () => {
-    flowsService.updateFlowStatus.mockRejectedValue(new Error('Automacao nao encontrada'));
-    const res = await exec(
-      { flowId: 'f1', status: 'ACTIVE' },
-      makeOptions({ id: 'org-1' }, undefined)
-    );
-    expect(res.errors).toContain('nao encontrada');
-  });
-
-  it('deve retornar erro quando nao ha organizacao no contexto', async () => {
-    const res = await exec(
-      { flowId: 'f1', status: 'ACTIVE' },
-      makeOptions(null, undefined)
-    );
-    expect(res.errors).toBeDefined();
-    expect(flowsService.updateFlowStatus).not.toHaveBeenCalled();
-  });
+  const service = { scope: jest.fn().mockResolvedValue(scope), status: jest.fn().mockResolvedValue({ id: 'f', status: 'PAUSED' }) };
+  beforeEach(() => jest.clearAllMocks());
+  it.each(['ACTIVE','PAUSED','ARCHIVED','DRAFT'])('encaminha status %s sem recriar', async status => { const tool: any = new SetCommentAutomationStatusTool(service as any).run(); await tool.execute({ flowId: 'f', status }, options); expect(service.status).toHaveBeenCalledWith(scope, 'f', 1, status, undefined); });
+  it('preserva revisao fornecida em V2 sem consultar/repor pela atual', async () => { const tool: any = new SetCommentAutomationStatusTool(service as any).run(); await tool.execute({ flowId: 'f', executionVersion: 2, status: 'PAUSED', expectedRevision: 4 }, options); expect(service.status).toHaveBeenCalledWith(scope, 'f', 2, 'PAUSED', 4); });
+  it('rejeita status invalido sem chamar dominio', async () => { const tool: any = new SetCommentAutomationStatusTool(service as any).run(); const invalid = await tool.execute({ flowId: 'f', status: 'QUALQUER' }, options); expect(invalid.errors || invalid.error).toBeDefined(); expect(service.status).not.toHaveBeenCalled(); });
 });

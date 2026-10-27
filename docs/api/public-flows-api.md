@@ -2,7 +2,7 @@
 
 Referência completa da API pública para criar e gerenciar **automações de comentário/story do Instagram** programaticamente (n8n, scripts, integrações). Permite o cenário ponta a ponta: **gerar imagem → publicar no Instagram → criar a automação** ("comentou `EU QUERO` → recebe o link no direct").
 
-> Mesma funcionalidade existe via **SDK `@postiz/node`** e via **MCP** (agente de chat). Veja o fim deste documento.
+> Para agentes novos, use a referência canônica [Automações por API e MCP](automations-agent-api.md): Instagram, Facebook, Messenger, campos completos, descoberta, grafo, histórico e controle de concorrência. Esta página mantém o contrato legado `/flows`; o SDK legado não implica suporte aos novos endpoints.
 
 ---
 
@@ -51,6 +51,8 @@ Para **testar pelo Swagger**: clique em **Authorize** (canto superior direito), 
 
 **Query param comum:** `?profileId=<id>` — escopa a um perfil (apenas chave de org). Omitido → **perfil Default**. (Chave de perfil ignora/valida contra o próprio perfil.)
 
+Na criação, a conta precisa pertencer ao perfil efetivo. Chave de organização sem `profileId` **não** pode usar uma conta pertencente a outro perfil e salvar a automação no Default: retorna **403**, antes de gravar ou consultar/inscrever o webhook. Informe explicitamente o perfil correto na REST ou use a chave desse perfil. O sucesso de uma publicação anterior não define o perfil da automação. Integrações legadas org-wide sem perfil conservam sua compatibilidade anterior.
+
 ---
 
 ## 4. Referência completa do corpo (`POST` e `PUT`)
@@ -65,7 +67,8 @@ Para **testar pelo Swagger**: clique em **Authorize** (canto superior direito), 
 | Campo | Valores | Default | Notas |
 |---|---|---|---|
 | `triggerType` | `comment_on_post` \| `story_reply` | `comment_on_post` | Comentário em post ou resposta a story |
-| `postMode` | `all` \| `specific` \| `next_publication` | `next_publication` | Veja [§5](#5-modos-de-vínculo-postmode) |
+| `postMode` | `all` \| `specific` \| `next_publication` \| `scheduled` | `next_publication` | Veja [§5](#5-modos-de-vínculo-postmode) |
+| `scheduledPostId` | string | — | `Post.id` interno do destino agendado; exige `postMode=scheduled` |
 | `postIds` | string[] (≤100, cada ≤64) | — | **Obrigatório** se `postMode=specific` + `comment_on_post`. IDs de mídia do IG |
 | `storyIds` | string[] (≤100) | — | **Obrigatório** se `postMode=specific` + `story_reply` |
 
@@ -117,8 +120,9 @@ Para **testar pelo Swagger**: clique em **Authorize** (canto superior direito), 
 | **`next_publication`** ⭐ | Encadear "criar automação → publicar o post" | Nasce sem post vinculado; ao publicar o próximo post no canal, vincula **automaticamente** a ele. **Não precisa do media id.** |
 | **`specific`** | Você já tem o(s) post(s) publicado(s) | Exige `postIds` (ou `storyIds`). Use quando souber os IDs de mídia. |
 | **`all`** | Vale para qualquer post do canal | Dispara em comentários de **todos** os posts. Use com cuidado (pode disparar em massa). |
+| **`scheduled`** | Post já agendado no MultiPost | Use `scheduledPostId` interno daquele destino, sem `postIds`; vínculo preservado depois da publicação. |
 
-> **Recomendado:** `next_publication` para fluxos automatizados (gerar imagem → publicar → criar automação), pois evita ter que descobrir o media id do Instagram. ⚠️ Ele vincula ao **próximo** post publicado no canal — crie a automação **imediatamente antes** de agendar/publicar o post para garantir o vínculo 1:1.
+> Para vários posts na fila, use **scheduled**, uma automação por destino. `next_publication` é para a próxima publicação sem vínculo exato; não garante o agendamento pretendido quando existem vários na fila. Para um post já publicado, use specific com o ID remoto. Consulte [Posts agendados](../operations/automacoes-posts-agendados.md).
 
 ---
 
@@ -129,7 +133,7 @@ Para **testar pelo Swagger**: clique em **Authorize** (canto superior direito), 
 - **Sempre `https` no `dmButtonUrl`:** links http, `localhost` ou IPs privados são bloqueados. Use o link público final (ex.: post do blog).
 - **`replyMessage` + `dmMessage` juntos:** responda publicamente ("Te mandei no direct!") **e** mande o link na DM — converte melhor e sinaliza ao algoritmo.
 - **Follow-gate (`requireFollow`):** ótimo para crescer seguidores, mas adiciona fricção. Sempre defina `followGateMessage` clara ("Siga o perfil e comente de novo 😉").
-- **Escopo de perfil:** com **chave de org**, passe `?profileId=<id>` para a automação aparecer no perfil certo da UI; sem isso vai para o **Default**. Com **chave de perfil**, já cai no perfil dela.
+- **Escopo de perfil:** com **chave de org**, passe `?profileId=<id>` do perfil da conta; omitir significa **Default**, e conta pertencente a outro perfil é recusada. Com **chave de perfil**, já usa o perfil dela. A conta não escolhe silenciosamente onde salvar a regra.
 - **Idempotência no n8n:** ao reprocessar um workflow, evite criar a mesma automação duas vezes (não há deduplicação por nome). Liste antes (`GET /flows`) se precisar.
 
 ---
@@ -190,7 +194,7 @@ Se o log do backend mostrar `checkIntegrationWebhook ... Could not verify webhoo
 ## 9. SDK e MCP
 
 - **SDK `@postiz/node`:** `createFlow`, `listFlows`, `getFlow`, `updateFlow`, `setFlowStatus`, `deleteFlow`.
-- **MCP (agente de chat / n8n MCP):** ferramentas `createCommentAutomationTool`, `listCommentAutomationsTool`, `setCommentAutomationStatusTool`. O agente confirma a configuração com o usuário antes de criar.
+- **MCP (agente de chat / n8n MCP):** o catálogo atual tem dez ferramentas de automação, incluindo descoberta, detalhe, patch, grafo e histórico; veja [referência completa](automations-agent-api.md#ferramentas-mcp). A escolha de rede e `executionVersion` é explícita. Mudanças de estado seguem a autorização do usuário.
 
 ---
 

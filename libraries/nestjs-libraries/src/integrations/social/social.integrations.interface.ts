@@ -4,6 +4,8 @@ export interface ClientInformation {
   client_id: string;
   client_secret: string;
   instanceUrl: string;
+  /** Explicit, separate consent for Facebook comment automations. */
+  facebookAutomation?: boolean;
 }
 export interface IAuthenticator {
   authenticate(
@@ -65,7 +67,7 @@ export interface IAuthenticator {
 export interface AnalyticsData {
   label: string;
   data: Array<{ total: string; date: string }>;
-  percentageChange: number;
+  percentageChange?: number;
 }
 
 

@@ -7,6 +7,8 @@
 
 ## Objetivo
 
+Correção posterior dos consumidores das métricas: [Totais numéricos e gráficos — 27/10/2026](analytics-totais-numericos-20261027.md). Strings retornadas pelos providers devem ser normalizadas antes da soma; variações percentuais sem comparação real não devem ser fabricadas. Essa correção não muda o transporte protegido descrito abaixo.
+
 Separar consultas de métricas do transporte destinado a publicação sem perder
 as proteções e recuperações próprias do Robô MultiPost.
 

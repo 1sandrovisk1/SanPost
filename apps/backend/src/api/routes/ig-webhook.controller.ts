@@ -1,5 +1,7 @@
+import { SharedFlowEventsService } from '@gitroom/nestjs-libraries/database/prisma/flows-v2/shared-flow-events.service';
 import {
   Controller,
+  Optional,
   Get,
   Post,
   Query,
@@ -42,7 +44,8 @@ export class IgWebhookController {
   constructor(
     private _flowsService: FlowsService,
     private _integrationService: IntegrationService,
-    private _credentialService: CredentialService
+    private _credentialService: CredentialService,
+    @Optional() private readonly sharedFlows?: SharedFlowEventsService
   ) {}
 
   @Get('/')
@@ -164,9 +167,7 @@ export class IgWebhookController {
 
         if (!igCommentId || !igCommenterId || !igMediaId) {
           this._logger.warn(
-            `IG webhook: missing fields commentId=${igCommentId} commenter=${igCommenterId} media=${igMediaId} payload=${JSON.stringify(
-              value
-            )}`
+            `IG webhook: missing fields hasCommentId=${Boolean(igCommentId)} hasCommenter=${Boolean(igCommenterId)} hasMedia=${Boolean(igMediaId)}`
           );
           continue;
         }
@@ -190,8 +191,9 @@ export class IgWebhookController {
             igCommenterName,
             igMediaId,
             commentText,
+            occurredAt: Number(entry.time) * 1000,
           },
-          scope
+          scope, req.rawBody, req.headers['x-hub-signature-256'] as string | undefined
         );
       }
     }
@@ -224,7 +226,7 @@ export class IgWebhookController {
         const metaMid: string | undefined =
           event?.postback?.mid || event?.mid;
         this._logger.log(
-          `IG webhook postback received sender=${senderId} payload=${payload}`
+          'IG webhook postback received'
         );
         // Gate deste caminho = isEntryAllowed no handleWebhook (por igAccountId).
         // Alem disso, handlePostbackClick tem autorizacao INDEPENDENTE: valida
@@ -268,7 +270,7 @@ export class IgWebhookController {
       message?.mid || reactionEvent?.mid || event?.timestamp?.toString();
     if (!igMessageId) {
       this._logger.warn(
-        `IG webhook: story reply missing message id payload=${JSON.stringify(event)}`
+        'IG webhook: story reply missing message id'
       );
       return;
     }
@@ -355,8 +357,11 @@ export class IgWebhookController {
       igCommenterName?: string;
       igMediaId: string;
       commentText: string;
+      occurredAt?: number;
     },
-    scope: SignatureScope
+    scope: SignatureScope,
+    raw?: Buffer,
+    signature?: string
   ) {
     const integrations =
       await this._integrationService.getIntegrationsByInternalId(
@@ -368,7 +373,7 @@ export class IgWebhookController {
 
     for (const integration of integrations) {
       if (
-        integration.providerIdentifier !== 'instagram' ||
+        !['instagram', 'instagram-standalone'].includes(integration.providerIdentifier) ||
         integration.disabled ||
         integration.deletedAt
       ) {
@@ -385,8 +390,13 @@ export class IgWebhookController {
         continue;
       }
 
+      if (process.env.SHARED_AUTOMATIONS_ENABLED === 'true' && this.sharedFlows && integration.profileId && Number.isFinite(data.occurredAt) && data.occurredAt > 0 && data.occurredAt <= Date.now() + 60000) {
+        await this.sharedFlows.receiveInstagram({ organizationId: integration.organizationId, profileId: integration.profileId, integrationId: integration.id, platform: 'instagram', remoteAccountId: integration.internalId, externalEventId: String(data.igCommentId), externalPostId: String(data.igMediaId), externalActorId: String(data.igCommenterId), actorName: data.igCommenterName, text: String(data.commentText).slice(0, 10000), occurredAt: data.occurredAt }, raw, signature);
+      }
+      if (integration.providerIdentifier !== 'instagram') continue;
       await this._flowsService.handleIncomingComment({
         integrationId: integration.id,
+        occurredAt: data.occurredAt,
         igCommentId: data.igCommentId,
         igCommenterId: data.igCommenterId,
         igCommenterName: data.igCommenterName,
@@ -418,7 +428,7 @@ export class IgWebhookController {
         await this._integrationService.getIntegrationsByInternalId(id);
       const orgIds = new Set<string>();
       for (const integration of integrations) {
-        if (integration.providerIdentifier === 'instagram') {
+        if (['instagram', 'instagram-standalone'].includes(integration.providerIdentifier)) {
           orgIds.add(integration.organizationId);
         }
       }

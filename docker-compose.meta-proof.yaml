@@ -1,0 +1,61 @@
+# Optional fourth overlay: scoped panel proof + legacy isolated webhook receiver.
+# Only meta-proof is isolated from app env_file, database, Redis, Temporal and publishing credentials.
+services:
+  app:
+    environment:
+      SHARED_AUTOMATIONS_ENABLED: 'true'
+      # Normal multi-account mode; tenant/profile guards still apply.
+      SHARED_AUTOMATION_TEST_INTEGRATION: ''
+      FACEBOOK_AUTOMATION_PROOF_CONFIG: /run/facebook-panel-proof/config.json
+      FACEBOOK_AUTOMATION_PROOF_DIR: /run/facebook-panel-proof-ledger
+    volumes:
+      - type: bind
+        source: ./.secrets/meta-webhook-escorpiano/panel-proof.json
+        target: /run/facebook-panel-proof/config.json
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./.secrets/meta-automation-proof-ledger
+        target: /run/facebook-panel-proof-ledger
+        bind:
+          create_host_path: false
+  meta-proof:
+    image: multipost-facebook-local:source
+    pull_policy: never
+    init: true
+    command:
+      - node
+      - -r
+      - ts-node/register
+      - tools/meta-automation-webhook.ts
+      - /run/meta-proof/receiver.json
+      - /captures
+      - 0.0.0.0
+      - '3033'
+    environment:
+      TS_NODE_PROJECT: /app/tools/tsconfig.meta-proof.json
+      NODE_OPTIONS: --max-old-space-size=512
+    volumes:
+      - ./tools:/app/tools:ro
+      - ./libraries/nestjs-libraries/src/integrations/automations:/app/libraries/nestjs-libraries/src/integrations/automations:ro
+      - ./.secrets/meta-webhook-escorpiano/config:/run/meta-proof:ro
+      - ./.secrets/meta-webhook-escorpiano/captures:/captures
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 768m
+    cpus: 1.0
+    pids_limit: 64
+    logging:
+      driver: json-file
+      options:
+        max-size: '1m'
+        max-file: '3'
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3033/health',{signal:AbortSignal.timeout(3000)}).then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      start_period: 45s
+      retries: 3
+    restart: unless-stopped

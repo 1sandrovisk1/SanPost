@@ -595,7 +595,7 @@ export class IntegrationService {
     }
 
     const getIntegrationData = await ioRedis.get(
-      `integration:${org.id}:${integration}:${date}`
+      `integration:analytics-v2:${org.id}:${integration}:${date}`
     );
     if (getIntegrationData) {
       return JSON.parse(getIntegrationData);
@@ -616,7 +616,7 @@ export class IntegrationService {
           getIntegration
         );
         await ioRedis.set(
-          `integration:${org.id}:${integration}:${date}`,
+          `integration:analytics-v2:${org.id}:${integration}:${date}`,
           JSON.stringify(loadAnalytics),
           'EX',
           !process.env.NODE_ENV || process.env.NODE_ENV === 'development'

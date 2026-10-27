@@ -1,0 +1,26 @@
+# Add after the local and tunnel files to use the recovered legacy database.
+# Original postiz-postgres and the previous homologation database stay intact.
+x-restored: &restored
+  env_file:
+    - path: .secrets/multipost-restored.env
+      format: raw
+  environment:
+    DATABASE_URL: postgresql://multipost:${LOCAL_DATABASE_PASSWORD:?Use --env-file .secrets/multipost-local.env}@postgres:5432/multipost_restored_20261020
+    # No automatic recovery of queued legacy publications.
+    RUN_CRON: ''
+
+services:
+  schema:
+    <<: *restored
+    # The recovered schema was compared with the running application schema.
+    # Future schema changes need an explicit migration, never an implicit push.
+    command: [pnpm, exec, prisma, validate, --schema, libraries/nestjs-libraries/src/database/prisma/schema.prisma]
+  app:
+    <<: *restored
+    volumes:
+      - restored-uploads:/uploads
+
+volumes:
+  restored-uploads:
+    external: true
+    name: multipost-facebook-local_restored_uploads_20261020

@@ -1,246 +1,240 @@
-import { AgentToolInterface } from '@gitroom/nestjs-libraries/chat/agent.tool.interface';
+import { AgentToolInterface } from '../agent.tool.interface';
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { Injectable } from '@nestjs/common';
-import { socialIntegrationList } from '@gitroom/nestjs-libraries/integrations/integration.manager';
-import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.service';
-import { PostsService } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.service';
-import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
-import { AllProvidersSettings } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/all.providers.settings';
-import { validate } from 'class-validator';
-import { Integration } from '@prisma/client';
-import { checkAuth } from '@gitroom/nestjs-libraries/chat/auth.context';
-import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validation';
-import { readRequestContext } from '@gitroom/nestjs-libraries/chat/tools/tool.context.helper';
-import { countLength, countLengthUnit } from '@gitroom/helpers/utils/count.length';
+import { socialIntegrationList } from '../../integrations/integration.manager';
+import { IntegrationService } from '../../database/prisma/integrations/integration.service';
+import { PostsService } from '../../database/prisma/posts/posts.service';
+import { PostManagementService } from '../../database/prisma/posts/post-management.service';
+import { makeId } from '../../services/make.is';
+import { checkAuth } from '../auth.context';
+import { readRequestContext } from './tool.context.helper';
+import { automationErrorCode } from '../../integrations/automations/automation-management.service';
 import {
-  coerceSettingValue,
-  stringKeysOf,
-} from '@gitroom/nestjs-libraries/chat/tools/settings.value.coercion';
+  managedMediaSchema,
+  managedSettingsSchema,
+  managedTagsSchema,
+} from '../../dtos/posts/post-management.dto';
+import { CreatePostDto } from '../../dtos/posts/create.post.dto';
+import { HttpException } from '@nestjs/common';
+import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validation';
+import { countLength, countLengthUnit } from '@gitroom/helpers/utils/count.length';
+import { coerceJsonSettingValue, stringKeysOf } from './settings.value.coercion';
+import {
+  isAllowedMediaPath,
+  isRemoteMediaPath,
+} from '../../database/prisma/posts/media.path.guard';
+import { checkPublicHttpsUrl } from '../../dtos/validators/is-public-https-url.validator';
 
-function countCharacters(text: string, type: string): number {
-  return countLength(type, text);
-}
+const fail = (code: string): never => {
+  throw new HttpException(code, 400);
+};
+export const schedulePostInputSchema = z
+  .object({
+    socialPost: z
+      .array(
+        z
+          .object({
+            integrationId: z.string().min(1).max(100),
+            isPremium: z.boolean(),
+            date: z.string().datetime({ offset: true }),
+            shortLink: z.boolean(),
+            type: z.enum(['draft', 'schedule', 'now']),
+            tags: managedTagsSchema.optional(),
+            intervalInDays: z
+              .number()
+              .int()
+              .min(1)
+              .max(3650)
+              .nullable()
+              .optional(),
+            postsAndComments: z
+              .array(
+                z
+                  .object({
+                    content: z.string().max(100000),
+                    attachments: z
+                      .array(z.string().max(4096))
+                      .max(100)
+                      .optional(),
+                    media: z.array(managedMediaSchema).max(100).optional(),
+                    delay: z.number().int().min(0).max(10080).optional(),
+                  })
+                  .strict()
+              )
+              .min(1)
+              .max(100),
+            settings: managedSettingsSchema,
+          })
+          .strict()
+      )
+      .min(1)
+      .max(100),
+  })
+  .strict();
 
 @Injectable()
 export class IntegrationSchedulePostTool implements AgentToolInterface {
   constructor(
-    private _postsService: PostsService,
-    private _integrationService: IntegrationService
+    private readonly posts: PostsService,
+    private readonly integrations: IntegrationService,
+    private readonly management: PostManagementService
   ) {}
   name = 'integrationSchedulePostTool';
-
   run() {
     return createTool({
       id: 'schedulePostTool',
-      description: `
-This tool allows you to schedule a post to a social media platform, based on integrationSchema tool.
-So for example:
-
-If the user want to post a post to LinkedIn with one comment
-- socialPost array length will be one
-- postsAndComments array length will be two (one for the post, one for the comment)
-
-If the user want to post 20 posts for facebook each in individual days without comments
-- socialPost array length will be 20
-- postsAndComments array length will be one
-
-If the tools return errors, you would need to rerun it with the right parameters, don't ask again, just run it
-`,
-      inputSchema: z.object({
-        socialPost: z
-          .array(
-            z.object({
-              integrationId: z
-                .string()
-                .describe('The id of the integration (not internal id)'),
-              isPremium: z
-                .boolean()
-                .describe(
-                  "If the integration is X, return if it's premium or not"
-                ),
-              date: z.string().describe('The date of the post in UTC time'),
-              shortLink: z
-                .boolean()
-                .describe(
-                  'If the post has a link inside, we can ask the user if they want to add a short link'
-                ),
-              type: z
-                .enum(['draft', 'schedule', 'now'])
-                .describe(
-                  'The type of the post, if we pass now, we should pass the current date also'
-                ),
-              postsAndComments: z
-                .array(
-                  z.object({
-                    content: z
-                      .string()
-                      .describe(
-                        "The content of the post, HTML, Each line must be wrapped in <p> here is the possible tags: h1, h2, h3, u, strong, li, ul, p (you can't have u and strong together)"
-                      ),
-                    attachments: z
-                      .array(z.string())
-                      .describe('The image of the post (URLS)'),
-                  })
-                )
-                .describe(
-                  'first item is the post, every other item is the comments'
-                ),
-              settings: z
-                .array(
-                  z.object({
-                    key: z
-                      .string()
-                      .describe('Name of the settings key to pass'),
-                    value: z
-                      .string()
-                      .describe(
-                        'Value of the key as a string. For complex values (objects, arrays, numbers, booleans) send a JSON-stringified representation — the backend will JSON.parse it transparently. For simple ids/labels, send the raw string. Always prefer the id then label if possible. When the settings schema says a field is an id (for example the Pinterest board), pass the id returned by the channel tools, never the display label.'
-                      ),
-                  })
-                )
-                .describe(
-                  'This relies on the integrationSchema tool to get the settings [input:settings]'
-                ),
-            })
-          )
-          .describe('Individual post'),
-      }),
+      description:
+        'Cria novos posts/agendamentos/rascunhos. Consulte integrationSchema para regras e settings do provider. Suporta lote, tags, intervalo recorrente, comentários/threads com delay, attachments antigos ou media com id/path/alt/thumbnail. Primeiro item de postsAndComments é a publicação, os demais são comentários/partes do thread conforme a rede. Para editar/reagendar um post existente use getPostTool/updatePostTool/managePostScheduleTool, mantendo o ID. Se retornar saved=true, preserve os IDs retornados e não repita o lote inteiro. outcomeUnknown=true exige consultar uncertainPosts antes de qualquer nova criação. Publicar agora ou agendar deve seguir a intenção autorizada do usuário.',
+      inputSchema: schedulePostInputSchema,
       outputSchema: z.object({
         output: z
-          .array(
-            z.object({
-              postId: z.string(),
-              integration: z.string(),
-            })
-          )
-          .or(z.object({ errors: z.string() })),
+          .array(z.object({ postId: z.string(), integration: z.string() }))
+          .optional(),
+        errors: z.string().optional(),
+        saved: z.boolean().optional(),
+        outcomeUnknown: z.boolean().optional(),
+        uncertainPosts: z
+          .array(z.object({ postId: z.string(), integration: z.string() }))
+          .optional(),
       }),
-      execute: async (input: any, options: any) => {
-        checkAuth(input, options);
-        const requestContext = readRequestContext(options);
-        const organizationId = JSON.parse(
-          requestContext.get('organization') as string
-        ).id;
-        const profileId =
-          (requestContext.get('profileId') as string) || undefined;
-        const finalOutput = [];
-
-        const integrations = {} as Record<string, Integration>;
-        for (const platform of input.socialPost) {
-          integrations[platform.integrationId] =
-            await this._integrationService.getIntegrationById(
-              organizationId,
-              platform.integrationId
+      execute: async (raw: unknown, options: unknown) => {
+        const output: Array<{ postId: string; integration: string }> = [];
+        let uncertainPosts: Array<{ postId: string; integration: string }> = [];
+        try {
+          checkAuth(raw, options);
+          const input = schedulePostInputSchema.safeParse(raw);
+          if (!input.success) fail('INVALID_POST_INPUT');
+          const context = readRequestContext(options);
+          const org = JSON.parse(
+            String(context.get('organization') || 'null')
+          ) as { id?: string };
+          if (!org?.id) fail('ORGANIZATION_REQUIRED');
+          const profileId = context.get('profileId') as string | undefined;
+          const ready: CreatePostDto[] = [];
+          // Validate the whole batch before the first write, including native provider settings.
+          for (const post of input.data.socialPost) {
+            const integration = await this.integrations.getIntegrationById(
+              org.id,
+              post.integrationId
             );
-
-          if (profileId && integrations[platform.integrationId]?.profileId &&
-              integrations[platform.integrationId].profileId !== profileId) {
-            throw new Error('Integration does not belong to the active profile');
-          }
-
-          const { dto, maxLength, identifier } = socialIntegrationList.find(
-            (p) =>
-              p.identifier ===
-              integrations[platform.integrationId].providerIdentifier
-          )!;
-
-          if (dto) {
-            const newDTO = new dto();
-            const obj = Object.assign(
-              newDTO,
-              platform.settings.reduce(
-                (acc, s) => ({
-                  ...acc,
-                  [s.key]: s.value,
-                }),
-                {} as AllProvidersSettings
-              )
-            );
-            const errors = await validate(obj);
-            if (errors.length) {
-              return {
-                errors: JSON.stringify(errors),
-              };
-            }
-
-            const errorsLength = [];
-            for (const post of platform.postsAndComments) {
-              const maximumCharacters = maxLength(platform.isPremium);
-              const strip = stripHtmlValidation('normal', post.content, true);
-              // mesma regra do contador e do gate do compositor (countLength)
-              const totalCharacters = countCharacters(strip, identifier || '');
-
-              if (totalCharacters > (maximumCharacters || 1000000)) {
-                const unit = countLengthUnit(identifier || '');
-                errorsLength.push({
-                  value: post.content,
-                  error: `The maximum is ${maximumCharacters} ${unit}, we got ${totalCharacters} ${unit}, please fix it, and try integrationSchedulePostTool again.`,
-                });
-              }
-            }
-
-            if (errorsLength.length) {
-              return {
-                errors: JSON.stringify(errorsLength),
-              };
-            }
-          }
-        }
-
-        for (const post of input.socialPost) {
-          const integration = integrations[post.integrationId];
-
-          if (!integration) {
-            throw new Error('Integration not found');
-          }
-
-          // chaves que o DTO declara como string (ids) nao passam pelo JSON.parse
-          const stringKeys = stringKeysOf(
-            socialIntegrationList.find(
+            if (!integration || integration.deletedAt || integration.disabled)
+              fail('CHANNEL_UNAVAILABLE');
+            if (profileId && integration.profileId !== profileId)
+              fail('CHANNEL_PROFILE_MISMATCH');
+            const provider = socialIntegrationList.find(
               (p) => p.identifier === integration.providerIdentifier
-            )?.dto
-          );
-
-          const output = await this._postsService.createPost(organizationId, {
-            date: post.date,
-            type: post.type as 'draft' | 'schedule' | 'now',
-            shortLink: post.shortLink,
-            tags: [],
-            posts: [
-              {
-                integration,
-                group: makeId(10),
-                settings: post.settings.reduce(
-                  (acc, s) => ({
-                    ...acc,
-                    // Schema declara value como string (compatibilidade Gemini);
-                    // JSON.parse reidrata arrays/objects/numbers/booleans,
-                    // exceto nas chaves de string do DTO (ids ficam crus).
-                    [s.key]: coerceSettingValue(stringKeys, s.key, s.value),
-                  }),
-                  {
-                    __type: integration.providerIdentifier,
-                  } as AllProvidersSettings
-                ),
-                value: post.postsAndComments.map((p) => ({
-                  content: p.content,
+            );
+            if (!provider) fail('UNSUPPORTED_PROVIDER');
+            const stringKeys = stringKeysOf(provider.dto);
+            const settings: Record<string, unknown> = {
+              __type: integration.providerIdentifier,
+            };
+            const keys = new Set<string>();
+            for (const field of post.settings) {
+              if (
+                ['__type', '__proto__', 'prototype', 'constructor'].includes(
+                  field.key
+                ) ||
+                keys.has(field.key)
+              )
+                fail('POST_SETTING_KEY_INVALID');
+              keys.add(field.key);
+              settings[field.key] = coerceJsonSettingValue(stringKeys, field.key, field.value);
+            }
+            if (post.tags?.length) {
+              const scope = await this.management.scope(
+                org.id,
+                profileId || integration.profileId || undefined
+              );
+              const available = (await this.management.options(scope, {
+                resource: 'tags',
+              })) as Array<{ id: string; name: string }>;
+              if (
+                post.tags.some(
+                  (tag) =>
+                    !available.some(
+                      (t) => t.id === tag.value && t.name === tag.label
+                    )
+                )
+              )
+                fail('POST_TAG_NOT_FOUND');
+            }
+            const value = post.postsAndComments.map((message) => {
+              if (message.attachments?.length && message.media?.length)
+                fail('AMBIGUOUS_POST_MEDIA');
+              const images =
+                message.media ||
+                (message.attachments || []).map((path) => ({
                   id: makeId(10),
-                  delay: 0,
-                  image: p.attachments.map((p) => ({
-                    id: makeId(10),
-                    path: p,
-                  })),
-                })),
-              },
-            ],
-          }, profileId);
-          finalOutput.push(...output);
+                  path,
+                }));
+              for (const item of images)
+                if (
+                  !isAllowedMediaPath(item.path) ||
+                  (isRemoteMediaPath(item.path) &&
+                    checkPublicHttpsUrl(item.path)) ||
+                  ('thumbnail' in item &&
+                    item.thumbnail &&
+                    checkPublicHttpsUrl(String(item.thumbnail)))
+                )
+                  fail('POST_MEDIA_PATH_INVALID');
+              const content = stripHtmlValidation(
+                'normal',
+                message.content,
+                true
+              );
+              const length = countLength(provider.identifier, content);
+              if (length > (provider.maxLength(post.isPremium) || 1000000))
+                fail(countLengthUnit(provider.identifier) === 'bytes' ? 'POST_CONTENT_TOO_LONG_BYTES' : 'POST_CONTENT_TOO_LONG');
+              return {
+                id: makeId(10),
+                content: message.content,
+                delay: message.delay || 0,
+                image: images,
+              };
+            });
+            const body = {
+              date: post.date,
+              type: post.type,
+              shortLink: post.shortLink,
+              tags: post.tags || [],
+              ...(post.intervalInDays != null
+                ? { inter: post.intervalInDays }
+                : {}),
+              posts: [
+                {
+                  integration: { id: post.integrationId },
+                  group: makeId(10),
+                  settings,
+                  value,
+                },
+              ],
+            } as CreatePostDto;
+            const validated = await this.posts.mapTypeToPost(body, org.id);
+            validated.type = post.type;
+            ready.push(validated);
+          }
+          for (const body of ready) {
+            uncertainPosts = body.posts.map((post) => ({
+              postId: post.value[0].id,
+              integration: post.integration.id,
+            }));
+            output.push(
+              ...(await this.posts.createPost(org.id, body, profileId))
+            );
+            uncertainPosts = [];
+          }
+          return { output };
+        } catch (error) {
+          return {
+            ...(output.length ? { output, saved: true } : {}),
+            ...(uncertainPosts.length
+              ? { uncertainPosts, outcomeUnknown: true }
+              : {}),
+            errors: JSON.stringify([{ error: automationErrorCode(error) }]),
+          };
         }
-
-        return {
-          output: finalOutput,
-        };
       },
     });
   }

@@ -178,7 +178,7 @@ export const FlowSummaryComponent: FC<FlowSummaryProps> = ({
               : t('trigger_type_comment', 'Comentario em publicacao')}
           </h3>
           <p className="text-[12px] text-customColor18">
-            {triggerConfig.mode === 'next_publication'
+            {triggerConfig.mode === 'scheduled' ? t('scheduled_selected_post') : triggerConfig.mode === 'next_publication'
               ? triggerConfig.triggerType === 'story_reply'
                 ? t('summary_next_story', 'Aguardando proximo story')
                 : t('summary_next_publication', 'Aguardando proxima publicacao')

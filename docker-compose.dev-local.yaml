@@ -1,0 +1,47 @@
+# Apply last, with local + tunnel + restored + meta-proof overlays.
+# Keep Linux dependencies from the image; never bind the repository root.
+services:
+  app:
+    environment:
+      MULTIPOST_DEV_PRISMA: '1'
+    volumes:
+      - type: bind
+        source: ./apps/frontend/src
+        target: /app/apps/frontend/src
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ./apps/frontend/public
+        target: /app/apps/frontend/public
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ./apps/frontend/tailwind.config.cjs
+        target: /app/apps/frontend/tailwind.config.cjs
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ./libraries/react-shared-libraries/src
+        target: /app/libraries/react-shared-libraries/src
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ./libraries/helpers/src
+        target: /app/libraries/helpers/src
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ./libraries/nestjs-libraries/src
+        target: /app/libraries/nestjs-libraries/src
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ./apps/backend/dist
+        target: /app/apps/backend/dist
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ./apps/orchestrator/dist
+        target: /app/apps/orchestrator/dist
+        read_only: true
+        bind: { create_host_path: false }

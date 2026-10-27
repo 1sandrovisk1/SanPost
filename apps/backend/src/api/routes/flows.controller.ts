@@ -1,3 +1,4 @@
+import { Throttle } from '@nestjs/throttler';
 import {
   Body,
   Controller,
@@ -24,6 +25,7 @@ import {
 
 @ApiTags('Flows')
 @Controller('/flows')
+@Throttle({ default: { limit: 60, ttl: 60_000 } })
 export class FlowsController {
   constructor(
     private _flowsService: FlowsService,

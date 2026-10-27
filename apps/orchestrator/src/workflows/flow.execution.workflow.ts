@@ -26,6 +26,7 @@ const FOLLOW_GATE_DEFAULT =
   'Olá! Esse conteúdo é exclusivo para seguidores. Me segue aqui e responde o story de novo para eu te enviar 💙';
 
 export interface FlowExecutionInput {
+  scheduledGuard?: { targetId: string; revision: number; updatedAt: string; externalPostId: string; kind?: 'next' };
   executionId: string;
   flowId: string;
   integrationId: string;
@@ -71,7 +72,7 @@ interface TraversalContext {
 
 export async function flowExecutionWorkflow(input: FlowExecutionInput) {
   try {
-    const flow = await getFlowWithNodes(input.flowId);
+    const flow = input.scheduledGuard ? await getFlowWithNodes(input.flowId, input.scheduledGuard) : await getFlowWithNodes(input.flowId);
     if (!flow) {
       await updateExecution(input.executionId, {
         status: 'FAILED' as any,

@@ -21,9 +21,20 @@ export class StartupMigrationService implements OnModuleInit {
     await this.backfillRepostDestinations();
     await this.cleanupExpiredUnmatchedComments();
     await this.cleanupExpiredStatusEvents();
+    await this.cleanupExpiredScheduledAutomationEvents();
     await this.backfillFlowsToDefaultProfile();
     await this.reconcileRepostWorkflows();
     await this.reconcileRefreshTokensCron();
+  }
+
+  private async cleanupExpiredScheduledAutomationEvents() {
+    try {
+      const where = { expiresAt: { lt: new Date(Date.now() - 7 * 86400000) } };
+      if (!await this.prisma.scheduledAutomationEvent.count({ where })) return;
+      await this.prisma.scheduledAutomationEvent.deleteMany({ where });
+    } catch {
+      this.logger.warn('Scheduled automation capture cleanup unavailable.');
+    }
   }
 
   /**

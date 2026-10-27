@@ -3,7 +3,9 @@ import {
   Controller,
   Delete,
   Get,
+  Headers,
   HttpCode,
+  HttpException,
   Param,
   Patch,
   Post,
@@ -31,6 +33,20 @@ export class CredentialsController {
     private _credentialService: CredentialService,
     private _instagramMessagingService: InstagramMessagingService
   ) {}
+
+  // A stale browser tab must not save tokens into a profile selected elsewhere.
+  // These headers assert the original context; they never choose the auth scope.
+  private assertMessagingScope(
+    org: Organization,
+    profile: Profile | null,
+    expectedOrg?: string,
+    expectedProfile?: string
+  ) {
+    if (expectedOrg === undefined && expectedProfile === undefined) return;
+    if (expectedOrg !== org.id || expectedProfile !== (profile?.id || '')) {
+      throw new HttpException({ code: 'MESSAGING_SCOPE_CHANGED' }, 409);
+    }
+  }
 
   @Get('/')
   async list(
@@ -136,8 +152,11 @@ export class CredentialsController {
   @Get('/facebook/messaging-tokens')
   async getMessagingTokens(
     @GetOrgFromRequest() org: Organization,
-    @GetProfileFromRequest() profile: Profile | null
+    @GetProfileFromRequest() profile: Profile | null,
+    @Headers('x-expected-org-id') expectedOrg?: string,
+    @Headers('x-expected-profile-id') expectedProfile?: string
   ) {
+    this.assertMessagingScope(org, profile, expectedOrg, expectedProfile);
     const state = await this._credentialService.getMessagingTokens(
       org.id,
       profile?.id
@@ -169,8 +188,11 @@ export class CredentialsController {
         username?: string;
         token: string;
       }> | null;
-    }
+    },
+    @Headers('x-expected-org-id') expectedOrg?: string,
+    @Headers('x-expected-profile-id') expectedProfile?: string
   ) {
+    this.assertMessagingScope(org, profile, expectedOrg, expectedProfile);
     const updates: Parameters<
       typeof this._credentialService.updateMessagingTokens
     >[2] = {};

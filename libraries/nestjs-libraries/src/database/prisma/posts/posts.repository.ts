@@ -1,5 +1,5 @@
-import { PrismaRepository } from '@gitroom/nestjs-libraries/database/prisma/prisma.service';
-import { Injectable } from '@nestjs/common';
+import { PrismaRepository, PrismaTransaction } from '@gitroom/nestjs-libraries/database/prisma/prisma.service';
+import { Injectable, Optional } from '@nestjs/common';
 import { Post as PostBody } from '@gitroom/nestjs-libraries/dtos/posts/create.post.dto';
 import {
   APPROVED_SUBMIT_FOR_ORDER,
@@ -30,7 +30,8 @@ export class PostsRepository {
     private _comments: PrismaRepository<'comments'>,
     private _tags: PrismaRepository<'tags'>,
     private _tagsPosts: PrismaRepository<'tagsPosts'>,
-    private _errors: PrismaRepository<'errors'>
+    private _errors: PrismaRepository<'errors'>,
+    @Optional() private readonly transaction?: PrismaTransaction
   ) {}
 
   searchForMissingThreeHoursPosts() {
@@ -424,6 +425,11 @@ export class PostsRepository {
   }
 
   updatePost(id: string, postId: string, releaseURL: string) {
+    if (this.transaction) return this.transaction.model.$transaction(async tx => {
+      const post = await tx.post.update({ where: { id }, data: { state: 'PUBLISHED', releaseURL, releaseId: postId, error: null } });
+      if (postId && postId !== 'missing') await tx.scheduledAutomationTarget.updateMany({ where: { postId: id, integrationId: post.integrationId, publishedReleaseId: null, flow: { organizationId: post.organizationId, profileId: post.profileId } }, data: { publishedReleaseId: postId } });
+      return post;
+    });
     return this._post.model.post.update({
       where: {
         id,
@@ -463,6 +469,11 @@ export class PostsRepository {
   }
 
   updateReleaseId(id: string, orgId: string, releaseId: string) {
+    if (this.transaction) return this.transaction.model.$transaction(async tx => {
+      const post = await tx.post.update({ where: { id, organizationId: orgId, releaseId: 'missing' }, data: { releaseId: String(releaseId) } });
+      if (releaseId && releaseId !== 'missing') await tx.scheduledAutomationTarget.updateMany({ where: { postId: id, integrationId: post.integrationId, publishedReleaseId: null, flow: { organizationId: post.organizationId, profileId: post.profileId } }, data: { publishedReleaseId: String(releaseId) } });
+      return { id: post.id };
+    });
     return this._post.model.post.update({
       where: {
         id,
@@ -665,6 +676,9 @@ export class PostsRepository {
           const tagsList = await this._tags.model.tags.findMany({
             where: {
               orgId: orgId,
+              ...(profileId ? { profileId } : {}),
+              deletedAt: null,
+              id: { in: tags.map((tag) => tag.value) },
               name: {
                 in: tags.map((tag) => tag.label).filter((f) => f),
               },

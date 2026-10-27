@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { HttpException, Injectable, Logger } from '@nestjs/common';
 import { CredentialRepository } from './credential.repository';
 import { EncryptionService } from '@gitroom/nestjs-libraries/crypto/encryption.service';
 import { OrganizationRepository } from '@gitroom/nestjs-libraries/database/prisma/organizations/organization.repository';
@@ -9,6 +9,10 @@ import {
 } from '@gitroom/nestjs-libraries/integrations/social/meta-graph.constants';
 
 const SENTINEL = '__REDACTED__';
+
+function assertPublicProvider(provider: string) {
+  if (provider.startsWith('facebook-automation:')) throw new HttpException('Credential not found', 404);
+}
 
 @Injectable()
 export class CredentialService {
@@ -151,6 +155,7 @@ export class CredentialService {
     provider: string,
     profileId?: string
   ): Promise<{ data: Record<string, string>; updatedAt: Date } | null> {
+    assertPublicProvider(provider);
     const record = await this._credentialRepository.findByProvider(
       organizationId,
       provider,
@@ -166,6 +171,7 @@ export class CredentialService {
     provider: string,
     profileId?: string
   ): Promise<Record<string, string> | null> {
+    assertPublicProvider(provider);
     const record = await this._credentialRepository.findByProvider(
       organizationId,
       provider,
@@ -178,7 +184,7 @@ export class CredentialService {
   async listByOrg(organizationId: string, profileId?: string) {
     const records =
       await this._credentialRepository.findAllByOrg(organizationId, profileId);
-    return records.map((r) => ({
+    return records.filter(r => !r.provider.startsWith('facebook-automation:')).map((r) => ({
       provider: r.provider,
       configured: true,
       updatedAt: r.updatedAt.toISOString(),
@@ -294,6 +300,7 @@ export class CredentialService {
   }
 
   async delete(organizationId: string, provider: string, profileId?: string) {
+    assertPublicProvider(provider);
     return this._credentialRepository.delete(organizationId, provider, profileId);
   }
 
@@ -344,6 +351,31 @@ export class CredentialService {
     applyField('instagramTokens', updates.instagramTokens);
 
     return this.save(organizationId, 'facebook', body, profileId);
+  }
+
+  /** A remote refresh must never resurrect a revoked token or overwrite a concurrent edit. */
+  async replaceInstagramTokenAfterRefresh(
+    organizationId: string,
+    profileId: string | undefined,
+    previous: { igUserId: string; token: string; refreshedAt: string },
+    token: string
+  ): Promise<boolean> {
+    const record = await this._credentialRepository.findExactByProvider(organizationId, 'facebook', profileId);
+    if (!record) return false;
+    const data = this._encryptionService.decryptJson(record.encryptedData) as Record<string, string>;
+    let entries: Array<Record<string, any>>;
+    try { entries = JSON.parse(data.instagramTokens || '[]'); } catch { return false; }
+    if (!Array.isArray(entries)) return false;
+    const matches = entries.filter((entry) => entry?.igUserId === previous.igUserId);
+    if (matches.length !== 1 || matches[0].token !== previous.token || matches[0].refreshedAt !== previous.refreshedAt) return false;
+    const instagramTokens = entries.map((entry) => entry.igUserId === previous.igUserId
+      ? { ...entry, token, refreshedAt: new Date().toISOString() }
+      : entry);
+    const updated = await this._credentialRepository.replaceIfUnchanged(
+      organizationId, 'facebook', profileId, record.id, record.encryptedData,
+      this._encryptionService.encryptJson({ ...data, instagramTokens: JSON.stringify(instagramTokens) })
+    );
+    return updated.count === 1;
   }
 
   /**

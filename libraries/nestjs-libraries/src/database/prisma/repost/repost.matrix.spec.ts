@@ -2,9 +2,20 @@ import {
   formatsForProvider,
   formatsForSourceType,
   isDestinationCompatible,
+  repostMediaFilterReason,
 } from './repost.matrix';
 
 describe('repost.matrix', () => {
+  it.each([
+    ['VIDEO', false, true, 'FILTER_VIDEO'],
+    ['REELS', false, false, 'FILTER_VIDEO'],
+    ['IMAGE', true, false, 'FILTER_IMAGE'],
+    ['VIDEO', true, false, null],
+    ['VIDEO', undefined, true, null],
+    ['IMAGE', false, true, null],
+  ])('respeita filtros de midia %s sem ignorar exclusao de videos', (mediaType, videos, images, reason) => {
+    expect(repostMediaFilterReason(mediaType, { filterIncludeVideos: videos, filterIncludeImages: images })).toBe(reason);
+  });
   describe('formatsForProvider', () => {
     it('deve expor FACEBOOK_REEL e FACEBOOK_STORY para o facebook', () => {
       const formats = formatsForProvider('facebook');

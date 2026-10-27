@@ -32,7 +32,7 @@ export const ConditionNode: FC<NodeProps> = memo(({ data, selected }) => {
           <circle cx="12" cy="12" r="10" />
           <line x1="12" y1="17" x2="12.01" y2="17" />
         </svg>
-        <span className="text-[13px] font-semibold" style={{ color: '#facc15' }}>
+        <span className="text-[13px] font-semibold text-textColor">
           {t('condition_node_label', 'Condition: Keyword')}
         </span>
       </div>

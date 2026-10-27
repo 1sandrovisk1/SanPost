@@ -2,8 +2,24 @@ import 'reflect-metadata';
 import { InstagramMessagingService } from './instagram-messaging.service';
 import { CredentialService } from '@gitroom/nestjs-libraries/database/prisma/credentials/credential.service';
 import { createMock } from '@gitroom/nestjs-libraries/test';
+import { resolveIgRoute } from './instagram-route.resolver';
 
 const VALID_TOKEN = 'EAA' + 'x'.repeat(60);
+
+describe('refresh concorrente do token Instagram', () => {
+  const originalFetch = global.fetch;
+  afterEach(() => { global.fetch = originalFetch; });
+  it('interrompe o resolver sem fallback ou envio quando a autorizacao mudou', async () => {
+    const credentials = createMock<CredentialService>();
+    const entry = { igUserId: '123', token: VALID_TOKEN, refreshedAt: new Date(Date.now() - 2 * 86400000).toISOString() };
+    credentials.getRaw.mockResolvedValue({ instagramTokens: JSON.stringify([entry]) });
+    credentials.replaceInstagramTokenAfterRefresh.mockResolvedValue(false);
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ access_token: 'REFRESHED' }) });
+    await expect(resolveIgRoute({ organizationId: 'org', profileId: 'p', internalId: '123', token: 'PAGE-FALLBACK', providerIdentifier: 'instagram' }, new InstagramMessagingService(credentials))).rejects.toThrow('AUTHORIZATION_CHANGED');
+    expect(credentials.updateMessagingTokens).not.toHaveBeenCalled();
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+});
 
 // Roteia por substring da URL para nao depender da ordem das chamadas.
 function routeFetch(routes: Array<[string, any]>) {

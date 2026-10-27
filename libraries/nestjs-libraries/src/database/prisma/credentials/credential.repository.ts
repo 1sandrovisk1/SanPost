@@ -35,6 +35,22 @@ export class CredentialRepository {
     });
   }
 
+  findExactByProvider(organizationId: string, provider: string, profileId?: string) {
+    return this._credential.model.providerCredential.findFirst({
+      where: { organizationId, provider, profileId: profileId ?? null },
+    });
+  }
+
+  replaceIfUnchanged(
+    organizationId: string, provider: string, profileId: string | undefined,
+    id: string, previousEncryptedData: string, encryptedData: string
+  ) {
+    return this._credential.model.providerCredential.updateMany({
+      where: { id, organizationId, provider, profileId: profileId ?? null, encryptedData: previousEncryptedData },
+      data: { encryptedData },
+    });
+  }
+
   findAllByOrg(organizationId: string, profileId?: string) {
     return this._credential.model.providerCredential.findMany({
       where: {

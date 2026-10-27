@@ -1,5 +1,7 @@
+import { legacyFlowScopeMatches, legacyFlowIntegrationSelect } from './legacy-flow-scope';
+import { SharedFlowsRepository } from '../flows-v2/shared-flows.repository';
 import { PrismaRepository } from '@gitroom/nestjs-libraries/database/prisma/prisma.service';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional, HttpException } from '@nestjs/common';
 import {
   FlowStatus,
   FlowExecutionStatus,
@@ -19,13 +21,15 @@ export class FlowsRepository {
     private _pendingPostback: PrismaRepository<'pendingPostback'>,
     private _flowMediaAlias: PrismaRepository<'flowMediaAlias'>,
     private _unmatchedComment: PrismaRepository<'unmatchedComment'>,
-    private _ignoredMedia: PrismaRepository<'ignoredMedia'>
+    private _ignoredMedia: PrismaRepository<'ignoredMedia'>,
+    @Optional() private readonly sharedFlows?: SharedFlowsRepository
   ) {}
 
   getFlows(orgId: string, profileId?: string) {
     return this._flow.model.flow.findMany({
       where: {
         organizationId: orgId,
+        executionVersion: 1,
         ...(profileId ? { profileId } : {}),
         deletedAt: null,
       },
@@ -46,8 +50,8 @@ export class FlowsRepository {
     });
   }
 
-  getFlow(orgId: string, id: string, profileId?: string) {
-    return this._flow.model.flow.findFirst({
+  async getFlow(orgId: string, id: string, profileId?: string) {
+    const flow = await this._flow.model.flow.findFirst({
       where: {
         id,
         organizationId: orgId,
@@ -62,16 +66,20 @@ export class FlowsRepository {
         edges: true,
       },
     });
+    if (flow && flow.executionVersion === 2) throw new HttpException('FLOW_REQUIRES_V2', 409);
+    return flow;
   }
 
-  getFlowById(id: string) {
-    return this._flow.model.flow.findFirst({
-      where: { id, deletedAt: null },
+  async getFlowById(id: string) {
+    const flow = await this._flow.model.flow.findFirst({
+      where: { id, deletedAt: null, executionVersion: 1, OR: [{ profileId: null }, { profile: { deletedAt: null } }] },
       include: {
+        integration: { select: legacyFlowIntegrationSelect },
         nodes: true,
         edges: true,
       },
     });
+    return legacyFlowScopeMatches(flow) ? flow : null;
   }
 
   createFlow(
@@ -87,6 +95,7 @@ export class FlowsRepository {
     return this._flow.model.flow.create({
       data: {
         organizationId: orgId,
+        executionVersion: 1,
         ...(profileId ? { profileId } : {}),
         name: data.name,
         description: data.description,
@@ -112,6 +121,7 @@ export class FlowsRepository {
       where: {
         id,
         organizationId: orgId,
+        executionVersion: 1,
         ...(profileId ? { profileId } : {}),
         deletedAt: null,
       },
@@ -132,6 +142,7 @@ export class FlowsRepository {
       where: {
         id,
         organizationId: orgId,
+        executionVersion: 1,
         ...(profileId ? { profileId } : {}),
       },
       data: {
@@ -147,10 +158,12 @@ export class FlowsRepository {
     status: FlowStatus,
     profileId?: string
   ) {
+    if (status === FlowStatus.ACTIVE && this.sharedFlows) return this.sharedFlows.activateLegacy({ organizationId: orgId, ...(profileId ? { profileId } : {}) }, id);
     return this._flow.model.flow.update({
       where: {
         id,
         organizationId: orgId,
+        executionVersion: 1,
         ...(profileId ? { profileId } : {}),
         deletedAt: null,
       },
@@ -169,6 +182,7 @@ export class FlowsRepository {
       where: {
         id: flowId,
         organizationId: orgId,
+        executionVersion: 1,
         ...(profileId ? { profileId } : {}),
         deletedAt: null,
       },
@@ -263,7 +277,8 @@ export class FlowsRepository {
     igThreadId?: string;
     igMessageId?: string;
     commentText: string;
-  }) {
+  }, scheduledGuard?: { targetId: string; revision: number; updatedAt: string; externalPostId: string; kind?: 'next' }) {
+    if (data.triggerType !== 'story_reply' && this.sharedFlows) return scheduledGuard ? this.sharedFlows.admitLegacy(data, scheduledGuard) : this.sharedFlows.admitLegacy(data);
     return this._flowExecution.model.flowExecution.create({ data });
   }
 
@@ -348,6 +363,7 @@ export class FlowsRepository {
         createdAt: { gte: since },
         flow: {
           organizationId: orgId,
+        executionVersion: 1,
           deletedAt: null,
           OR: [{ profileId: null }, { profile: { deletedAt: null } }],
           ...(profileId ? { profileId } : {}),
@@ -400,47 +416,55 @@ export class FlowsRepository {
     });
   }
 
-  getActiveFlowsForIntegration(integrationId: string, mediaId?: string) {
-    return this._flow.model.flow.findMany({
+  async getActiveFlowsForIntegration(integrationId: string, mediaId?: string) {
+    const flows = await this._flow.model.flow.findMany({
       where: {
         integrationId,
+        executionVersion: 1,
         status: FlowStatus.ACTIVE,
         deletedAt: null,
         OR: [{ profileId: null }, { profile: { deletedAt: null } }],
       },
       include: {
+        integration: { select: legacyFlowIntegrationSelect },
         nodes: true,
         edges: true,
       },
     });
+    return flows.filter(legacyFlowScopeMatches);
   }
 
-  findPendingNextPublicationFlows(integrationId: string) {
+  async findPendingNextPublicationFlows(integrationId: string) {
     // Returns active flows for the integration that have not been bound to a
     // specific mediaId yet (triggerPostIds IS NULL). Caller must still filter
     // in-memory by inspecting the TRIGGER node data for `mode === 'next_publication'`
     // — a flow with `mode === 'all'` also has triggerPostIds null and must not
     // be treated as pending.
-    return this._flow.model.flow.findMany({
+    const flows = await this._flow.model.flow.findMany({
       where: {
         integrationId,
+        executionVersion: 1,
         status: FlowStatus.ACTIVE,
         deletedAt: null,
         triggerPostIds: null,
         OR: [{ profileId: null }, { profile: { deletedAt: null } }],
       },
       include: {
+        integration: { select: legacyFlowIntegrationSelect },
         nodes: true,
       },
     });
+    return flows.filter(legacyFlowScopeMatches);
   }
 
   async bindFlowTriggerToMedia(
     flowId: string,
     triggerNodeId: string,
     newNodeData: Record<string, any>,
-    mediaId: string
+    mediaId: string,
+    expected?: { revision: number; updatedAt: string }
   ): Promise<boolean> {
+    if (expected) return this.sharedFlows ? this.sharedFlows.bindLegacyNext(flowId, triggerNodeId, newNodeData, mediaId, expected) : false;
     // Idempotent bind: the updateMany with `triggerPostIds: null` in WHERE
     // guarantees that only still-pending flows get updated. A concurrent
     // caller that already bound this flow will see 0 rows affected.
@@ -498,16 +522,27 @@ export class FlowsRepository {
     return this._pendingPostback.model.pendingPostback.create({ data });
   }
 
-  findPostbackByPayload(payload: string) {
-    return this._pendingPostback.model.pendingPostback.findUnique({
+  async findPostbackByPayload(payload: string, identity?: { senderIgsid: string; igAccountId: string }) {
+    if (!identity) return null;
+    const pending = await this._pendingPostback.model.pendingPostback.findUnique({
       where: { payload },
     });
+    return this.validatePendingPostback(pending, identity);
   }
 
-  findPostbackById(id: string) {
-    return this._pendingPostback.model.pendingPostback.findUnique({
+  async findPostbackById(id: string) {
+    const pending = await this._pendingPostback.model.pendingPostback.findUnique({
       where: { id },
     });
+    return this.validatePendingPostback(pending);
+  }
+
+  private async validatePendingPostback<T extends { flowId: string; organizationId: string; integrationId: string; igSenderId: string }>(pending: T | null, identity?: { senderIgsid: string; igAccountId: string }): Promise<T | null> {
+    if (!pending) return null;
+    const flow = await this.getFlowById(pending.flowId);
+    if (!flow || flow.organizationId !== pending.organizationId || flow.integrationId !== pending.integrationId) return null;
+    if (identity && (pending.igSenderId !== identity.senderIgsid || flow.integration.internalId !== identity.igAccountId)) return null;
+    return pending;
   }
 
   /**
@@ -583,7 +618,7 @@ export class FlowsRepository {
     aliasMediaId: string
   ) {
     return this._flowMediaAlias.model.flowMediaAlias.findMany({
-      where: { integrationId, aliasMediaId },
+      where: { integrationId, aliasMediaId, flow: { executionVersion: 1 } },
       select: { id: true, flowId: true },
     });
   }
@@ -597,7 +632,7 @@ export class FlowsRepository {
       where: {
         integrationId,
         aliasMediaId,
-        flow: { organizationId: orgId, deletedAt: null },
+        flow: { organizationId: orgId, deletedAt: null, executionVersion: 1 },
       },
       select: {
         id: true,
@@ -635,7 +670,7 @@ export class FlowsRepository {
     return this._flowMediaAlias.model.flowMediaAlias.findMany({
       where: {
         flowId,
-        flow: { organizationId: orgId, deletedAt: null },
+        flow: { organizationId: orgId, deletedAt: null, executionVersion: 1 },
       },
       orderBy: { createdAt: 'desc' },
     });

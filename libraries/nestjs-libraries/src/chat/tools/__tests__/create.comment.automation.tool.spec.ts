@@ -1,117 +1,28 @@
-// Evita carregar integration.manager -> nostr.provider -> nostr-tools (ESM) na
-// cadeia transitiva de FlowsService; o service e totalmente mockado aqui.
 jest.mock('@gitroom/nestjs-libraries/integrations/integration.manager', () => ({}));
-
 import { CreateCommentAutomationTool } from '../create.comment.automation.tool';
-
-const makeFlowsService = () => ({ quickCreateFlow: jest.fn() });
-
-const makeOptions = (org: any, profileId?: string) => ({
-  requestContext: {
-    get: (k: string) =>
-      ({
-        organization: org === null ? undefined : JSON.stringify(org),
-        profileId,
-      } as Record<string, any>)[k],
-  },
-});
-
-describe('CreateCommentAutomationTool', () => {
-  let tool: CreateCommentAutomationTool;
-  let flowsService: ReturnType<typeof makeFlowsService>;
-  let exec: (input: any, options: any) => Promise<any>;
-
-  beforeEach(() => {
-    flowsService = makeFlowsService();
-    tool = new CreateCommentAutomationTool(flowsService as any);
-    exec = (tool.run() as any).execute;
+import { HttpException } from '@nestjs/common';
+const scope = { organizationId: 'org', profileId: 'perfil' };
+const options = { requestContext: { get: (key: string) => ({ organization: '{"id":"org"}', profileId: 'perfil' }[key]) } };
+describe('CreateCommentAutomationTool contrato completo', () => {
+  const service = { scope: jest.fn(), create: jest.fn() };
+  let tool: any;
+  beforeEach(() => { jest.clearAllMocks(); service.scope.mockResolvedValue(scope); service.create.mockResolvedValue({ id: 'f', executionVersion: 1 }); tool = new CreateCommentAutomationTool(service as any).run(); });
+  it('mantem id e schema de objeto concreto', () => { expect(tool.id).toBe('createCommentAutomationTool'); expect(tool.inputSchema._def.typeName).toBe('ZodObject'); });
+  it('encaminha todos os campos do gate e variacoes sem perde-los', async () => {
+    const input = { name: 'Completa', integrationId: 'ig', replyMessages: ['A','B'], matchReactions: false, openingDmMessage: 'Inicio', openingDmButtonText: 'Link', alreadyFollowedButtonText: 'Segui', gateExhaustedMessage: 'Fim', maxGateAttempts: 7, followGateMessage: 'Siga', requireFollow: true };
+    expect((await tool.execute(input, options)).output.id).toBe('f');
+    expect(service.create).toHaveBeenCalledWith(scope, input);
   });
-
-  it('deve expor o nome correto e id da tool', () => {
-    expect(tool.name).toBe('createCommentAutomationTool');
-    expect((tool.run() as any).id).toBe('createCommentAutomationTool');
+  it('schema aceita Messenger e prioridade sem traduzir para comentario', async () => {
+    const input = { platform: 'facebook', triggerType: 'messenger_message', name: 'Messenger', integrationId: 'fb', keywords: ['quero'], priority: 20, dmMessage: 'Link' };
+    await tool.execute(input, options); expect(service.create).toHaveBeenCalledWith(scope, input);
   });
-
-  it('deve delegar para quickCreateFlow com profileId do contexto e default next_publication', async () => {
-    flowsService.quickCreateFlow.mockResolvedValue({
-      id: 'flow-1',
-      name: 'Receita',
-      integrationId: 'int-1',
-      status: 'ACTIVE',
-    });
-
-    const res = await exec(
-      { name: 'Receita', integrationId: 'int-1', dmMessage: 'Aqui esta o link' },
-      makeOptions({ id: 'org-1' }, 'perfil-A')
-    );
-
-    expect(flowsService.quickCreateFlow).toHaveBeenCalledWith(
-      'org-1',
-      expect.objectContaining({
-        integrationId: 'int-1',
-        postMode: 'next_publication',
-      }),
-      'perfil-A'
-    );
-    expect(res.output.id).toBe('flow-1');
+  it('preserva alvo agendado interno e opcao rascunho', async () => {
+    const input = { name: 'Alvo', integrationId: 'ig', postMode: 'scheduled', scheduledPostId: 'local-id', activate: false };
+    await tool.execute(input, options); expect(service.create).toHaveBeenCalledWith(scope, input);
   });
-
-  it('nao deve aceitar orgId/profileId via input (vem do contexto)', async () => {
-    flowsService.quickCreateFlow.mockResolvedValue({
-      id: 'flow-1',
-      name: 'X',
-      integrationId: 'int-1',
-      status: 'ACTIVE',
-    });
-
-    await exec(
-      { name: 'X', integrationId: 'int-1', orgId: 'org-FORJADA', profileId: 'perfil-FORJADO' },
-      makeOptions({ id: 'org-1' }, 'perfil-A')
-    );
-
-    // org sempre vem do contexto, nunca do input forjado pelo prompt
-    expect(flowsService.quickCreateFlow).toHaveBeenCalledWith(
-      'org-1',
-      expect.any(Object),
-      'perfil-A'
-    );
-  });
-
-  it('deve rejeitar dmButtonUrl que nao e https publico sem chamar o service', async () => {
-    const res = await exec(
-      {
-        name: 'X',
-        integrationId: 'int-1',
-        dmMessage: 'oi',
-        dmButtonUrl: 'http://localhost/admin',
-      },
-      makeOptions({ id: 'org-1' }, undefined)
-    );
-
-    expect(res.errors).toBeDefined();
-    expect(flowsService.quickCreateFlow).not.toHaveBeenCalled();
-  });
-
-  it('deve retornar errors quando o service lanca (ex.: integracao de outro perfil)', async () => {
-    flowsService.quickCreateFlow.mockRejectedValue(
-      new Error('Integracao pertence a outro perfil')
-    );
-
-    const res = await exec(
-      { name: 'X', integrationId: 'int-1' },
-      makeOptions({ id: 'org-1' }, 'perfil-A')
-    );
-
-    expect(res.errors).toContain('outro perfil');
-  });
-
-  it('deve retornar erro quando nao ha organizacao no contexto', async () => {
-    const res = await exec(
-      { name: 'X', integrationId: 'int-1' },
-      makeOptions(null, undefined)
-    );
-
-    expect(res.errors).toBeDefined();
-    expect(flowsService.quickCreateFlow).not.toHaveBeenCalled();
-  });
+  it('preserva os aliases declarados', async () => { const input = { name: 'Dark', integrationId: 'ig', postMode: 'specific', aliasMediaIds: ['123'], activate: false }; await tool.execute(input, options); expect(service.create).toHaveBeenCalledWith(scope, input); });
+  it('recusa org e perfil forjados sem invocar dominio', async () => { const result = await tool.execute({ name: 'X', integrationId: 'ig', orgId: 'outra', profileId: 'outro' }, options); expect(result.errors || result.error).toBeDefined(); expect(service.create).not.toHaveBeenCalled(); });
+  it('nao aceita contexto sem organizacao', async () => { const result = await tool.execute({ name: 'X', integrationId: 'ig' }, { requestContext: { get: (): unknown => undefined } }); expect(result.errors).toContain('ORGANIZATION_REQUIRED'); expect(service.create).not.toHaveBeenCalled(); });
+  it('retorna codigo controlado sem vazar erro/token do dominio', async () => { service.create.mockRejectedValue(new Error('token=segredo')); const result = await tool.execute({ name: 'X', integrationId: 'ig' }, options); expect(result.errors).toContain('AUTOMATION_OPERATION_FAILED'); expect(result.errors).not.toContain('segredo'); service.create.mockRejectedValue(new HttpException('PROFILE_KEY_MISMATCH', 403)); expect((await tool.execute({ name: 'X', integrationId: 'ig' }, options)).errors).toContain('PROFILE_KEY_MISMATCH'); });
 });

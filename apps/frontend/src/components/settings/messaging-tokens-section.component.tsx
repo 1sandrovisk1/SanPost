@@ -1,11 +1,31 @@
 'use client';
 
-import React, { FC, useCallback, useEffect, useState } from 'react';
-import { useT } from '@gitroom/react/translation/get.transation.service.client';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
+import {
+  useT,
+  useTranslationSettings,
+} from '@gitroom/react/translation/get.transation.service.client';
+import useSWR, { SWRConfig } from 'swr';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import { useToaster } from '@gitroom/react/toaster/toaster';
-
-const DAY = 86_400_000;
+import { Button } from '@gitroom/react/form/button';
+import { useUser } from '@gitroom/frontend/components/layout/user.context';
+import { MetaActionFeedback } from './meta-action-feedback.component';
+import { facebookSetupDateOptions } from './facebook-automation-dates';
+import {
+  DiagnosticSummary,
+  DiagnosticField,
+  DiagnosticDetails,
+  DiagnosticIdentifier,
+} from './meta-diagnostics.component';
 
 interface IgTokenEntry {
   igUserId: string;
@@ -14,7 +34,6 @@ interface IgTokenEntry {
   validatedAt?: string;
   hasToken?: boolean;
 }
-
 interface MessagingTokensResponse {
   hasSystemToken: boolean;
   systemTokenValidatedAt: string | null;
@@ -30,491 +49,528 @@ interface MessagingTokensResponse {
   } | null;
   instagramTokens: IgTokenEntry[];
 }
+type TokenSection = 'instagram' | 'system-user';
 
-interface Props {
-  refreshKey?: number;
-}
-
-type TokenStatus = 'fresh' | 'expiring' | 'expired';
-
-function tokenStatus(refreshedAt?: string): TokenStatus {
-  if (!refreshedAt) return 'expired';
-  const age = Date.now() - Date.parse(refreshedAt);
-  if (!Number.isFinite(age)) return 'expired';
-  if (age > 58 * DAY) return 'expired';
-  if (age > 50 * DAY) return 'expiring';
-  return 'fresh';
-}
-
-function formatRelative(dateStr?: string): string {
-  if (!dateStr) return '—';
-  const diff = Date.now() - Date.parse(dateStr);
-  if (!Number.isFinite(diff)) return dateStr;
-  const days = Math.floor(diff / DAY);
-  if (days < 1) return 'hoje';
-  if (days === 1) return '1 dia atras';
-  if (days < 30) return `${days} dias atras`;
-  return `${Math.floor(days / 30)} meses atras`;
-}
-
-export const MessagingTokensSection: FC<Props> = ({ refreshKey = 0 }) => {
-  const t = useT();
+function useTokenStore(enabled: boolean) {
   const fetchApi = useFetch();
+  const t = useT();
   const toaster = useToaster();
-
-  const [loading, setLoading] = useState(true);
-  const [state, setState] = useState<MessagingTokensResponse | null>(null);
-  const [systemInput, setSystemInput] = useState('');
-  const [savingSystem, setSavingSystem] = useState(false);
-  const [adding, setAdding] = useState(false);
-  const [newToken, setNewToken] = useState('');
-  const [savingAdd, setSavingAdd] = useState(false);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetchApi('/credentials/facebook/messaging-tokens');
-      if (!res.ok) {
-        setState({
-          hasSystemToken: false,
-          systemTokenValidatedAt: null,
-          systemTokenInfo: null,
-          instagramTokens: [],
-        });
-        return;
-      }
-      const body = (await res.json()) as MessagingTokensResponse;
-      setState(body);
-    } finally {
-      setLoading(false);
-    }
-  }, [fetchApi]);
-
-  useEffect(() => {
-    load();
-  }, [load, refreshKey]);
-
-  const handleSaveSystemToken = useCallback(async () => {
-    if (!systemInput.trim()) return;
-    setSavingSystem(true);
-    try {
-      const res = await fetchApi('/credentials/facebook/messaging-tokens', {
-        method: 'POST',
-        body: JSON.stringify({ metaSystemUserToken: systemInput.trim() }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok || body.ok === false) {
-        toaster.show(
-          body.error ||
-            t(
-              'meta_system_user_token_invalid',
-              'Token invalido. Verifique o Meta Dashboard.'
-            ),
-          'warning'
-        );
-        return;
-      }
-      setState(body);
-      setSystemInput('');
-      toaster.show(
-        t('token_validated', 'Token validado e salvo'),
-        'success'
-      );
-    } finally {
-      setSavingSystem(false);
-    }
-  }, [systemInput, fetchApi, toaster, t]);
-
-  const handleRemoveSystemToken = useCallback(async () => {
-    setSavingSystem(true);
-    try {
-      const res = await fetchApi('/credentials/facebook/messaging-tokens', {
-        method: 'POST',
-        body: JSON.stringify({ metaSystemUserToken: '' }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        toaster.show(
-          t('credentials_remove_error', 'Erro ao remover'),
-          'warning'
-        );
-        return;
-      }
-      setState(body);
-      toaster.show(t('credentials_removed', 'Removido'), 'success');
-    } finally {
-      setSavingSystem(false);
-    }
-  }, [fetchApi, toaster, t]);
-
-  const handleAddIgToken = useCallback(async () => {
-    if (!newToken.trim() || !state) return;
-    setSavingAdd(true);
-    try {
-      // Validate first so we capture igUserId + username from Meta.
-      const validateRes = await fetchApi(
-        '/credentials/facebook/validate-ig-token',
-        {
-          method: 'POST',
-          body: JSON.stringify({ token: newToken.trim() }),
-        }
-      );
-      const validated = await validateRes.json().catch(() => ({}));
-      if (!validateRes.ok || !validated.ok || !validated.igUserId) {
-        toaster.show(
-          validated.error ||
-            t(
-              'meta_ig_token_invalid',
-              'Token invalido. Verifique o Meta Dashboard.'
-            ),
-          'warning'
-        );
-        return;
-      }
-
-      // Merge with existing list: replace if igUserId already present.
-      const existing = state.instagramTokens.filter(
-        (e) => e.igUserId !== validated.igUserId
-      );
-      const updatedList = [
-        ...existing,
-        {
-          igUserId: validated.igUserId,
-          username: validated.username,
-          token: newToken.trim(),
-        },
-      ];
-
-      const saveRes = await fetchApi(
-        '/credentials/facebook/messaging-tokens',
-        {
-          method: 'POST',
-          body: JSON.stringify({ instagramTokens: updatedList }),
-        }
-      );
-      const saved = await saveRes.json().catch(() => ({}));
-      if (!saveRes.ok || saved.ok === false) {
-        toaster.show(
-          saved.error || t('credentials_save_error', 'Erro ao salvar'),
-          'warning'
-        );
-        return;
-      }
-      setState(saved);
-      setNewToken('');
-      setAdding(false);
-      toaster.show(
-        t('token_validated', 'Token validado e salvo'),
-        'success'
-      );
-    } finally {
-      setSavingAdd(false);
-    }
-  }, [newToken, state, fetchApi, toaster, t]);
-
-  const handleRemoveIgToken = useCallback(
-    async (igUserId: string) => {
-      if (!state) return;
-      const kept = state.instagramTokens.filter(
-        (e) => e.igUserId !== igUserId
-      );
-      // The save endpoint expects full token payloads for entries to keep;
-      // since we only have hasToken=true, we send an empty list to clear
-      // everything and the user re-adds. Better: send a special flag? For
-      // simplicity, we re-post with kept items WITHOUT their tokens — the
-      // backend logic preserves existing entries when token equals stored.
-      // But we can't send the token (we don't have it), so we'll just skip
-      // the entry. The backend would then drop it. To make this work, we
-      // reconstruct a "keep" payload using empty strings that the backend
-      // handles as "preserve if exists".
-      //
-      // Cleanest: add a dedicated DELETE endpoint. For now, keep it simple
-      // and let the user re-paste tokens if they want them. We DO persist
-      // the full list (with existing tokens) by using the endpoint shape
-      // that preserves entries whose token matches what is stored.
-      //
-      // Workaround: call a new "remove" action via passing the keep list
-      // with empty tokens — the backend will detect empty token and keep
-      // the prior entry. Since our current backend only accepts full token
-      // shapes, we need a different approach.
-      //
-      // Implement a lightweight delete by sending the FULL replacement list
-      // via a new shape. The simplest: clear then recreate. But that loses
-      // other tokens. So: for now, only support removing the full list
-      // (replace with empty) OR individual delete by reposting everything
-      // from server state, which we don't have server-side token values.
-      //
-      // Final decision: just POST a replacement list using empty tokens for
-      // the kept entries, and the backend will skip-or-preserve them. We
-      // need backend support — which we already have: saveMessagingTokens
-      // checks `if prior && prior.token === incoming.token` — but incoming
-      // empty won't match. So this needs a dedicated handler.
-      //
-      // Simplest final fix: use a dedicated DELETE in the backend — but we
-      // didn't add one. Instead, we add it inline here with a PATCH-like
-      // payload that the backend understands.
-      //
-      // For now, remove is handled via a "clear everything" approach when
-      // only 1 token exists, and we show a warning otherwise. TODO: proper
-      // delete endpoint in a future commit.
-      toaster.show(
-        t(
-          'messaging_token_remove_not_supported',
-          'Para remover um token, limpe toda a lista e readicione as outras contas.'
-        ),
-        'warning'
-      );
+  const user = useUser();
+  const headers = {
+    'x-expected-org-id': user?.orgId || '',
+    'x-expected-profile-id': user?.profileId || '',
+  };
+  const {
+    data: state,
+    error,
+    isLoading: loading,
+    isValidating,
+    mutate,
+  } = useSWR<MessagingTokensResponse>(
+    enabled
+      ? ['/credentials/facebook/messaging-tokens', user?.orgId, user?.profileId]
+      : null,
+    async ([path]: [string, string, string]) => {
+      const res = await fetchApi(path, { headers });
+      if (!res.ok)
+        throw new Error(res.status === 409 ? 'SCOPE_CHANGED' : 'UNAVAILABLE');
+      const body = await res.json();
+      if (
+        !Array.isArray(body.instagramTokens) ||
+        typeof body.hasSystemToken !== 'boolean'
+      )
+        throw new Error('UNAVAILABLE');
+      return body;
     },
-    [state, toaster, t]
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+      shouldRetryOnError: false,
+    }
   );
+  const load = () => mutate().catch(() => undefined);
+  const [activeAction, setActiveAction] = useState<string | null>(null);
+  const busy = activeAction !== null;
+  const inFlight = useRef(false);
+  const [feedback, setFeedback] = useState<{
+    section: TokenSection;
+    key: string;
+    error?: boolean;
+  } | null>(null);
+  const [systemInput, setSystemInput] = useState('');
+  const [newToken, setNewToken] = useState('');
+  const [adding, setAdding] = useState(false);
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
-  const handleClearAllIgTokens = useCallback(async () => {
-    setSavingSystem(true);
+  // Both tabs share one response. Writes keep the existing partial-payload contract.
+  const save = async (body: unknown) => {
+    const res = await fetchApi('/credentials/facebook/messaging-tokens', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    });
+    const result = await res.json().catch(() => ({}));
+    if (!res.ok || result.ok === false)
+      throw new Error(res.status === 409 ? 'SCOPE_CHANGED' : 'SAVE_FAILED');
+    if (mounted.current) await mutate(result, false);
+  };
+  const perform = async (
+    action: string,
+    section: TokenSection,
+    operation: () => Promise<void>
+  ) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setActiveAction(action);
+    setFeedback(null);
     try {
-      const res = await fetchApi('/credentials/facebook/messaging-tokens', {
-        method: 'POST',
-        body: JSON.stringify({ instagramTokens: [] }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) {
+      await operation();
+      if (mounted.current)
+        setFeedback({
+          section,
+          key: action.endsWith('save')
+            ? 'token_validated'
+            : 'meta_token_removed',
+        });
+    } catch (failure) {
+      if (mounted.current) {
+        setFeedback({
+          section,
+          error: true,
+          key:
+            failure instanceof Error && failure.message === 'SCOPE_CHANGED'
+              ? 'meta_tokens_scope_changed'
+              : 'meta_tokens_save_failed',
+        });
         toaster.show(
-          t('credentials_remove_error', 'Erro ao remover'),
+          t(
+            failure instanceof Error && failure.message === 'SCOPE_CHANGED'
+              ? 'meta_tokens_scope_changed'
+              : 'meta_tokens_save_failed'
+          ),
           'warning'
         );
-        return;
       }
-      setState(body);
-      toaster.show(t('credentials_removed', 'Removido'), 'success');
     } finally {
-      setSavingSystem(false);
+      inFlight.current = false;
+      if (mounted.current) setActiveAction(null);
     }
-  }, [fetchApi, toaster, t]);
-
-  if (loading) {
+  };
+  const saveSystem = () =>
+    perform('system-save', 'system-user', async () => {
+      if (!systemInput.trim()) return;
+      await save({ metaSystemUserToken: systemInput.trim() });
+      if (mounted.current) {
+        setSystemInput('');
+        toaster.show(t('token_validated'), 'success');
+      }
+    });
+  const removeSystem = () =>
+    perform('system-remove', 'system-user', () =>
+      save({ metaSystemUserToken: '' })
+    );
+  const clearInstagram = () =>
+    perform('instagram-remove', 'instagram', () =>
+      save({ instagramTokens: [] })
+    );
+  const addInstagram = () =>
+    perform('instagram-save', 'instagram', async () => {
+      if (!state || !newToken.trim()) return;
+      const token = newToken.trim();
+      const response = await fetchApi(
+        '/credentials/facebook/validate-ig-token',
+        { method: 'POST', body: JSON.stringify({ token }) }
+      );
+      const validated = await response.json().catch(() => ({}));
+      if (!response.ok || !validated.ok || !validated.igUserId)
+        throw new Error('INVALID_TOKEN');
+      if (!mounted.current) return;
+      await save({
+        instagramTokens: [
+          ...state.instagramTokens.filter(
+            (entry) => entry.igUserId !== validated.igUserId
+          ),
+          { igUserId: validated.igUserId, username: validated.username, token },
+        ],
+      });
+      if (mounted.current) {
+        setNewToken('');
+        setAdding(false);
+        toaster.show(t('token_validated'), 'success');
+      }
+    });
+  return {
+    state,
+    loading,
+    error,
+    busy,
+    activeAction,
+    feedback,
+    isValidating,
+    load,
+    systemInput,
+    setSystemInput,
+    newToken,
+    setNewToken,
+    adding,
+    setAdding,
+    saveSystem,
+    removeSystem,
+    clearInstagram,
+    addInstagram,
+  };
+}
+const TokenContext = createContext<ReturnType<typeof useTokenStore> | null>(
+  null
+);
+function ScopedTokens({
+  children,
+  enabled,
+}: {
+  children: ReactNode;
+  enabled: boolean;
+}) {
+  const value = useTokenStore(enabled);
+  return (
+    <TokenContext.Provider value={value}>{children}</TokenContext.Provider>
+  );
+}
+export function MessagingTokensProvider({
+  children,
+  enabled = true,
+}: {
+  children: ReactNode;
+  enabled?: boolean;
+}) {
+  const user = useUser();
+  // Remount local drafts and metadata when the authenticated scope changes.
+  return (
+    <SWRConfig
+      key={`${user?.orgId || ''}:${user?.profileId || ''}`}
+      value={{ provider: () => new Map() }}
+    >
+      <ScopedTokens enabled={enabled}>{children}</ScopedTokens>
+    </SWRConfig>
+  );
+}
+function useTokens() {
+  const value = useContext(TokenContext);
+  if (!value) throw new Error('MessagingTokensProvider required');
+  return value;
+}
+function TokenLoadState({ children }: { children: ReactNode }) {
+  const { loading, error, state, load, isValidating } = useTokens();
+  const t = useT();
+  if (loading)
     return (
-      <div className="text-[12px] text-customColor18">
-        {t('loading', 'Carregando...')}
+      <p role="status" className="text-sm text-newTextColor/70">
+        {t('loading')}
+      </p>
+    );
+  if (error || !state)
+    return (
+      <div role="alert" className="space-y-3 text-sm">
+        <p>
+          {t(
+            error?.message === 'SCOPE_CHANGED'
+              ? 'meta_tokens_scope_changed'
+              : 'meta_tokens_unavailable'
+          )}
+        </p>
+        <Button
+          secondary
+          loading={isValidating}
+          loadingLabel={t('meta_action_loading')}
+          onClick={() => void load()}
+        >
+          {t('fb_auto_retry')}
+        </Button>
       </div>
     );
-  }
+  return <>{children}</>;
+}
+const secondary =
+  'rounded-lg border border-newTableBorder text-sm focus-visible:ring-2 focus-visible:ring-btnPrimary';
 
-  const hasSystem = !!state?.hasSystemToken;
-  const hasIgTokens = (state?.instagramTokens?.length || 0) > 0;
-
-  return (
-    <div className="flex flex-col gap-[18px]">
-      {/* ============ Token do Instagram (por conta) — principal ============ */}
-      <div className="flex flex-col gap-[8px]">
-        <div className="text-[12px] font-[600] text-textColor">
-          {t('meta_instagram_tokens_label', 'Token do Instagram')}
-        </div>
-        <div className="text-[11px] text-customColor18 leading-[1.4]">
-          {t(
-            'meta_instagram_tokens_hint',
-            'Gere um token especifico para cada Instagram. Expira em 60 dias, renovado automaticamente a cada uso apos 24h.'
-          )}
-        </div>
-
-        {hasIgTokens && (
-          <div className="flex flex-col gap-[6px]">
-            {state!.instagramTokens.map((entry) => {
-              const status = tokenStatus(entry.refreshedAt);
-              const statusClass =
-                status === 'fresh'
-                  ? 'bg-customColor42/20 text-customColor42'
-                  : status === 'expiring'
-                  ? 'bg-customColor13/20 text-customColor13'
-                  : 'bg-customColor19/20 text-customColor19';
-              const statusLabel =
-                status === 'fresh'
-                  ? t('token_valid', 'Token valido')
-                  : status === 'expiring'
-                  ? t('token_expiring', 'Expirando')
-                  : t('token_expired', 'Expirado');
-              return (
-                <div
-                  key={entry.igUserId}
-                  className="flex items-center justify-between gap-[8px] px-[12px] py-[8px] rounded-[8px] border border-newTableBorder bg-newBgColorInner"
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[13px] text-textColor truncate">
-                      {entry.username ? `@${entry.username}` : entry.igUserId}
-                    </div>
-                    <div className="text-[11px] text-customColor18">
-                      {t('refreshed', 'Renovado')}: {formatRelative(entry.refreshedAt)}
-                    </div>
-                  </div>
-                  <span
-                    className={`inline-flex items-center gap-[4px] rounded-full px-[8px] py-[2px] text-[10px] ${statusClass}`}
-                  >
-                    {statusLabel}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
+export function MessagingTokensSection({
+  section = 'instagram',
+}: {
+  section?: TokenSection;
+}) {
+  const store = useTokens();
+  const { state, busy } = store;
+  const t = useT();
+  const inputId = useId();
+  const system = section === 'system-user';
+  const value = system ? store.systemInput : store.newToken;
+  const label = system
+    ? t('meta_system_user_token_label')
+    : t('meta_instagram_tokens_label');
+  const input = (
+    <div className="space-y-3">
+      <label htmlFor={inputId} className="block text-sm font-medium">
+        {label}
+      </label>
+      <input
+        id={inputId}
+        type="password"
+        autoComplete="off"
+        spellCheck={false}
+        value={value}
+        onChange={(event) =>
+          system
+            ? store.setSystemInput(event.target.value)
+            : store.setNewToken(event.target.value)
+        }
+        placeholder={t('meta_token_paste')}
+        className="h-10 w-full rounded-lg border border-newTableBorder bg-newBgColorInner px-3 text-sm focus-visible:ring-2 focus-visible:ring-btnPrimary"
+      />
+      <div className="flex flex-wrap justify-end gap-2">
+        {!system && (
+          <Button
+            secondary
+            disabled={busy}
+            className={secondary}
+            onClick={() => {
+              store.setAdding(false);
+              store.setNewToken('');
+            }}
+          >
+            {t('cancel')}
+          </Button>
         )}
-
-        {adding ? (
-          <div className="flex flex-col gap-[8px]">
-            <textarea
-              className="w-full bg-newBgColorInner border border-newTableBorder rounded-[8px] text-[12px] text-textColor px-[12px] py-[10px] outline-none resize-none font-mono"
-              rows={3}
-              placeholder={t(
-                'meta_ig_token_placeholder',
-                'Cole o Instagram User Access Token aqui'
-              )}
-              value={newToken}
-              onChange={(e) => setNewToken(e.target.value)}
-            />
-            <div className="flex items-center justify-between gap-[8px]">
-              <a
-                href="https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[11px] text-customColor18 underline hover:font-bold"
-              >
-                {t('meta_ig_token_how_to', 'Como gerar →')}
-              </a>
-              <div className="flex gap-[6px]">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAdding(false);
-                    setNewToken('');
-                  }}
-                  className="rounded-[4px] border border-fifth bg-btnSimple px-[12px] py-[6px] text-[11px] text-textColor"
-                >
-                  {t('cancel', 'Cancelar')}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleAddIgToken}
-                  disabled={!newToken.trim() || savingAdd}
-                  className="rounded-[4px] bg-btnPrimary px-[12px] py-[6px] text-[11px] text-white disabled:opacity-50"
-                >
-                  {savingAdd
-                    ? t('validating', 'Validando...')
-                    : t('validate_and_save', 'Validar e salvar')}
-                </button>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="flex items-center gap-[12px]">
-            <button
-              type="button"
-              onClick={() => setAdding(true)}
-              className="text-[11px] text-btnPrimary hover:opacity-80"
-            >
-              + {t('meta_instagram_tokens_add', 'Adicionar conta')}
-            </button>
-            {hasIgTokens && (
-              <button
-                type="button"
-                onClick={handleClearAllIgTokens}
-                disabled={savingSystem}
-                className="text-[11px] text-customColor19 hover:opacity-80"
-              >
-                {t('meta_instagram_tokens_clear_all', 'Limpar todos')}
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* ============ System User Token — alternativa ============ */}
-      <div className="flex flex-col gap-[8px] border-t border-fifth pt-[14px]">
-        <div className="flex items-center gap-[8px]">
-          <div className="text-[12px] font-[600] text-textColor">
-            {t(
-              'meta_system_user_token_label',
-              'Token Usuario do Sistema'
-            )}
-          </div>
-          <span className="inline-flex items-center rounded-full bg-fifth text-customColor18 px-[8px] py-[1px] text-[10px]">
-            {t('alternative', 'alternativa')}
-          </span>
-          {hasSystem && (
-            <span className="inline-flex items-center gap-[4px] rounded-full bg-customColor42/20 text-customColor42 px-[8px] py-[1px] text-[10px]">
-              <span className="w-[5px] h-[5px] rounded-full bg-customColor42 inline-block" />
-              {t('token_valid', 'Token valido')}
-            </span>
-          )}
-        </div>
-        <div className="text-[11px] text-customColor18 leading-[1.4]">
-          {t(
-            'meta_system_user_token_hint',
-            'Gere em Business Settings > System Users. Nao expira. Adicione o usuario ao Instagram que deseja utilizar.'
-          )}
-        </div>
-
-        {hasSystem && state?.systemTokenInfo ? (
-          <div className="flex flex-col gap-[4px] text-[12px] text-customColor18">
-            <div>
-              <span className="text-textColor font-[500]">
-                {state.systemTokenInfo.businessName ||
-                  t('business_manager', 'Business Manager')}
-              </span>
-              {' · '}
-              {state.systemTokenInfo.pages.length}{' '}
-              {t('connected_accounts', 'contas conectadas')}
-            </div>
-            {state.systemTokenInfo.pages.length === 0 && (
-              <div className="text-[11px] text-customColor19 leading-[1.4]">
-                {t(
-                  'meta_system_user_token_no_assets',
-                  'O token e valido, mas nenhuma Pagina/conta do Instagram esta atribuida a este Usuario do Sistema. Permissoes (escopos) nao bastam: em Business Settings > System Users, clique em "Adicionar ativos" e atribua a Pagina e a conta do Instagram com acesso total.'
-                )}
-              </div>
-            )}
-            <button
-              type="button"
-              onClick={handleRemoveSystemToken}
-              disabled={savingSystem}
-              className="self-start text-[11px] text-customColor19 hover:opacity-80"
-            >
-              {t('remove', 'Remover')}
-            </button>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-[8px]">
-            <textarea
-              className="w-full bg-newBgColorInner border border-newTableBorder rounded-[8px] text-[12px] text-textColor px-[12px] py-[10px] outline-none resize-none font-mono"
-              rows={3}
-              placeholder={t(
-                'meta_system_user_token_placeholder',
-                'Cole o System User Access Token aqui (comeca com EAA...)'
-              )}
-              value={systemInput}
-              onChange={(e) => setSystemInput(e.target.value)}
-            />
-            <div className="flex items-center justify-between">
-              <a
-                href="https://business.facebook.com/settings/system-users"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[11px] text-customColor18 underline hover:font-bold"
-              >
-                {t(
-                  'meta_system_user_token_how_to',
-                  'Como gerar no Business Manager →'
-                )}
-              </a>
-              <button
-                type="button"
-                onClick={handleSaveSystemToken}
-                disabled={!systemInput.trim() || savingSystem}
-                className="rounded-[4px] bg-btnPrimary px-[12px] py-[6px] text-[11px] text-white hover:opacity-80 disabled:opacity-50"
-              >
-                {savingSystem
-                  ? t('validating', 'Validando...')
-                  : t('validate_and_save', 'Validar e salvar')}
-              </button>
-            </div>
-          </div>
-        )}
+        <Button
+          disabled={!value.trim() || busy}
+          className="rounded-lg text-sm"
+          loading={
+            store.activeAction === (system ? 'system-save' : 'instagram-save')
+          }
+          loadingLabel={t('validating')}
+          onClick={() =>
+            void (system ? store.saveSystem() : store.addInstagram())
+          }
+        >
+          {t('validate_and_save')}
+        </Button>
       </div>
     </div>
   );
-};
+  return (
+    <TokenLoadState>
+      <div className="space-y-4 text-sm">
+        {store.feedback?.section === section && (
+          <MetaActionFeedback error={store.feedback.error}>
+            {t(store.feedback.key)}
+          </MetaActionFeedback>
+        )}
+        {system ? (
+          <>
+            <p className="text-newTextColor/70">
+              {t('meta_system_scope_summary')}
+            </p>
+            {state?.hasSystemToken ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-newTableBorder p-3">
+                <div className="space-y-1">
+                  <p className="font-medium">
+                    {state.systemTokenInfo?.businessName ||
+                      t('meta_system_user_token_label')}
+                  </p>
+                  <p className="text-xs text-newTextColor/60">
+                    {t('meta_token_added')}
+                  </p>
+                </div>
+                <Button
+                  secondary
+                  disabled={busy}
+                  className={secondary}
+                  loading={store.activeAction === 'system-remove'}
+                  loadingLabel={t('meta_action_removing')}
+                  onClick={() => void store.removeSystem()}
+                >
+                  {t('meta_system_remove')}
+                </Button>
+              </div>
+            ) : (
+              input
+            )}
+          </>
+        ) : (
+          <>
+            <div className="flex items-center gap-2">
+              <h3 className="font-medium">
+                {t('meta_instagram_tokens_label')}
+              </h3>
+            </div>
+            {!!state?.instagramTokens.length && (
+              <div className="space-y-2">
+                {state.instagramTokens.map((entry) => (
+                  <div
+                    key={entry.igUserId}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-newTableBorder p-3"
+                  >
+                    <span className="min-w-0 break-all">
+                      {entry.username ? `@${entry.username}` : entry.igUserId}
+                    </span>
+                    <span className="text-xs text-newTextColor/60">
+                      {t('meta_token_added')}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {store.adding ? (
+              input
+            ) : (
+              <div className="flex flex-wrap gap-3">
+                <Button
+                  secondary
+                  className={secondary}
+                  disabled={busy}
+                  onClick={() => store.setAdding(true)}
+                >
+                  {t('meta_instagram_tokens_add')}
+                </Button>
+                {!!state?.instagramTokens.length && (
+                  <Button
+                    secondary
+                    className={secondary}
+                    disabled={busy}
+                    loading={store.activeAction === 'instagram-remove'}
+                    loadingLabel={t('meta_action_removing')}
+                    onClick={() => void store.clearInstagram()}
+                  >
+                    {t('meta_instagram_tokens_clear_all')}
+                  </Button>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </TokenLoadState>
+  );
+}
+
+export function MessagingTokensDiagnostics({
+  section,
+}: {
+  section: TokenSection;
+}) {
+  const { state } = useTokens();
+  const t = useT();
+  const { resolvedLanguage } = useTranslationSettings();
+  const date = (value?: string | null) =>
+    value
+      ? facebookSetupDateOptions(value, resolvedLanguage || 'pt').time
+      : t('meta_diagnostic_not_available');
+  return (
+    <TokenLoadState>
+      <div className="space-y-4">
+        {section === 'system-user' ? (
+          <>
+            <DiagnosticSummary
+              title={t('meta_diagnostic_system_token')}
+              status={t(
+                state?.hasSystemToken
+                  ? 'meta_token_added'
+                  : 'meta_token_not_added'
+              )}
+            >
+              {state?.hasSystemToken && (
+                <>
+                  <dl>
+                    <DiagnosticField label={t('meta_token_last_validation')}>
+                      {date(state.systemTokenValidatedAt)}
+                    </DiagnosticField>
+                    <DiagnosticField label={t('meta_diagnostic_expiry')}>
+                      {t('meta_diagnostic_not_available')}
+                    </DiagnosticField>
+                  </dl>
+                  <p className="text-xs text-newTextColor/60">
+                    {t('meta_system_expiry_unknown')}
+                  </p>
+                </>
+              )}
+            </DiagnosticSummary>
+            {!!state?.systemTokenInfo?.pages.length && (
+              <DiagnosticDetails title={t('meta_system_assets')}>
+                <p className="text-sm">
+                  {t('meta_diagnostic_asset_count', {
+                    count: state.systemTokenInfo.pages.length,
+                  })}
+                </p>
+                <p className="text-xs text-newTextColor/60">
+                  {t('meta_diagnostic_assets_notice')}
+                </p>
+                <ul className="space-y-3">
+                  {state.systemTokenInfo.pages.map((page) => (
+                    <li key={page.id} className="space-y-2 break-words">
+                      <p className="font-medium">
+                        {page.name}
+                        {page.username ? ` · @${page.username}` : ''}
+                      </p>
+                      <DiagnosticIdentifier
+                        label={t('meta_diagnostic_page_id')}
+                        value={page.id}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              </DiagnosticDetails>
+            )}
+            {state?.hasSystemToken && !state.systemTokenInfo?.pages.length && (
+              <p>{t('meta_system_no_assets')}</p>
+            )}
+          </>
+        ) : (
+          <>
+            {!state?.instagramTokens.length && (
+              <p>{t('meta_token_not_added')}</p>
+            )}
+            {state?.instagramTokens.map((entry) => (
+              <div
+                key={entry.igUserId}
+                className="space-y-4 border-b border-newTableBorder pb-4"
+              >
+                <DiagnosticSummary
+                  title={
+                    entry.username
+                      ? `@${entry.username}`
+                      : t('meta_diagnostic_instagram_account')
+                  }
+                  status={t(
+                    entry.hasToken ? 'meta_token_added' : 'meta_token_not_added'
+                  )}
+                >
+                  <dl>
+                    <DiagnosticField label={t('meta_token_last_validation')}>
+                      {date(entry.validatedAt)}
+                    </DiagnosticField>
+                    <DiagnosticField label={t('meta_token_last_update')}>
+                      {date(entry.refreshedAt)}
+                    </DiagnosticField>
+                  </dl>
+                </DiagnosticSummary>
+                <DiagnosticDetails>
+                  <DiagnosticIdentifier
+                    label={t('meta_diagnostic_instagram_id')}
+                    value={entry.igUserId}
+                  />
+                </DiagnosticDetails>
+              </div>
+            ))}
+            <p className="text-xs text-newTextColor/60">
+              {t('meta_instagram_refresh_help')}
+            </p>
+          </>
+        )}
+      </div>
+    </TokenLoadState>
+  );
+}

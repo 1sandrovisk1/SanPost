@@ -1,0 +1,10 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "target": "es2020",
+    "incremental": false,
+    "noEmit": true
+  },
+  "include": ["meta-automation-proof.ts", "meta-automation-webhook.ts"]
+}

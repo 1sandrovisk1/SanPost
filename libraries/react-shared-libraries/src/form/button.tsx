@@ -9,7 +9,16 @@ import {
   useState,
 } from 'react';
 import { clsx } from 'clsx';
-const ReactLoading = ({ color = '#fff', width = 20, height = 20 }: { type?: string; color?: string; width?: number; height?: number }) => {
+const ReactLoading = ({
+  color = '#fff',
+  width = 20,
+  height = 20,
+}: {
+  type?: string;
+  color?: string;
+  width?: number;
+  height?: number;
+}) => {
   const size = Math.min(width, height);
   const borderWidth = Math.max(2, Math.round(size / 8));
   return (
@@ -32,9 +41,17 @@ export const Button: FC<
   > & {
     secondary?: boolean;
     loading?: boolean;
+    loadingLabel?: string;
     innerClassName?: string;
   }
-> = ({ children, loading, innerClassName, secondary, ...props }) => {
+> = ({
+  children,
+  loading,
+  loadingLabel,
+  innerClassName,
+  secondary,
+  ...props
+}) => {
   const ref = useRef<HTMLButtonElement | null>(null);
   const [height, setHeight] = useState<number | null>(null);
   useEffect(() => {
@@ -44,6 +61,8 @@ export const Button: FC<
     <button
       {...props}
       type={props.type || 'button'}
+      disabled={props.disabled || (loadingLabel !== undefined && !!loading)}
+      aria-busy={loadingLabel !== undefined ? !!loading : props['aria-busy']}
       ref={ref}
       className={clsx(
         (props.disabled || loading) && 'opacity-50 pointer-events-none',
@@ -53,7 +72,7 @@ export const Button: FC<
         props?.className
       )}
     >
-      {loading && (
+      {loading && loadingLabel === undefined && (
         <div className="absolute inset-0 flex items-center justify-center">
           <ReactLoading
             type="spin"
@@ -67,10 +86,21 @@ export const Button: FC<
         className={clsx(
           innerClassName,
           'flex-1 items-center justify-center flex',
-          loading && 'invisible'
+          loading && loadingLabel === undefined && 'invisible',
+          loading && loadingLabel !== undefined && 'gap-2'
         )}
       >
-        {children}
+        {loading && loadingLabel !== undefined ? (
+          <>
+            <span
+              aria-hidden="true"
+              className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent motion-reduce:animate-none"
+            />
+            {loadingLabel}
+          </>
+        ) : (
+          children
+        )}
       </div>
     </button>
   );

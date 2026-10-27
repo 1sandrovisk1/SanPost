@@ -1,3 +1,6 @@
+import { ScheduledAutomationPostsController } from './routes/scheduled-automation-posts.controller';
+import { SharedAutomationsModule } from '@gitroom/nestjs-libraries/integrations/automations/shared-automations.module';
+import { FlowsV2Controller } from './routes/flows-v2.controller';
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { AuthController } from '@gitroom/backend/api/routes/auth.controller';
 import { AuthService } from '@gitroom/backend/services/auth/auth.service';
@@ -57,8 +60,19 @@ import { GoogleProvider } from '@gitroom/backend/services/auth/providers/google.
 import { FarcasterProvider } from '@gitroom/backend/services/auth/providers/farcaster.provider';
 import { WalletProvider } from '@gitroom/backend/services/auth/providers/wallet.provider';
 import { OauthProvider } from '@gitroom/backend/services/auth/providers/oauth.provider';
+import { FacebookAutomationsController, FacebookAutomationsWebhookController } from './routes/facebook-automations.controller';
+import { FacebookAutomationSetupService } from '@gitroom/nestjs-libraries/integrations/automations/facebook-automation-setup.service';
+import { FacebookAutomationSetupRepository } from '@gitroom/nestjs-libraries/integrations/automations/facebook-automation-setup.repository';
+import { MetaAutomationGraphClient } from '@gitroom/nestjs-libraries/integrations/automations/meta-automation-graph.client';
+import { FacebookProvider } from '@gitroom/nestjs-libraries/integrations/social/facebook.provider';
+import Redis from 'ioredis';
+import { FacebookAutomationProofService } from '@gitroom/nestjs-libraries/integrations/automations/facebook-automation-proof.service';
+import { FacebookAutomationProofRepository } from '@gitroom/nestjs-libraries/integrations/automations/facebook-automation-proof.repository';
 
 const authenticatedController = [
+  ScheduledAutomationPostsController,
+  FacebookAutomationsController,
+  FlowsV2Controller,
   UsersController,
   AnalyticsController,
   IntegrationsController,
@@ -91,8 +105,9 @@ const authenticatedController = [
   RepostController,
 ];
 @Module({
-  imports: [UploadModule, AiModule],
+  imports: [UploadModule, AiModule, SharedAutomationsModule],
   controllers: [
+    FacebookAutomationsWebhookController,
     RootController,
     StripeController,
     AuthController,
@@ -105,6 +120,8 @@ const authenticatedController = [
     ...authenticatedController,
   ],
   providers: [
+    FacebookAutomationProofService,
+    FacebookAutomationProofRepository,
     AuthService,
     StripeService,
     OpenaiService,

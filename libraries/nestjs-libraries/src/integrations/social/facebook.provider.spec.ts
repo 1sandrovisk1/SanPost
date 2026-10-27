@@ -59,6 +59,26 @@ describe('FacebookProvider', () => {
   });
 
   describe('Graph API v25', () => {
+    it('solicita permissoes de automacao somente na autorizacao explicita', async () => {
+      const credentials = { client_id: '123', client_secret: 'SECRET', instanceUrl: '' };
+      const publishing = new URL((await provider.generateAuthUrl(credentials)).url);
+      const automation = new URL((await provider.generateAuthUrl({ ...credentials, facebookAutomation: true } as any)).url);
+      expect(publishing.searchParams.get('scope')).not.toContain('pages_messaging');
+      expect(automation.searchParams.get('scope')).toContain('pages_messaging');
+      expect(automation.searchParams.get('scope')).toContain('pages_manage_metadata');
+      expect(automation.searchParams.get('scope')).toContain('pages_read_user_content');
+      expect(automation.searchParams.get('auth_type')).toBe('rerequest');
+    });
+
+    it('rejeita permissao de automacao recusada pelo usuario', async () => {
+      global.fetch = jest.fn()
+        .mockResolvedValueOnce(makeRes({ access_token: 'SHORT' }))
+        .mockResolvedValueOnce(makeRes({ access_token: 'LONG' }))
+        .mockResolvedValueOnce(makeRes({ data: provider.scopes.map(permission => ({ permission, status: 'granted' })) }))
+        .mockResolvedValue(makeRes({ id: '123', name: 'User' })) as any;
+      await expect(provider.authenticate({ code: 'CODE', codeVerifier: 'V' }, { client_id: '123', client_secret: 'SECRET', instanceUrl: '', facebookAutomation: true } as any)).rejects.toMatchObject({ message: expect.stringContaining('Not enough scopes') });
+    });
+
     it('gera OAuth v25 usando a credencial recebida por perfil', async () => {
       const auth = await provider.generateAuthUrl({
         client_id: 'profile-app-id',
@@ -166,6 +186,7 @@ describe('FacebookProvider', () => {
       global.fetch = fetchMock as any;
 
       const result = await provider.analytics('page-1', 'TOK', 7);
+      expect(result.every(metric => metric.percentageChange === undefined)).toBe(true);
 
       const url = String(fetchMock.mock.calls[0][0]);
       expect(url).toContain('graph.facebook.com/v25.0/page-1/insights');
