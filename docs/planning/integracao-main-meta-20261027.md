@@ -36,5 +36,6 @@ Revisões de código, segurança e aceitação da feature; testes unitários, fr
 - Build completo frontend/backend/orchestrator aprovado após a sincronização.
 - Vitest: 183 testes Meta/editor, 21 métricas e 2 guia visual aprovados.
 - PostgreSQL isolado: 33 testes em três suítes aprovados, sem tocar regras reais. Executados no runtime Linux existente, com o schema atual; dependências atualizadas e compilação também verificadas no host com o lockfile novo.
-- Testes direcionados de compatibilidade e segurança: primeira rodada 234 aprovados. Suíte completa com cobertura, worker e regressões finais em execução; registrar resultado antes do merge.
+- Suíte geral final com cobertura: 2.201 testes aprovados em 202 suítes; 40 cenários opt-in executados separadamente (33 PostgreSQL + 7 Redis aprovados). Worker: 24 testes aprovados em cinco suítes. As regressões de compatibilidade e segurança também passaram, incluindo 14 cenários HTTP de limite/isolamento/variantes. A execução geral final foi iniciada com os arquivos estabilizados, depois das correções.
+- [PR #327](https://github.com/maiconramos/robo-multipost/pull/327): contém resultados finais e checks da CI. O último commit altera somente este registro de validação; o código submetido à CI é `73b60245`. Nenhum fonte ou teste foi modificado depois dessa validação.
 - Não houve novo envio, anúncio, agendamento, atualização de autorização, deploy ou tag de produção. O lockfile atualizado requer dependências compatíveis no próximo start local; a imagem antiga não é tratada como atualizada.
