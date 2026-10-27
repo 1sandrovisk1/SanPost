@@ -1,5 +1,8 @@
-import { isSafePublicHttpsUrl } from '@gitroom/nestjs-libraries/dtos/webhooks/webhook.url.validator';
-import { ssrfSafeDispatcher } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
+import { fetchPublicUrl } from './public-url.fetch';
+
+// Mesmo teto do upload de video (`getMaxUploadSize`): o upload por URL tambem
+// recebe videos (repost do Instagram).
+const MAX_REMOTE_MEDIA_BYTES = 1024 * 1024 * 1024;
 
 /**
  * Resolve um `path` para `{ buffer, contentType, extension }` aceitando
@@ -11,9 +14,10 @@ import { ssrfSafeDispatcher } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf
  * data URL antes de chamar `storage.uploadSimple`, sem este helper o
  * upload falha.
  *
- * URLs HTTP(S) (fornecidas pelo usuario) passam por validacao SSRF
- * (`isSafePublicHttpsUrl`) e usam o `ssrfSafeDispatcher` (DNS-pinning) para
- * fechar a janela TOCTOU. Data URLs nao tocam a rede.
+ * URLs HTTP(S) (fornecidas pelo usuario) passam por `fetchPublicUrl`:
+ * HTTPS publica (`isSafePublicHttpsUrl`), `ssrfSafeDispatcher` forcado
+ * (DNS-pinning + IP literal na conexao), timeout e limite de bytes; resposta
+ * nao-2xx falha em vez de virar midia. Data URLs nao tocam a rede.
  */
 export async function loadFromUrlOrDataUrl(path: string): Promise<{
   buffer: Buffer;
@@ -38,21 +42,13 @@ export async function loadFromUrlOrDataUrl(path: string): Promise<{
     return { buffer, contentType, extension };
   }
 
-  if (!(await isSafePublicHttpsUrl(path))) {
-    throw new Error('Unsafe URL');
-  }
-  const res = await fetch(path, {
-    // @ts-ignore — undici option, not in lib.dom fetch types
-    dispatcher: ssrfSafeDispatcher,
+  const { buffer, contentType } = await fetchPublicUrl(path, {
+    maxBytes: MAX_REMOTE_MEDIA_BYTES,
+    timeoutMs: 5 * 60_000,
   });
-  const contentType =
-    res?.headers?.get('content-type') ||
-    res?.headers?.get('Content-Type') ||
-    'application/octet-stream';
   const extension =
     contentType.split('/')[1]?.split('+')[0] ||
     path.split('?')[0].split('#')[0].split('.').pop() ||
     'bin';
-  const buffer = Buffer.from(await res.arrayBuffer());
   return { buffer, contentType, extension };
 }

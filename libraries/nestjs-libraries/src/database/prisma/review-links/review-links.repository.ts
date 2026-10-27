@@ -17,7 +17,15 @@ export class ReviewLinksRepository {
         organizationId: orgId,
         deletedAt: null,
       },
-      select: { id: true, organizationId: true },
+      select: { id: true, organizationId: true, profileId: true },
+    });
+  }
+
+  // Perfil do post de um link da org (revogacao por membro USER).
+  async findLinkPostScope(linkId: string, orgId: string) {
+    return this._reviewLink.model.reviewLink.findFirst({
+      where: { id: linkId, organizationId: orgId },
+      select: { id: true, post: { select: { profileId: true } } },
     });
   }
 

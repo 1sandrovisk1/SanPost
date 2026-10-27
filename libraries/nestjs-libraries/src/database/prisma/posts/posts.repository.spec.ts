@@ -309,3 +309,36 @@ describe('PostsRepository.createOrUpdatePost (troca de grupo restrita a org)', (
     );
   });
 });
+
+// GET /posts/old (seletor de post para URL) listava posts de todos os perfis
+// para um membro restrito.
+describe('PostsRepository.getOldPosts', () => {
+  const build = () => {
+    const prismaMock = createPrismaRepositoryMock('post');
+    (prismaMock.model.post as any).findMany = jest.fn().mockResolvedValue([]);
+    const repo = new PostsRepository(
+      prismaMock as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any
+    );
+    return { repo, findMany: prismaMock.model.post.findMany as jest.Mock };
+  };
+
+  it('filtra pelo perfil quando informado', async () => {
+    const { repo, findMany } = build();
+    await repo.getOldPosts('org-1', '2026-10-26T00:00:00Z', 'prof-2');
+    expect(findMany.mock.calls[0][0].where).toMatchObject({
+      organizationId: 'org-1',
+      profileId: 'prof-2',
+    });
+  });
+
+  it('sem perfil (admin) nao filtra por perfil', async () => {
+    const { repo, findMany } = build();
+    await repo.getOldPosts('org-1', '2026-10-26T00:00:00Z');
+    expect(findMany.mock.calls[0][0].where.profileId).toBeUndefined();
+  });
+});

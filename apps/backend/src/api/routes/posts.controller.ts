@@ -47,9 +47,14 @@ export class PostsController {
   @Get('/:id/statistics')
   async getStatistics(
     @GetOrgFromRequest() org: Organization,
+    @GetProfileFromRequest() profile: Profile | null,
     @Param('id') id: string
   ) {
-    return this._postsService.getStatistics(org.id, id);
+    return this._postsService.getStatistics(
+      org.id,
+      id,
+      getOrgRole(org) === 'USER' ? profile?.id ?? null : undefined
+    );
   }
 
   @Get('/:id/missing')
@@ -118,6 +123,7 @@ export class PostsController {
   async createReviewLink(
     @GetOrgFromRequest() org: Organization,
     @GetUserFromRequest() user: User,
+    @GetProfileFromRequest() profile: Profile | null,
     @Param('id') id: string,
     @Body()
     body: {
@@ -133,25 +139,37 @@ export class PostsController {
       expiresInDays: body?.expiresInDays,
       allowComment: body?.allowComment,
       allowApprove: body?.allowApprove,
+      requireProfileId:
+        getOrgRole(org) === 'USER' ? profile?.id ?? null : undefined,
     });
   }
 
   @Get('/:id/review-links')
   async listReviewLinks(
     @GetOrgFromRequest() org: Organization,
+    @GetProfileFromRequest() profile: Profile | null,
     @Param('id') id: string
   ) {
     return {
-      reviewLinks: await this._reviewLinksService.listForPost(id, org.id),
+      reviewLinks: await this._reviewLinksService.listForPost(
+        id,
+        org.id,
+        getOrgRole(org) === 'USER' ? profile?.id ?? null : undefined
+      ),
     };
   }
 
   @Delete('/:id/review-links/:linkId')
   async revokeReviewLink(
     @GetOrgFromRequest() org: Organization,
+    @GetProfileFromRequest() profile: Profile | null,
     @Param('linkId') linkId: string
   ) {
-    return this._reviewLinksService.revoke(linkId, org.id);
+    return this._reviewLinksService.revoke(
+      linkId,
+      org.id,
+      getOrgRole(org) === 'USER' ? profile?.id ?? null : undefined
+    );
   }
 
   @Get('/tags')
@@ -228,9 +246,14 @@ export class PostsController {
   @Get('/old')
   oldPosts(
     @GetOrgFromRequest() org: Organization,
+    @GetProfileFromRequest() profile: Profile | null,
     @Query('date') date: string
   ) {
-    return this._postsService.getOldPosts(org.id, date);
+    return this._postsService.getOldPosts(
+      org.id,
+      date,
+      getOrgRole(org) === 'USER' ? profile?.id ?? null : undefined
+    );
   }
 
   @Get('/group/:group/debug-export')

@@ -51,6 +51,21 @@ function sanitizeEmail(value: unknown) {
 export class ReviewLinksService {
   constructor(private _repository: ReviewLinksRepository) {}
 
+  // Links expoem o post a convidados: membro USER (`requireProfileId`
+  // definido) so age nos posts do proprio perfil — mesma regra dos
+  // comentarios do post. `undefined` = admin/superadmin.
+  private assertReviewScope(
+    post: { profileId: string | null } | null,
+    requireProfileId?: string | null
+  ) {
+    if (!post) {
+      throw new NotFoundException('Post not found');
+    }
+    if (requireProfileId !== undefined && post.profileId !== requireProfileId) {
+      throw new HttpException('Post is not in your profile', 403);
+    }
+  }
+
   async createForPost(params: {
     postId: string;
     orgId: string;
@@ -58,14 +73,13 @@ export class ReviewLinksService {
     expiresInDays?: number;
     allowComment?: boolean;
     allowApprove?: boolean;
+    requireProfileId?: string | null;
   }) {
     const post = await this._repository.assertPostOwnedByOrg(
       params.postId,
       params.orgId
     );
-    if (!post) {
-      throw new NotFoundException('Post not found');
-    }
+    this.assertReviewScope(post, params.requireProfileId);
 
     const requestedDays = Number.isFinite(params.expiresInDays as number)
       ? Math.floor(params.expiresInDays as number)
@@ -99,11 +113,26 @@ export class ReviewLinksService {
     };
   }
 
-  listForPost(postId: string, orgId: string) {
+  async listForPost(
+    postId: string,
+    orgId: string,
+    requireProfileId?: string | null
+  ) {
+    const post = await this._repository.assertPostOwnedByOrg(postId, orgId);
+    this.assertReviewScope(post, requireProfileId);
     return this._repository.listForPost(postId, orgId);
   }
 
-  async revoke(linkId: string, orgId: string) {
+  async revoke(linkId: string, orgId: string, requireProfileId?: string | null) {
+    if (requireProfileId !== undefined) {
+      const link = await this._repository.findLinkPostScope(linkId, orgId);
+      if (!link) {
+        throw new NotFoundException('Review link not found');
+      }
+      if ((link.post?.profileId ?? null) !== requireProfileId) {
+        throw new HttpException('Post is not in your profile', 403);
+      }
+    }
     const result = await this._repository.revoke(linkId, orgId);
     if (!result.count) {
       throw new NotFoundException('Review link not found');

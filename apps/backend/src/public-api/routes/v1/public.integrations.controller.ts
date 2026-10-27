@@ -465,7 +465,8 @@ export class PublicIntegrationsController {
   async getIntegrationUrl(
     @Param('integration') integration: string,
     @Query('refresh') refresh: string,
-    @GetOrgFromRequest() org: Organization
+    @GetOrgFromRequest() org: Organization,
+    @GetPublicApiProfileId() publicApiProfileId: string | undefined
   ) {
     Sentry.metrics.count('public_api-request', 1);
     if (
@@ -496,6 +497,12 @@ export class PublicIntegrationsController {
 
       await ioRedis.set(`organization:${state}`, org.id, 'EX', 3600);
       await ioRedis.set(`login:${state}`, codeVerifier, 'EX', 3600);
+
+      // Chave de perfil: o callback do OAuth (`/integrations/social-connect`)
+      // cria o canal no perfil gravado aqui, como o dashboard ja fazia.
+      if (publicApiProfileId) {
+        await ioRedis.set(`profile:${state}`, publicApiProfileId, 'EX', 3600);
+      }
 
       return { url };
     } catch (err) {

@@ -105,7 +105,7 @@ export class PostsRepository {
     });
   }
 
-  getOldPosts(orgId: string, date: string) {
+  getOldPosts(orgId: string, date: string, profileId?: string | null) {
     return this._post.model.post.findMany({
       where: {
         integration: {
@@ -114,6 +114,8 @@ export class PostsRepository {
           disabled: false,
         },
         organizationId: orgId,
+        // membro USER: so posts do proprio perfil (undefined = admin)
+        ...(profileId !== undefined ? { profileId } : {}),
         publishDate: {
           lte: dayjs(date).toDate(),
         },

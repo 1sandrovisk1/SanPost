@@ -5,7 +5,7 @@ import React, { FC, useCallback, useEffect, useRef, useState } from 'react';
 import { Web3ProviderInterface } from '@gitroom/frontend/components/launches/web3/web3.provider.interface';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import { timer } from '@gitroom/helpers/utils/timer';
-import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
+import { makeWebSecureId } from '@gitroom/nestjs-libraries/services/make.web.secure.id';
 import { Input } from '@gitroom/react/form/input';
 import { Button } from '@gitroom/react/form/button';
 import copy from 'copy-to-clipboard';
@@ -16,7 +16,8 @@ export const TelegramProvider: FC<Web3ProviderInterface> = (props) => {
   const { onComplete, nonce } = props;
   const { telegramBotName } = useVariables();
   const fetch = useFetch();
-  const word = useRef(makeId(4));
+  // palavra do /connect com CSPRNG (quem a observa pode tentar o vinculo)
+  const word = useRef(makeWebSecureId(8));
   const stop = useRef(false);
   const [step, setStep] = useState(false);
   const toaster = useToaster();
@@ -55,8 +56,8 @@ export const TelegramProvider: FC<Web3ProviderInterface> = (props) => {
   };
   const copyText = useCallback(() => {
     copy(`/connect ${word.current}`);
-    toaster.show('Copied to clipboard', 'success');
-  }, []);
+    toaster.show(t('copied_to_clipboard', 'Copied to clipboard'), 'success');
+  }, [t, toaster]);
   useEffect(() => {
     return () => {
       stop.current = true;

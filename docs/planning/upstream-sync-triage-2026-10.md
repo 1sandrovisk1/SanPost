@@ -539,8 +539,9 @@ prioridade):
   vive só no `lookup`, e o Node pula o `lookup` para hosts em IP literal:
   `ssrfSafeFetch('http://127.0.0.1:<porta>/')` e o axios SSRF-safe respondem
   200 (`http://localhost:<porta>/` é bloqueado). Corrigir no `connect` do
-  undici e no `createConnection` do `http(s).Agent` — PR próprio, antes da
-  prerelease.
+  undici e no `createConnection` do `http(s).Agent` — **corrigido no #323**
+  (27/10/2026), com dispatcher alheio recusado, overrides de transporte do
+  axios recusados, SIIT e Azure WireServer bloqueados.
 - **HIGH:** Telegram — `authenticate()` confia no chat id enviado pelo cliente,
   a palavra do `/connect` é `makeId(4)` e `GET /integrations/telegram/updates`
   aceita o offset do chamador (afeta só bot compartilhado entre orgs).
@@ -561,6 +562,48 @@ prioridade):
 - **Dependabot:** `tinypool` (2 CRITICAL, só dev via vitest), `zod` → 4.6.6
   (HIGH, dependência direta), `http-cache-semantics`/`node-forge` sem versão
   corrigida.
+
+### PR de segurança 4 — follow-ups pré-RC (27/10/2026)
+
+Branch `fix/security-followups-4-2026-10`. Resolvidos: sinks crus de URL de
+usuário/terceiro apontados pelo `security-auditor` no #323 (imagem de
+referência I2I, feed e artigo do autopost, upload por URL sem teto) via
+`fetchPublicUrl`; busca na web com a regra de IP do guard; escopo por perfil em
+`/posts/:id/statistics`, links de revisão e `GET /posts/old`; `profile:${state}`
+na conexão por chave de perfil da API pública; logs de exceção de provider
+resumidos (`summarizeError`); handshake do Telegram com nonce em Redis e
+checagem de administrador do grupo (HIGH do sub-lote 3); `refreshToken` do
+Dribbble; i18n do formulário do Reddit e do toast do Telegram. Decisão de
+semântica: rotas de revisão seguem a regra estrita dos comentários do post
+(USER só no próprio perfil, 403; admin sem restrição).
+
+Revisões: `code-reviewer` (0 MUST FIX; SHOULD FIX aplicados — redirects
+revalidados por salto, leitor com teto compartilhado
+(`readResponseBodyWithLimit`), UA/Accept do feed, mídia própria lida do disco
+na I2I, logs do Telegram, `eslint-disable` do connect removido) e
+`security-auditor` (2 HIGH introduzidos e corrigidos: replay do `/connect` —
+mensagem de uso único — e redação incompleta do `summarizeError`; MEDIUM
+aplicados: opt-out só no primeiro salto, nonce consumido de forma atômica,
+nomes locais na busca web; pré-existentes corrigidos aqui: mensagem crua do
+Tavily ao cliente, revogação de token de canal de outro perfil no reconectar,
+`ExtractContentService` com `fetch` cru).
+
+Continuam abertos (registrados para depois do RC): conteúdo do feed vai cru
+para o prompt do LLM/DALL-E no autopost (HIGH pré-existente — falta o
+envoltório `<source>`; saída fica como rascunho); `GET /posts/find-slot/:id`
+sem escopo de perfil (expõe horários do canal); corpo de comentário/revisão
+sem DTO (`kind`/tamanho); `refresh:${state}` da API pública sem checar o perfil
+do canal e `generateAuthUrl()` público sem `ClientInformation`; sem throttle em
+`/integrations/telegram/updates` e `POST /autopost/send`; cursor do
+`getUpdates` do Telegram controlado pelo cliente; Dribbble com segredo via
+`process.env`, `code` sem encode e `state` de 6 caracteres; `customInstanceDetails` e
+chave do Nostr em `fixedEncryption`/JWT → `EncryptionService` com migração no
+boot; `redirectmeto.com` no OAuth sem https (VK/Slack); segredos OAuth via
+`process.env` em Reddit/VK/Slack/Dribbble; `fetch` cru em Slack/Hashnode (hosts
+fixos); `zod` 3 → 4 (major, Mastra/AI SDK dependem); `tinypool` (dev-only);
+offset compartilhado do `getUpdates` do Telegram (limitação do bot
+compartilhado); follow-ups do sub-lote 2 (posts antigos do TikTok, loader de
+imagem do compositor Pinterest, `boardId` do Zernio) e Farcaster #2078/#2080.
 
 ## Apêndice — classificação 1 por 1 (171 PRs + 74 commits diretos)
 

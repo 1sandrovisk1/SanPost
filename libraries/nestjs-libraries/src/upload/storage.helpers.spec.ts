@@ -2,11 +2,15 @@
 // URL HTTP deterministicos (sem DNS real) e evitar construir o Agent undici.
 jest.mock(
   '@gitroom/nestjs-libraries/dtos/webhooks/webhook.url.validator',
-  () => ({ isSafePublicHttpsUrl: jest.fn() })
+  () => ({ isSafePublicHttpsUrl: jest.fn(), isSsrfProtectionDisabled: () => false })
 );
 jest.mock(
   '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher',
-  () => ({ ssrfSafeDispatcher: { __mock: 'dispatcher' } })
+  () => ({
+    ssrfSafeDispatcher: { __mock: 'dispatcher' },
+    ssrfSafeFetch: (input: string, init: RequestInit) =>
+      globalThis.fetch(input, init),
+  })
 );
 
 import { loadFromUrlOrDataUrl } from './storage.helpers';
@@ -97,6 +101,31 @@ describe('loadFromUrlOrDataUrl', () => {
 
       expect(result.contentType).toBe('image/webp');
       expect(result.extension).toBe('webp');
+    });
+
+    it('recusa resposta acima de 1 GB (limite de upload de video)', async () => {
+      mockIsSafe.mockResolvedValue(true);
+      globalThis.fetch = jest.fn(async () =>
+        new Response(new Uint8Array(1), {
+          status: 200,
+          headers: { 'content-length': String(2 * 1024 * 1024 * 1024) },
+        })
+      ) as any;
+
+      await expect(
+        loadFromUrlOrDataUrl('https://example.com/huge.mp4')
+      ).rejects.toThrow(/exceeds/);
+    });
+
+    it('recusa HTTP de erro em vez de gravar a pagina de erro como midia', async () => {
+      mockIsSafe.mockResolvedValue(true);
+      globalThis.fetch = jest.fn(async () =>
+        new Response('not found', { status: 404 })
+      ) as any;
+
+      await expect(
+        loadFromUrlOrDataUrl('https://example.com/missing.jpg')
+      ).rejects.toThrow('HTTP 404');
     });
 
     it('rejeita URL insegura (SSRF) sem chamar fetch', async () => {

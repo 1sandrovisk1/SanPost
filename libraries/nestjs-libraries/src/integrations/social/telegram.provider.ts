@@ -5,7 +5,10 @@ import {
   SocialProvider,
 } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
 import { makeSecureId } from '@gitroom/nestjs-libraries/services/make.secure.id';
+import { ioRedis } from '@gitroom/nestjs-libraries/redis/redis.service';
 import dayjs from 'dayjs';
+import { Logger } from '@nestjs/common';
+import { summarizeError } from '@gitroom/nestjs-libraries/services/error.summary';
 import {
   BadBody,
   SocialAbstract,
@@ -20,6 +23,14 @@ const telegramBot = new TelegramBot(process.env.TELEGRAM_TOKEN!);
 // Added to support local storage posting
 const frontendURL = process.env.FRONTEND_URL || 'http://localhost:5000';
 const mediaStorage = process.env.STORAGE_PROVIDER || 'local';
+
+// Handshake do /connect: o chat id fica no servidor sob um nonce de uso unico.
+const CONNECT_NONCE_TTL_SECONDS = 600;
+const connectKey = (nonce: string) => `telegram:connect:${nonce}`;
+// cada mensagem /connect so gera um codigo: o update nao e confirmado no
+// getUpdates (bot compartilhado), entao sem isso o mesmo /connect poderia ser
+// resgatado de novo apos o TTL do nonce
+const CONNECT_MESSAGE_USED_TTL_SECONDS = 86400;
 
 export class TelegramProvider extends SocialAbstract implements SocialProvider {
   override maxConcurrentJob = 3; // Telegram has moderate bot API limits
@@ -59,7 +70,18 @@ export class TelegramProvider extends SocialAbstract implements SocialProvider {
     codeVerifier: string;
     refresh?: string;
   }) {
-    const chat = await telegramBot.getChat(params.code);
+    // `code` e o nonce emitido por getBotId — nunca um chat id vindo do
+    // cliente (qualquer chamador vincularia qualquer chat do bot compartilhado)
+    const nonce = params.code || '';
+    const chatId = /^[A-Za-z0-9]{32}$/.test(nonce)
+      ? await ioRedis.get(connectKey(nonce))
+      : null;
+    // so quem apaga a chave consome o nonce (duas chamadas concorrentes)
+    if (!chatId || !(await ioRedis.del(connectKey(nonce)))) {
+      return 'Invalid credentials';
+    }
+
+    const chat = await telegramBot.getChat(chatId);
 
     if (!chat?.id) {
       return 'No chat found';
@@ -81,7 +103,33 @@ export class TelegramProvider extends SocialAbstract implements SocialProvider {
     };
   }
 
-  async getBotId(query: { id?: number; word: string }) {
+  // Em grupo so um administrador (ou admin anonimo, que posta como o grupo)
+  // pode vincular o chat; em canal so admins publicam; em privado, o proprio.
+  private async senderIsChatAdmin(
+    chatId: number,
+    message: TelegramBot.Message
+  ): Promise<boolean> {
+    if (message.sender_chat?.id === chatId) {
+      return true;
+    }
+    if (message.chat?.type === 'private') {
+      return message.from?.id === chatId;
+    }
+    if (!message.from?.id) {
+      return false;
+    }
+    try {
+      const member = await telegramBot.getChatMember(chatId, message.from.id);
+      return member.status === 'creator' || member.status === 'administrator';
+    } catch (err) {
+      return false;
+    }
+  }
+
+  async getBotId(query: {
+    id?: number;
+    word: string;
+  }): Promise<{ chatId?: string; lastChatId?: number }> {
     // Added allowed_updates Ensure only necessary updates are fetched
     const res = await telegramBot.getUpdates({
       ...(query.id ? { offset: query.id } : {}),
@@ -97,6 +145,37 @@ export class TelegramProvider extends SocialAbstract implements SocialProvider {
     );
     // get correct chatId based on the channel type
     const chatId = match?.message?.chat?.id || match?.channel_post?.chat?.id;
+
+    const nextOffset =
+      res.length > 0 ? { lastChatId: res[res.length - 1].update_id + 1 } : {};
+
+    const connectMessageKey = chatId
+      ? `telegram:connect-used:${chatId}:${
+          match?.message?.message_id || match?.channel_post?.message_id
+        }`
+      : '';
+    if (
+      chatId &&
+      (await ioRedis.set(
+        connectMessageKey,
+        '1',
+        'EX',
+        CONNECT_MESSAGE_USED_TTL_SECONDS,
+        'NX'
+      )) !== 'OK'
+    ) {
+      return nextOffset;
+    }
+
+    if (chatId && match?.message && !(await this.senderIsChatAdmin(chatId, match.message))) {
+      await telegramBot
+        .sendMessage(
+          chatId,
+          'Only a group administrator can connect this chat. Ask an administrator to send the /connect command.'
+        )
+        .catch(() => undefined);
+      return nextOffset;
+    }
 
     // prevents the code from running while chatId is still undefined to avoid the error 'ETELEGRAM: 400 Bad Request: chat_id is empty'. the code would still work eventually but console spam is not pretty
     if (chatId) {
@@ -123,21 +202,27 @@ export class TelegramProvider extends SocialAbstract implements SocialProvider {
           'Connection Successful. Message will be deleted in 10 seconds.'
         );
         // Delete the success message after 10 seconds
-        setTimeout(async () => {
-          await telegramBot.deleteMessage(chatId, successMessage.message_id);
-          console.log('Success message deleted.');
+        setTimeout(() => {
+          telegramBot
+            .deleteMessage(chatId, successMessage.message_id)
+            .catch(() => undefined);
         }, 10000);
       }
     }
 
-    // modified lastChatId to work with any type of channel (private/public groups/channels)
-    return chatId
-      ? { chatId }
-      : res.length > 0
-      ? {
-          lastChatId: res[res.length - 1].update_id + 1,
-        }
-      : {};
+    if (!chatId) {
+      return nextOffset;
+    }
+
+    // o frontend recebe so o nonce; authenticate troca pelo chat id
+    const nonce = makeSecureId(32);
+    await ioRedis.set(
+      connectKey(nonce),
+      String(chatId),
+      'EX',
+      CONNECT_NONCE_TTL_SECONDS
+    );
+    return { chatId: nonce };
   }
 
   private processMedia(mediaFiles: PostDetails['media']) {
@@ -363,7 +448,11 @@ export class TelegramProvider extends SocialAbstract implements SocialProvider {
 
       return false;
     } catch (error) {
-      console.error('Error checking bot privileges:', error);
+      // so o resumo: o erro da Bot API carrega a URI com o token do bot
+      Logger.warn(
+        `bot privileges check failed: ${summarizeError(error)}`,
+        'TelegramProvider'
+      );
       return false;
     }
   }
