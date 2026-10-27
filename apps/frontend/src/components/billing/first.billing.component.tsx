@@ -85,9 +85,10 @@ export const FirstBillingComponent = () => {
       children: (
         <iframe
           className="h-full aspect-video min-w-[800px]"
-          src="https://www.youtube.com/embed/BdsCVvEYgHU?si=vvhaZJ8I5oXXvVJS?autoplay=1"
-          title="Postiz Tutorial"
-          allow="autoplay"
+          src="https://www.youtube-nocookie.com/embed/BdsCVvEYgHU?autoplay=1&rel=0"
+          title="Tutorial"
+          allow="autoplay; encrypted-media; picture-in-picture"
+          referrerPolicy="strict-origin-when-cross-origin"
           allowFullScreen
         />
       ),
