@@ -2,6 +2,8 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
+  HttpCode,
   HttpException,
   HttpStatus,
   Post,
@@ -14,6 +16,7 @@ import { GetOrgFromRequest } from '@gitroom/nestjs-libraries/user/org.from.reque
 import { User, Organization } from '@prisma/client';
 import { AuthorizeOAuthQueryDto, ApproveOAuthDto } from '@gitroom/nestjs-libraries/dtos/oauth/authorize-oauth.dto';
 import { TokenExchangeDto } from '@gitroom/nestjs-libraries/dtos/oauth/token-exchange.dto';
+import { resolveClientCredentials } from '@gitroom/nestjs-libraries/chat/oauth-types';
 
 @ApiTags('OAuth')
 @Controller('/oauth')
@@ -39,7 +42,13 @@ export class OAuthController {
   }
 
   @Post('/token')
-  async token(@Body() body: TokenExchangeDto) {
+  // RFC 6749 §5.1: resposta de sucesso e 200; clientes estritos recusam o 201
+  // padrao do Nest (upstream 1752382c)
+  @HttpCode(200)
+  async token(
+    @Body() body: TokenExchangeDto,
+    @Headers('authorization') authorization?: string
+  ) {
     if (body.grant_type !== 'authorization_code') {
       throw new HttpException(
         { error: 'unsupported_grant_type' },
@@ -47,10 +56,19 @@ export class OAuthController {
       );
     }
 
+    // client_secret_basic (header) ou client_secret_post (corpo) — #2093
+    const credentials = resolveClientCredentials(authorization, body);
+    if (!credentials) {
+      throw new HttpException(
+        { error: 'invalid_client' },
+        HttpStatus.UNAUTHORIZED
+      );
+    }
+
     return this._oauthService.exchangeCodeForToken(
       body.code,
-      body.client_id,
-      body.client_secret
+      credentials.clientId,
+      credentials.clientSecret
     );
   }
 }

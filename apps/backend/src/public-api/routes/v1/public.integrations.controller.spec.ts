@@ -71,7 +71,7 @@ describe('PublicIntegrationsController - listIntegration', () => {
       {} as any,
       {} as any,
       {} as any,
-      {} as any
+      {} as any, {} as any
     );
   });
 
@@ -120,7 +120,7 @@ describe('PublicIntegrationsController - upload (escopo por perfil)', () => {
       {} as any,
       {} as any,
       {} as any,
-      {} as any
+      {} as any, {} as any
     );
     // storage e instanciado via UploadFactory.createStorage() no construtor;
     // sobrescrevemos com um mock para nao tocar disco/rede no teste.
@@ -315,7 +315,7 @@ describe('PublicIntegrationsController - posts (escopo por perfil)', () => {
       {} as any,
       {} as any,
       {} as any,
-      {} as any
+      {} as any, {} as any
     );
   });
 
@@ -476,7 +476,7 @@ describe('PublicIntegrationsController - rotas por id com chave de perfil', () =
       {} as any,
       {} as any,
       {} as any,
-      {} as any
+      {} as any, {} as any
     );
     return { controller, integrationService, postsService };
   };
@@ -576,7 +576,7 @@ describe('PublicIntegrationsController - getIntegrationUrl (perfil da chave)', (
       {} as any,
       integrationManager as any,
       {} as any,
-      {} as any
+      {} as any, {} as any
     );
   };
 
@@ -620,7 +620,7 @@ describe('PublicIntegrationsController - GET /media', () => {
     }),
   };
   const build = () =>
-    new PublicIntegrationsController({} as any, {} as any, media as any, {} as any, {} as any, {} as any, {} as any);
+    new PublicIntegrationsController({} as any, {} as any, media as any, {} as any, {} as any, {} as any, {} as any, {} as any);
 
   beforeEach(() => media.getMedia.mockClear());
 
@@ -638,5 +638,50 @@ describe('PublicIntegrationsController - GET /media', () => {
   it('chave de organizacao lista a organizacao inteira (pagina 1 por padrao)', async () => {
     await build().getMedia({ id: 'org-1' } as any, undefined, {} as any);
     expect(media.getMedia).toHaveBeenCalledWith('org-1', 1, undefined, undefined);
+  });
+});
+
+// Porte do upstream 852ac517: quem esta conectado na API publica.
+describe('PublicIntegrationsController.getMe', () => {
+  const users = {
+    getPersonal: jest.fn().mockResolvedValue({
+      id: 'user-1',
+      name: 'Ana',
+      bio: 'nao sai',
+      picture: { id: 'pic', path: '/uploads/ana.png' },
+    }),
+  };
+  const build = () =>
+    new PublicIntegrationsController(
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      users as any
+    );
+
+  it('token OAuth mostra org e usuario so com campos de exibicao', async () => {
+    await expect(
+      build().getMe({ id: 'org-1', name: 'Agencia', apiKey: 'segredo' } as any, undefined, 'user-1')
+    ).resolves.toEqual({
+      organization: { id: 'org-1', name: 'Agencia' },
+      profile: null,
+      user: { id: 'user-1', name: 'Ana', picture: '/uploads/ana.png' },
+    });
+  });
+
+  it('chave de perfil mostra o perfil e nenhum usuario', async () => {
+    users.getPersonal.mockClear();
+    await expect(
+      build().getMe({ id: 'org-1', name: 'Agencia' } as any, 'prof-1', undefined)
+    ).resolves.toEqual({
+      organization: { id: 'org-1', name: 'Agencia' },
+      profile: { id: 'prof-1' },
+      user: null,
+    });
+    expect(users.getPersonal).not.toHaveBeenCalled();
   });
 });

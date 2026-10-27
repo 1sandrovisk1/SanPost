@@ -701,6 +701,33 @@ login, se o frontend não valida); `@Body() body: any` no
 `fetchPageInformation` (o `state` é o único portão); `deleteTag` não atômico
 (integridade, não segurança).
 
+### Lote P2 — features (27/10/2026)
+
+Portados: #2205 (filtro de canais acima do calendário — também na lista, via
+`integrations` no `GetPostsListDto`, sempre dentro do escopo de org/perfil),
+#2206 (moldura verde do publicado), #2204 (excluir vermelho + confirmação
+destrutiva; #2221 já valia — o excluir era o último ícone), #1829 e #1828
+(tags), #2194 + #2211 + #2212 (abrir o post publicado: `GET
+/posts/:id/release-url` com escopo de perfil e token descriptografado,
+`resolveReleaseId` com `pending`/`unavailable`, TikTok `/photo/`, rascunho
+da caixa de entrada e `releaseUrl` só com https do TikTok; a parte do TikTok
+for Business fica com o épico), #2183 (renomear grupo — como o grupo é da org
+inteira, USER só renomeia grupo cujos canais são todos do seu perfil), #2190
+(nome do canal só no Robo MultiPost, `Integration.customName`), #1856 (capa
+pela biblioteca, com i18n), #2203 (método de login nas configurações), #2093 +
+`1752382c` (`client_secret_basic` e 200 no `/oauth/token`; o servidor OAuth do
+fork não tem PKCE nem registro dinâmico, então só a parte do token) e
+`852ac517` (`GET /public/v1/me`, com o perfil da chave de perfil).
+Já coberto: #2155 (título do vídeo do Facebook). Não portados: #2209 (RTL —
+troca a saída do editor para `<p dir="auto">` e quebraria todo parsing
+literal de `<p>` do fork: legenda do TikTok, providers, activity; público
+pt-BR); #2285, #2295, #2302 (painel de mídia nas configurações do post —
+depende do `manage.modal` redesenhado do upstream: entra com o épico
+responsivo/novo modal); `2aae02fe` + `28701a98` (imagem inline no editor —
+mexe em editor, sanitizer, `valid.url.path`, X/WordPress/ListMonk e na
+activity: PR próprio com revisão de segurança); `a194e3f4` (agendamento por
+grupo — composer + schema: épico do novo modal de criação).
+
 ## Apêndice — classificação 1 por 1 (171 PRs + 74 commits diretos)
 
 Legenda: **P0** segurança (nesta branch) · **ADOPT** cherry-pick/porte leve ·

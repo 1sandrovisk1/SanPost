@@ -24,6 +24,8 @@ import {
 } from '@nestjs/swagger';
 import { GetOrgFromRequest } from '@gitroom/nestjs-libraries/user/org.from.request';
 import { GetPublicApiProfileId } from '@gitroom/nestjs-libraries/user/public.api.profile.from.request';
+import { GetOAuthUserIdFromRequest } from '@gitroom/nestjs-libraries/user/oauth.user.id.from.request';
+import { UsersService } from '@gitroom/nestjs-libraries/database/prisma/users/users.service';
 import { Organization } from '@prisma/client';
 import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.service';
 import { CheckPolicies } from '@gitroom/backend/services/auth/permissions/permissions.ability';
@@ -137,7 +139,8 @@ export class PublicIntegrationsController {
     private _notificationService: NotificationService,
     private _integrationManager: IntegrationManager,
     private _refreshIntegrationService: RefreshIntegrationService,
-    private _encryption: EncryptionService
+    private _encryption: EncryptionService,
+    private _usersService: UsersService
   ) {}
 
   @Post('/upload')
@@ -409,6 +412,30 @@ export class PublicIntegrationsController {
   ) {
     Sentry.metrics.count('public_api-request', 1);
     return this._postsService.deletePost(org.id, group, publicApiProfileId);
+  }
+
+  @Get('/me')
+  @ApiOperation({
+    summary: 'Quem está conectado',
+    description:
+      'Organização da chave, o perfil (chave de perfil) e o usuário que aprovou o app OAuth (token `pos_`). Chave de API não tem usuário.',
+  })
+  async getMe(
+    @GetOrgFromRequest() org: Organization,
+    @GetPublicApiProfileId() publicApiProfileId: string | undefined,
+    @GetOAuthUserIdFromRequest() userId?: string
+  ) {
+    Sentry.metrics.count('public_api-request', 1);
+    const user = userId ? await this._usersService.getPersonal(userId) : null;
+
+    // so campos de exibicao (upstream 852ac517)
+    return {
+      organization: { id: org.id, name: org.name },
+      profile: publicApiProfileId ? { id: publicApiProfileId } : null,
+      user: user
+        ? { id: user.id, name: user.name, picture: user.picture?.path || null }
+        : null,
+    };
   }
 
   @Get('/is-connected')

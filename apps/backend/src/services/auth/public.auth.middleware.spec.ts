@@ -104,4 +104,19 @@ describe('PublicAuthMiddleware', () => {
     expect(res.status).toHaveBeenCalledWith(401);
     expect(next).not.toHaveBeenCalled();
   });
+
+  it('token OAuth guarda quem aprovou o app para o /me (upstream 852ac517)', async () => {
+    oauthService.getOrgByOAuthToken.mockResolvedValue({
+      userId: 'user-1',
+      organization: { id: 'org-1', subscription: null as any },
+    });
+    const req: any = { headers: { authorization: 'pos_token' } };
+    const next = jest.fn();
+
+    await middleware.use(req, makeRes(), next);
+
+    expect(req.oauthUserId).toBe('user-1');
+    expect(req.org.id).toBe('org-1');
+    expect(next).toHaveBeenCalled();
+  });
 });

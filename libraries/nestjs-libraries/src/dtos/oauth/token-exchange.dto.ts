@@ -1,4 +1,4 @@
-import { IsDefined, IsString } from 'class-validator';
+import { IsDefined, IsOptional, IsString } from 'class-validator';
 
 export class TokenExchangeDto {
   @IsString()
@@ -9,11 +9,14 @@ export class TokenExchangeDto {
   @IsDefined()
   code: string;
 
+  // opcionais: client_secret_basic manda id e segredo no header
+  // Authorization; o controller junta as duas fontes e recusa sem eles
+  // (upstream #2093)
   @IsString()
-  @IsDefined()
-  client_id: string;
+  @IsOptional()
+  client_id?: string;
 
   @IsString()
-  @IsDefined()
-  client_secret: string;
+  @IsOptional()
+  client_secret?: string;
 }

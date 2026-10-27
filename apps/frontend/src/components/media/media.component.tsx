@@ -214,7 +214,8 @@ const MAX_UPLOAD_SIZE = 1024 * 1024 * 1024; // 1 GB
 export const MediaBox: FC<{
   setMedia: (params: { id: string; path: string }[]) => void;
   standalone?: boolean;
-  type?: 'image' | 'video';
+  // image-static: so JPG/PNG (capa de video, upstream #1856)
+  type?: 'image' | 'image-static' | 'video';
   closeModal: () => void;
 }> = ({ type, standalone, setMedia }) => {
   const [page, setPage] = useState(0);
@@ -239,6 +240,8 @@ export const MediaBox: FC<{
     allowedFileTypes:
       type == 'image'
         ? 'image/*'
+        : type == 'image-static'
+        ? 'image/jpeg,image/png'
         : type == 'video'
         ? 'video/mp4'
         : 'image/*,video/mp4',
@@ -385,6 +388,8 @@ export const MediaBox: FC<{
           return f.path.indexOf('mp4') > -1;
         } else if (type === 'image') {
           return f.path.indexOf('mp4') === -1;
+        } else if (type === 'image-static') {
+          return /\.(jpe?g|png)$/i.test(f.path);
         }
         return true;
       }),
