@@ -24,6 +24,8 @@ import { GetUserFromRequest } from '@gitroom/nestjs-libraries/user/user.from.req
 import { PostsService } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.service';
 import { IntegrationTimeDto } from '@gitroom/nestjs-libraries/dtos/integrations/integration.time.dto';
 import { PlugDto } from '@gitroom/nestjs-libraries/dtos/plugs/plug.dto';
+import { CustomerNameDto } from '@gitroom/nestjs-libraries/dtos/integrations/customer.name.dto';
+import { IntegrationNameDto } from '@gitroom/nestjs-libraries/dtos/integrations/integration.name.dto';
 import { RefreshToken } from '@gitroom/nestjs-libraries/integrations/social.abstract';
 
 import { timer } from '@gitroom/helpers/utils/timer';
@@ -73,6 +75,37 @@ export class IntegrationsController {
   @Get('/customers')
   getCustomers(@GetOrgFromRequest() org: Organization) {
     return this._integrationService.customers(org.id);
+  }
+
+  @Put('/customers/:id')
+  async updateCustomerName(
+    @GetOrgFromRequest() org: Organization,
+    @GetProfileFromRequest() profile: Profile | null,
+    @Param('id') id: string,
+    @Body() body: CustomerNameDto
+  ) {
+    return this._integrationService.updateCustomerName(
+      org.id,
+      id,
+      body.name,
+      getOrgRole(org) === 'USER' ? profile?.id ?? null : undefined
+    );
+  }
+
+  @Put('/:id/custom-name')
+  async updateCustomName(
+    @GetOrgFromRequest() org: Organization,
+    @GetProfileFromRequest() profile: Profile | null,
+    @Param('id') id: string,
+    @Body() body: IntegrationNameDto
+  ) {
+    await this._integrationService.validateIntegrationProfile(
+      org.id,
+      id,
+      profile?.id,
+      { requireProfile: getOrgRole(org) === 'USER' }
+    );
+    return this._integrationService.updateCustomName(org.id, id, body.name);
   }
 
   @Put('/:id/group')
@@ -125,7 +158,9 @@ export class IntegrationsController {
             p.providerIdentifier
           );
           return {
-            name: p.name,
+            // nome do Robo MultiPost quando definido (upstream #2190)
+            name: p.customName || p.name,
+            originalName: p.name,
             id: p.id,
             internalId: p.internalId,
             disabled: p.disabled,

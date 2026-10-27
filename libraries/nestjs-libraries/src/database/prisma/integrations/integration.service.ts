@@ -189,6 +189,10 @@ export class IntegrationService {
     );
   }
 
+  updateCustomName(org: string, id: string, name: string) {
+    return this._integrationRepository.updateCustomName(org, id, name);
+  }
+
   updateNameAndUrl(id: string, name: string, url: string) {
     return this._integrationRepository.updateNameAndUrl(id, name, url);
   }
@@ -641,6 +645,48 @@ export class IntegrationService {
 
   customers(orgId: string) {
     return this._integrationRepository.customers(orgId);
+  }
+
+  // renomear grupo de canais (upstream #2183). O grupo vale para a org
+  // inteira: um USER so renomeia grupo cujos canais sao todos do seu perfil.
+  async updateCustomerName(
+    orgId: string,
+    id: string,
+    name: string,
+    requireProfileId?: string | null
+  ) {
+    const customer = await this._integrationRepository.getCustomer(orgId, id);
+    if (!customer) {
+      throw new HttpException('Group not found', HttpStatus.NOT_FOUND);
+    }
+
+    if (requireProfileId !== undefined) {
+      const outside = requireProfileId
+        ? await this._integrationRepository.countCustomerIntegrationsOutsideProfile(
+            orgId,
+            id,
+            requireProfileId
+          )
+        : 1;
+      if (outside > 0) {
+        throw new HttpException(
+          'This group has channels from other profiles',
+          HttpStatus.FORBIDDEN
+        );
+      }
+    }
+
+    const exists = await this._integrationRepository.getCustomerByName(
+      orgId,
+      name
+    );
+    if (exists && exists.id !== id) {
+      throw new HttpException(
+        'A group with this name already exists',
+        HttpStatus.BAD_REQUEST
+      );
+    }
+    return this._integrationRepository.updateCustomerName(orgId, id, name);
   }
 
   getPlugsByIntegrationId(org: string, integrationId: string) {

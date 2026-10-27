@@ -102,6 +102,60 @@ describe('IntegrationService', () => {
     });
   });
 
+  describe('updateCustomerName (upstream #2183)', () => {
+    const repoWith = (over: Record<string, jest.Mock> = {}) => ({
+      getCustomer: jest.fn().mockResolvedValue({ id: 'cli-1' }),
+      getCustomerByName: jest.fn().mockResolvedValue(null),
+      countCustomerIntegrationsOutsideProfile: jest.fn().mockResolvedValue(0),
+      updateCustomerName: jest.fn().mockResolvedValue({ id: 'cli-1', name: 'Novo' }),
+      ...over,
+    });
+
+    it('admin renomeia sem checar perfil', async () => {
+      const repo = repoWith();
+      await expect(
+        makeService(repo).updateCustomerName('org-1', 'cli-1', 'Novo')
+      ).resolves.toEqual({ id: 'cli-1', name: 'Novo' });
+      expect(repo.countCustomerIntegrationsOutsideProfile).not.toHaveBeenCalled();
+      expect(repo.updateCustomerName).toHaveBeenCalledWith('org-1', 'cli-1', 'Novo');
+    });
+
+    it('grupo de outra org (ou inexistente) responde 404', async () => {
+      const repo = repoWith({ getCustomer: jest.fn().mockResolvedValue(null) });
+      await expect(
+        makeService(repo).updateCustomerName('org-1', 'cli-x', 'Novo')
+      ).rejects.toMatchObject({ status: 404 });
+      expect(repo.updateCustomerName).not.toHaveBeenCalled();
+    });
+
+    it('USER nao renomeia grupo com canais de outro perfil, nem sem perfil', async () => {
+      const repo = repoWith({
+        countCustomerIntegrationsOutsideProfile: jest.fn().mockResolvedValue(2),
+      });
+      await expect(
+        makeService(repo).updateCustomerName('org-1', 'cli-1', 'Novo', 'perfil-1')
+      ).rejects.toMatchObject({ status: 403 });
+      await expect(
+        makeService(repo).updateCustomerName('org-1', 'cli-1', 'Novo', null)
+      ).rejects.toMatchObject({ status: 403 });
+      expect(repo.countCustomerIntegrationsOutsideProfile).toHaveBeenCalledWith(
+        'org-1',
+        'cli-1',
+        'perfil-1'
+      );
+      expect(repo.updateCustomerName).not.toHaveBeenCalled();
+    });
+
+    it('nome ja usado por outro grupo da org responde 400', async () => {
+      const repo = repoWith({
+        getCustomerByName: jest.fn().mockResolvedValue({ id: 'cli-2' }),
+      });
+      await expect(
+        makeService(repo).updateCustomerName('org-1', 'cli-1', 'Novo', 'perfil-1')
+      ).rejects.toMatchObject({ status: 400 });
+    });
+  });
+
   describe('validateIntegrationProfile', () => {
     it('retorna sem validar quando profileId ausente e perfil nao obrigatorio', async () => {
       const repo = { getIntegrationById: jest.fn() };

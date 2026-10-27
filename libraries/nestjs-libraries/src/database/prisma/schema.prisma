@@ -349,6 +349,8 @@ model Integration {
   internalId            String
   organizationId        String
   name                  String
+  // nome so no Robo MultiPost; `name` segue o da plataforma (upstream #2190)
+  customName            String?
   picture               String?
   providerIdentifier    String
   type                  String

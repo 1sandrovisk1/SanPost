@@ -2528,5 +2528,15 @@
   "open_post": "Open Post",
   "post_has_no_public_link": "This post has no public link",
   "post_link_reconnect_channel": "Reconnect this channel to open the post link",
-  "post_link_not_ready": "The post link is not available yet, please try again in a minute"
+  "post_link_not_ready": "The post link is not available yet, please try again in a minute",
+  "edit_group_name": "Edit group name",
+  "group_name": "Name",
+  "group_updated": "Group Updated",
+  "could_not_save_group": "Could not save the group.",
+  "rename_channel": "Rename channel",
+  "channel_name": "Name",
+  "channel_renamed": "Channel Renamed",
+  "channel_name_reset": "Channel name reset",
+  "reset_channel_name": "Reset to original name",
+  "could_not_rename_channel": "Could not rename the channel."
 }

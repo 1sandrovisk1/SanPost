@@ -112,6 +112,15 @@ export class IntegrationRepository {
     });
   }
 
+  // nome so no Robo MultiPost; vazio volta ao nome da plataforma (upstream #2190)
+  updateCustomName(org: string, id: string, name: string) {
+    return this._integration.model.integration.update({
+      select: { id: true },
+      where: { id, organizationId: org },
+      data: { customName: name.trim() || null },
+    });
+  }
+
   async setTimes(org: string, id: string, times: IntegrationTimeDto) {
     return this._integration.model.integration.update({
       select: {
@@ -636,6 +645,44 @@ export class IntegrationRepository {
             },
           },
       select: { id: true, customerId: true },
+    });
+  }
+
+  getCustomer(orgId: string, id: string) {
+    return this._customers.model.customer.findFirst({
+      where: { id, orgId, deletedAt: null },
+      select: { id: true },
+    });
+  }
+
+  getCustomerByName(orgId: string, name: string) {
+    return this._customers.model.customer.findFirst({
+      where: { orgId, name, deletedAt: null },
+      select: { id: true },
+    });
+  }
+
+  // canais do grupo fora do perfil informado (o grupo e da org inteira)
+  countCustomerIntegrationsOutsideProfile(
+    orgId: string,
+    customerId: string,
+    profileId: string
+  ) {
+    return this._integration.model.integration.count({
+      where: {
+        organizationId: orgId,
+        customerId,
+        deletedAt: null,
+        OR: [{ profileId: null }, { profileId: { not: profileId } }],
+      },
+    });
+  }
+
+  updateCustomerName(orgId: string, id: string, name: string) {
+    return this._customers.model.customer.update({
+      where: { id, orgId },
+      data: { name },
+      select: { id: true, name: true },
     });
   }
 

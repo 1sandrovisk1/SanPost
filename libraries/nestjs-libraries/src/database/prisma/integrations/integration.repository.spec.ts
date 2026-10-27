@@ -526,3 +526,58 @@ describe('IntegrationRepository.getPlugForOrg', () => {
     });
   });
 });
+
+describe('IntegrationRepository - grupos (upstream #2183)', () => {
+  it('conta canais do grupo fora do perfil, inclusive os sem perfil, so na org', async () => {
+    const integration = createPrismaRepositoryMock('integration');
+    integration.model.integration.count.mockResolvedValue(1 as any);
+    const repo = new IntegrationRepository(
+      integration as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any
+    );
+
+    await repo.countCustomerIntegrationsOutsideProfile('org-1', 'cli-1', 'perfil-1');
+
+    expect(integration.model.integration.count).toHaveBeenCalledWith({
+      where: {
+        organizationId: 'org-1',
+        customerId: 'cli-1',
+        deletedAt: null,
+        OR: [{ profileId: null }, { profileId: { not: 'perfil-1' } }],
+      },
+    });
+  });
+});
+
+describe('IntegrationRepository.updateCustomName (upstream #2190)', () => {
+  it('grava o nome aparado, restrito a org, e vazio volta ao nome da plataforma', async () => {
+    const integration = createPrismaRepositoryMock('integration');
+    integration.model.integration.update.mockResolvedValue({ id: 'int-1' } as any);
+    const repo = new IntegrationRepository(
+      integration as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any
+    );
+
+    await repo.updateCustomName('org-1', 'int-1', '  Loja Centro  ');
+    await repo.updateCustomName('org-1', 'int-1', '   ');
+
+    expect(integration.model.integration.update).toHaveBeenNthCalledWith(1, {
+      select: { id: true },
+      where: { id: 'int-1', organizationId: 'org-1' },
+      data: { customName: 'Loja Centro' },
+    });
+    expect(integration.model.integration.update.mock.calls[1][0].data).toEqual({
+      customName: null,
+    });
+  });
+});

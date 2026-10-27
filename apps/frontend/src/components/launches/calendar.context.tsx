@@ -86,6 +86,7 @@ export const CalendarContext = createContext({
 
 export interface Integrations {
   name: string;
+  originalName?: string;
   id: string;
   disabled?: boolean;
   inBetweenSteps: boolean;
