@@ -363,11 +363,14 @@ export class PostsRepository {
       },
     });
 
+    // mesmo escopo do soft delete: o id devolvido (e usado para encerrar o
+    // workflow do post) nunca e de um grupo de outro perfil
     return this._post.model.post.findFirst({
       where: {
         organizationId: orgId,
         group,
         parentPostId: null,
+        ...(profileId ? { profileId } : {}),
       },
       select: {
         id: true,

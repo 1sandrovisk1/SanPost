@@ -159,3 +159,45 @@ describe('PostsRepository.getOldPosts', () => {
     expect(findMany.mock.calls[0][0].where.profileId).toBeUndefined();
   });
 });
+
+// O id devolvido (e usado para encerrar workflows) precisa ser de um post que
+// o chamador alcanca: com perfil, o grupo de outro perfil nao e apagado nem
+// devolvido.
+describe('PostsRepository.deletePost (escopo por perfil)', () => {
+  const build = () => {
+    const prismaMock = createPrismaRepositoryMock('post');
+    (prismaMock.model.post as any).updateMany = jest.fn().mockResolvedValue({ count: 0 });
+    (prismaMock.model.post as any).findFirst = jest.fn().mockResolvedValue(null);
+    const repo = new PostsRepository(
+      prismaMock as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any
+    );
+    return {
+      repo,
+      updateMany: prismaMock.model.post.updateMany as jest.Mock,
+      findFirst: prismaMock.model.post.findFirst as jest.Mock,
+    };
+  };
+
+  it('aplica o perfil tanto no soft delete quanto na busca do post devolvido', async () => {
+    const { repo, updateMany, findFirst } = build();
+    await repo.deletePost('org-1', 'g1', 'prof-1');
+    expect(updateMany.mock.calls[0][0].where).toMatchObject({ group: 'g1', profileId: 'prof-1' });
+    expect(findFirst.mock.calls[0][0].where).toMatchObject({
+      organizationId: 'org-1',
+      group: 'g1',
+      parentPostId: null,
+      profileId: 'prof-1',
+    });
+  });
+
+  it('sem perfil (admin/chave de org) nao filtra por perfil', async () => {
+    const { repo, findFirst } = build();
+    await repo.deletePost('org-1', 'g1');
+    expect(findFirst.mock.calls[0][0].where.profileId).toBeUndefined();
+  });
+});

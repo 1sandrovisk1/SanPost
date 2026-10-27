@@ -193,7 +193,12 @@ export function useUppyUploader(props: {
         // Add more fields as needed
       });
     });
-    uppy2.on('error', (result) => {
+    uppy2.on('error', () => {
+      // o corpo do erro do backend nao e mostrado cru ao usuario
+      toast.show(
+        t('upload_failed', 'The upload failed, please try again'),
+        'warning'
+      );
       uppy2.clear();
       setLocked(false);
       props.onEnd();

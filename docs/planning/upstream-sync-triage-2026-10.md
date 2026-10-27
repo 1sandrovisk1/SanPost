@@ -605,6 +605,24 @@ offset compartilhado do `getUpdates` do Telegram (limitação do bot
 compartilhado); follow-ups do sub-lote 2 (posts antigos do TikTok, loader de
 imagem do compositor Pinterest, `boardId` do Zernio) e Farcaster #2078/#2080.
 
+### Lote ADOPT — correções pequenas (27/10/2026)
+
+Portados: #2085 (reconectar canal custom-fields), #2094 (modal de cliente sem
+Autocomplete do Mantine), #2153 (ativação não lê corpo após redirect do
+onboarding), #2148/#2143 (guards da extensão Chrome), #2177 (upload falha com
+erro do backend), #2217 (AM/PM no horário — só a linha do `format`, o
+`date.picker.tsx` do fork divergiu), #2248 (menções no modo escuro), #2247
+(`DELETE` público devolve id), #2266 (Plus Jakarta Sans self-hosted),
+`3dc18da9` (PostHog fora do código; o pacote `posthog-js` fica para o PR de
+dependências porque removê-lo re-resolve `@opentelemetry/api` 1.9 → 1.10 no
+lockfile), #2289 + `2ded21d1` (sanitizer: tags de bloco viram `<p>`, regex
+linear). Já cobertos pelos lotes de providers: #1915, #2108, #2116, #2117,
+#2118, #2140, #2141, #2164, #2262. Cobertos de outra forma: #2101 (Sentry já em
+10.76.2), #2225 (log do "Authentication failed" via `summarizeError`). Não
+aplicável agora: #2290 (classe `preview` na página de preview com comentários,
+que o fork ainda não tem — entra com o épico de comentários anônimos no
+preview). `6b102afb` (`destructiveHint`) vai para o lote MCP.
+
 ## Apêndice — classificação 1 por 1 (171 PRs + 74 commits diretos)
 
 Legenda: **P0** segurança (nesta branch) · **ADOPT** cherry-pick/porte leve ·

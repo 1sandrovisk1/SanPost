@@ -276,3 +276,44 @@ describe('PostsService.getStatistics / getOldPosts (escopo por perfil)', () => {
     expect(postRepository.getOldPosts).toHaveBeenCalledWith('org-1', '2026-10-26', 'prof-1');
   });
 });
+
+// Porte do upstream #2247: DELETE da API publica devolve o id do post apagado.
+describe('PostsService.deletePost (retorno)', () => {
+  const buildDelete = (deleted: { id: string } | null) => {
+    const postRepository = { deletePost: jest.fn().mockResolvedValue(deleted) };
+    const temporalService = {
+      client: {
+        getRawClient: () => ({
+          workflow: {
+            list: async function* () {
+              // nenhum workflow rodando
+            },
+          },
+        }),
+      },
+    };
+    return new PostsService(
+      postRepository as any,
+      {} as any,
+      {} as any,
+      null as any,
+      null as any,
+      null as any,
+      temporalService as any,
+      null as any,
+      null as any,
+      { decrypt: jest.fn() } as any,
+      {} as any
+    );
+  };
+
+  it('devolve { id } do post apagado', async () => {
+    await expect(buildDelete({ id: 'post-9' }).deletePost('org-1', 'g1')).resolves.toEqual({
+      id: 'post-9',
+    });
+  });
+
+  it('grupo inexistente continua devolvendo { error: true }', async () => {
+    await expect(buildDelete(null).deletePost('org-1', 'g-x')).resolves.toEqual({ error: true });
+  });
+});

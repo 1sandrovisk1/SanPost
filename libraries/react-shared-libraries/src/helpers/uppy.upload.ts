@@ -15,6 +15,17 @@ const fetchUploadApiEndpoint = async (
       'Content-Type': 'application/json',
     },
   });
+  // customFetch does not throw on HTTP errors, and Uppy treats whatever this
+  // returns as a successful step
+  if (!res.ok) {
+    // o Uppy chama o abort sem tratar a rejeicao: falhar aqui so geraria
+    // "unhandled rejection" depois de um upload que ja falhou
+    if (endpoint === 'abort-multipart-upload') {
+      return {};
+    }
+    const body = await res.text().catch(() => '');
+    throw new Error(body || `HTTP ${res.status}`);
+  }
   return res.json();
 };
 

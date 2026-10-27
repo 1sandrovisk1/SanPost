@@ -32,7 +32,7 @@ Authorization: SUA_CHAVE_DE_API
 | `POST` | `/public/v1/upload-from-url` | Upload de mídia a partir de uma URL |
 | `GET` | `/public/v1/posts` | Listar posts (`startDate`/`endDate`) |
 | `POST` | `/public/v1/posts` | Criar / agendar / rascunho de post |
-| `DELETE` | `/public/v1/posts/:id` | Excluir um post |
+| `DELETE` | `/public/v1/posts/:id` | Excluir um post — devolve `{ "id": "<post>" }` (grupo inexistente: `{ "error": true }`) |
 | `GET` | `/public/v1/analytics/:integration` | Analytics de um canal (`?date=` dias) |
 | `GET` | `/public/v1/analytics/post/:postId` | Analytics de um post |
 | `POST` | `/public/v1/generate-video` | Gerar vídeo (IA) |
