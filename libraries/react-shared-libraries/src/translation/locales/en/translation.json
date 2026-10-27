@@ -2549,5 +2549,8 @@
   "auth_method_apple": "Apple",
   "auth_method_farcaster": "Farcaster",
   "auth_method_wallet": "Wallet",
-  "auth_method_generic": "Single sign-on"
+  "auth_method_generic": "Single sign-on",
+  "could_not_save_post": "Could not save the post.",
+  "copy_debug_json": "Copy debug JSON",
+  "confirm_delete_tag": "Are you sure you want to delete the tag \"{{tagName}}\"?"
 }

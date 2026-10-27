@@ -288,7 +288,9 @@ const usePostActions = (onMutate?: () => void) => {
       };
       try {
         release = await Promise.race([
-          fetch(`/posts/${post.id}/release-url`).then((r) => r.json()),
+          fetch(`/posts/${post.id}/release-url`).then((r) =>
+            r.ok ? r.json() : release
+          ),
           timer(5000).then(() => release),
         ]);
       } catch (e) {

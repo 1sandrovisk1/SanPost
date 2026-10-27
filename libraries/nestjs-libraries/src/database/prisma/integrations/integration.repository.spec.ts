@@ -581,3 +581,49 @@ describe('IntegrationRepository.updateCustomName (upstream #2190)', () => {
     });
   });
 });
+
+describe('IntegrationRepository - consultas de grupo escopadas (upstream #2183)', () => {
+  const build = () => {
+    const customer = createPrismaRepositoryMock('customer');
+    const repo = new IntegrationRepository(
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      customer as any,
+      {} as any,
+      {} as any
+    );
+    return { customer, repo };
+  };
+
+  it('busca grupo por id e por nome so na org e sem os apagados', async () => {
+    const { customer, repo } = build();
+    customer.model.customer.findFirst.mockResolvedValue(null);
+
+    await repo.getCustomer('org-1', 'cli-1');
+    await repo.getCustomerByName('org-1', 'Loja');
+
+    expect(customer.model.customer.findFirst).toHaveBeenNthCalledWith(1, {
+      where: { id: 'cli-1', orgId: 'org-1', deletedAt: null },
+      select: { id: true },
+    });
+    expect(customer.model.customer.findFirst).toHaveBeenNthCalledWith(2, {
+      where: { orgId: 'org-1', name: 'Loja', deletedAt: null },
+      select: { id: true },
+    });
+  });
+
+  it('renomeia restrito a org e devolve so id e nome', async () => {
+    const { customer, repo } = build();
+    customer.model.customer.update.mockResolvedValue({ id: 'cli-1', name: 'Novo' } as any);
+
+    await repo.updateCustomerName('org-1', 'cli-1', 'Novo');
+
+    expect(customer.model.customer.update).toHaveBeenCalledWith({
+      where: { id: 'cli-1', orgId: 'org-1' },
+      data: { name: 'Novo' },
+      select: { id: true, name: true },
+    });
+  });
+});

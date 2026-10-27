@@ -382,14 +382,21 @@ export const Menu: FC<{
     setShow(false);
   }, [findIntegration, id, t]);
   const resetChannelName = useCallback(async () => {
-    await fetch(`/integrations/${id}/custom-name`, {
+    const response = await fetch(`/integrations/${id}/custom-name`, {
       method: 'PUT',
       body: JSON.stringify({ name: '' }),
     });
+    setShow(false);
+    if (!response.ok) {
+      toast.show(
+        t('could_not_rename_channel', 'Could not rename the channel.'),
+        'warning'
+      );
+      return;
+    }
     mutate();
     toast.show(t('channel_name_reset', 'Channel name reset'), 'success');
-    setShow(false);
-  }, [id, t]);
+  }, [id, t, fetch, mutate, toast]);
   const updateCredentials = useCallback(() => {
     modal.openModal({
       title: t('custom_url', 'Custom URL'),

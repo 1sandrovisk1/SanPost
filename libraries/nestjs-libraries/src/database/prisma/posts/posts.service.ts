@@ -205,6 +205,8 @@ export class PostsService {
   ) {
     const post = await this._postRepository.getPostById(postId, orgId);
     this.assertPostInProfile(post, profileId);
+    // post legado sem perfil: o canal tambem precisa ser do perfil
+    this.assertPostInProfile({ profileId: post?.integration?.profileId }, profileId);
 
     // a URL e um bonus: conectar nao pode falhar quando ela nao vem
     // (upstream #2212)
@@ -322,6 +324,8 @@ export class PostsService {
   }> {
     const post = await this._postRepository.getPostById(postId, orgId);
     this.assertPostInProfile(post, profileId);
+    // post legado sem perfil: o canal tambem precisa ser do perfil
+    this.assertPostInProfile({ profileId: post?.integration?.profileId }, profileId);
     if (!post?.releaseURL) {
       return { releaseURL: '' };
     }
@@ -329,7 +333,7 @@ export class PostsService {
     const integrationProvider = this._integrationManager.getSocialIntegration(
       post.integration.providerIdentifier
     );
-    if (!integrationProvider.resolveReleaseId) {
+    if (!integrationProvider.resolveReleaseId || !post.releaseId) {
       return { releaseURL: post.releaseURL };
     }
 
@@ -367,7 +371,7 @@ export class PostsService {
         orgId,
         {
           id: post.id,
-          releaseId: post.releaseId!,
+          releaseId: post.releaseId,
           releaseURL: post.releaseURL,
           settings: post.settings,
           integration: getIntegration,
@@ -383,6 +387,9 @@ export class PostsService {
       );
     }
 
+    // falha (ou token recusado de novo): cliques seguidos nao voltam a
+    // renovar o token nem a consultar a plataforma por 5 min
+    await ioRedis.set(`release-resolve:${orgId}:${post.id}`, 'pending', 'EX', 300);
     return { releaseURL: post.releaseURL, pending: true };
   }
 

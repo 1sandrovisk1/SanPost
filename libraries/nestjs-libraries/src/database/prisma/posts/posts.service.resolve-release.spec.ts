@@ -299,6 +299,28 @@ describe('PostsService.getReleaseURL', () => {
     });
     expect(refreshIntegrationService.refresh).toHaveBeenCalledTimes(1);
     expect(provider.resolveReleaseId).toHaveBeenCalledTimes(2);
+    // falha entra no cache: o proximo clique nao renova nem consulta
+    expect(ioRedis.set).toHaveBeenCalledWith(
+      'release-resolve:org-1:post-1',
+      'pending',
+      'EX',
+      300
+    );
+  });
+
+  it('post legado sem perfil cujo canal e de outro perfil responde 404', async () => {
+    const provider = { resolveReleaseId: jest.fn() };
+    const { service, postRepository } = build(provider);
+    postRepository.getPostById.mockResolvedValue({
+      ...makePost(),
+      profileId: null,
+      integration: { ...makePost().integration, profileId: 'prof-1' },
+    });
+
+    await expect(
+      service.getReleaseURL('org-1', 'post-1', 'prof-2')
+    ).rejects.toMatchObject({ status: 404 });
+    expect(provider.resolveReleaseId).not.toHaveBeenCalled();
   });
 });
 

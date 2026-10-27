@@ -728,6 +728,26 @@ mexe em editor, sanitizer, `valid.url.path`, X/WordPress/ListMonk e na
 activity: PR próprio com revisão de segurança); `a194e3f4` (agendamento por
 grupo — composer + schema: épico do novo modal de criação).
 
+Revisões do P2: `code-reviewer` (migração revisada
+`20261027_integration_custom_name` — coluna `customName` e índice de
+`UserOrganization`, idempotente para o overlay local que só roda `prisma
+validate`; "nenhum canal" igual no calendário e na lista; `@ArrayMaxSize` no
+filtro; reset do nome confere a resposta; `openPost` ignora resposta de erro;
+`releaseId` nulo sem asserção; chaves `could_not_save_post`,
+`copy_debug_json` e `confirm_delete_tag` em pt/en; specs de
+`updateReleaseId` com link e das consultas de grupo. A regra "assunto de
+commit sem acentos" do agente não bate com o histórico do repositório nem
+com o `CLAUDE.md` raiz — mantida a prática atual). `security-auditor` (sem
+CRITICAL; MEDIUM aplicados: `getReleaseURL`/`updateReleaseId` também
+conferem o perfil do canal (post legado sem perfil) e falhas entram no cache
+negativo de 5 min. Pré-existentes registrados como follow-up: **HIGH** —
+qualquer membro da org aprova um app OAuth e o token `pos_` vira SUPERADMIN
+da org sem perfil (exigir ADMIN para aprovar ou levar papel/perfil de quem
+aprovou para o token); `/oauth/token` sem throttle e com comparação de
+segredo não constante (`timingSafeEqual`, hash de mão única); resposta do
+OAuth com o `paymentId` da org; nome customizado do canal chega ao agente
+MCP como texto livre — tratar nomes como dado no prompt).
+
 ## Apêndice — classificação 1 por 1 (171 PRs + 74 commits diretos)
 
 Legenda: **P0** segurança (nesta branch) · **ADOPT** cherry-pick/porte leve ·

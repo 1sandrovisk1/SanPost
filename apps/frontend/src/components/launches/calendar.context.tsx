@@ -207,7 +207,11 @@ export const CalendarWeekProvider: FC<{
       page: listPage.toString(),
       limit: '100',
       customer: filters?.customer?.toString() || '',
-      ...(selectedChannels ? { integrations: selectedChannels.join(',') } : {}),
+      // [] = nenhum canal, como no calendario (filtro no cliente); a lista
+      // manda um id que nao existe para voltar vazia
+      ...(selectedChannels
+        ? { integrations: selectedChannels.join(',') || 'none' }
+        : {}),
     }).toString();
   }, [listPage, filters.customer, selectedChannels]);
 

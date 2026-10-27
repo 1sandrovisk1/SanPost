@@ -314,3 +314,28 @@ describe('PostsRepository.getPostsList (filtro de canais)', () => {
     expect(where.integration).toBeUndefined();
   });
 });
+
+// Porte do upstream #2212: conectar o post a mao tambem grava o link.
+describe('PostsRepository.updateReleaseId (link do post conectado)', () => {
+  it('grava o link junto do id so quando ele vem, sempre restrito a org e a posts missing', async () => {
+    const post = createPrismaRepositoryMock('post');
+    const tx = {
+      post: { update: jest.fn().mockResolvedValue({ id: 'p', integrationId: 'i', organizationId: 'o', profileId: null }) },
+      scheduledAutomationTarget: { updateMany: jest.fn() },
+    };
+    const transaction = { model: { $transaction: jest.fn(async (cb: any) => cb(tx)) } };
+    const repo = new PostsRepository(post as any, {} as any, {} as any, {} as any, {} as any, {} as any, transaction as any);
+
+    await repo.updateReleaseId('p', 'o', '123', 'https://www.tiktok.com/@perfil/video/123');
+    await repo.updateReleaseId('p', 'o', '456');
+
+    expect(tx.post.update).toHaveBeenNthCalledWith(1, {
+      where: { id: 'p', organizationId: 'o', releaseId: 'missing' },
+      data: { releaseId: '123', releaseURL: 'https://www.tiktok.com/@perfil/video/123' },
+    });
+    expect(tx.post.update).toHaveBeenNthCalledWith(2, {
+      where: { id: 'p', organizationId: 'o', releaseId: 'missing' },
+      data: { releaseId: '456' },
+    });
+  });
+});

@@ -5,6 +5,7 @@ import {
   Min,
   Max,
   IsArray,
+  ArrayMaxSize,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 
@@ -30,6 +31,7 @@ export class GetPostsListDto {
   // virgula; o escopo de org/perfil continua no repositorio
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(200)
   @IsString({ each: true })
   @Transform(({ value }) => (value ? String(value).split(',') : []))
   integrations?: string[];
