@@ -22,6 +22,7 @@ import { Readable } from 'stream';
 import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorator';
 import { createReadStream, statSync } from 'node:fs';
 import { ssrfSafeFetch } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
+import { Tool } from '@gitroom/nestjs-libraries/integrations/tool.decorator';
 
 const mediaPathname = (path: string) => {
   try {
@@ -932,9 +933,22 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
     });
   }
 
+  // ferramenta do canal (API publica `integration-trigger` e MCP `triggerTool`,
+  // upstream #2249); `this.fetch` = SSRF-safe com o mapeamento de erros
+  @Tool({
+    description:
+      'Encontra uma página de empresa para marcar pelo nome exato da URL (a parte depois de linkedin.com/company/). Marque no conteúdo com <span data-mention-id="{id}" data-mention-label="{label}">@{label}</span>',
+    dataSchema: [
+      {
+        key: 'query',
+        type: 'string',
+        description: 'Nome da página da empresa na URL (vanity name)',
+      },
+    ],
+  })
   override async mention(token: string, data: { query: string }) {
     const { elements } = await (
-      await fetch(
+      await this.fetch(
         `https://api.linkedin.com/v2/organizations?q=vanityName&vanityName=${encodeURIComponent(
           data.query
         )}&projection=(elements*(id,localizedName,logoV2(original~:playableStreams)))`,

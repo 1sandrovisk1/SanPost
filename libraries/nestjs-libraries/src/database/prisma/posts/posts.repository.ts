@@ -16,6 +16,7 @@ import isSameOrAfter from 'dayjs/plugin/isSameOrAfter';
 import utc from 'dayjs/plugin/utc';
 import { v4 as uuidv4 } from 'uuid';
 import { CreateTagDto } from '@gitroom/nestjs-libraries/dtos/posts/create.tag.dto';
+import { curatedPostError } from './post.error.curation';
 
 dayjs.extend(isoWeek);
 dayjs.extend(weekOfYear);
@@ -223,6 +224,8 @@ export class PostsRepository {
         releaseURL: true,
         releaseId: true,
         state: true,
+        // so a mensagem curada sai daqui (curatedPostError, upstream #2119)
+        error: true,
         intervalInDays: true,
         group: true,
         tags: {
@@ -252,27 +255,29 @@ export class PostsRepository {
       },
     });
 
-    return list.reduce((all, post) => {
-      if (!post.intervalInDays) {
-        return [...all, post];
-      }
-
-      const addMorePosts = [];
-      let startingDate = dayjs.utc(post.publishDate);
-      while (dayjs.utc(endDate).isSameOrAfter(startingDate)) {
-        if (dayjs(startingDate).isSameOrAfter(dayjs.utc(post.publishDate))) {
-          addMorePosts.push({
-            ...post,
-            publishDate: startingDate.toDate(),
-            actualDate: post.publishDate,
-          });
+    return list
+      .map((post) => ({ ...post, error: curatedPostError(post.error) }))
+      .reduce((all, post) => {
+        if (!post.intervalInDays) {
+          return [...all, post];
         }
 
-        startingDate = startingDate.add(post.intervalInDays, 'days');
-      }
+        const addMorePosts = [];
+        let startingDate = dayjs.utc(post.publishDate);
+        while (dayjs.utc(endDate).isSameOrAfter(startingDate)) {
+          if (dayjs(startingDate).isSameOrAfter(dayjs.utc(post.publishDate))) {
+            addMorePosts.push({
+              ...post,
+              publishDate: startingDate.toDate(),
+              actualDate: post.publishDate,
+            });
+          }
 
-      return [...all, ...addMorePosts];
-    }, [] as any[]);
+          startingDate = startingDate.add(post.intervalInDays, 'days');
+        }
+
+        return [...all, ...addMorePosts];
+      }, [] as any[]);
   }
 
   async getPostsList(orgId: string, query: GetPostsListDto, profileId?: string) {

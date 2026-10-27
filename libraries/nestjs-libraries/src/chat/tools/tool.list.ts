@@ -7,6 +7,7 @@ import { VideoFunctionTool } from '@gitroom/nestjs-libraries/chat/tools/video.fu
 import { GenerateVideoTool } from '@gitroom/nestjs-libraries/chat/tools/generate.video.tool';
 import { GenerateImageTool } from '@gitroom/nestjs-libraries/chat/tools/generate.image.tool';
 import { IntegrationListTool } from '@gitroom/nestjs-libraries/chat/tools/integration.list.tool';
+import { MediaListTool } from '@gitroom/nestjs-libraries/chat/tools/media.list.tool';
 import { KnowledgeQueryTool } from '@gitroom/nestjs-libraries/chat/tools/knowledge.query.tool';
 import { WebSearchTool } from '@gitroom/nestjs-libraries/chat/tools/web-search.tool';
 import { ExtractUrlsTool } from '@gitroom/nestjs-libraries/chat/tools/extract-urls.tool';
@@ -18,6 +19,7 @@ import { GetCommentAutomationTool, UpdateCommentAutomationTool, GetAutomationOpt
 export const toolList = [
   ListPostsTool, GetPostTool, UpdatePostTool, ManagePostScheduleTool, GetPostOptionsTool,
   IntegrationListTool,
+  MediaListTool,
   IntegrationValidationTool,
   IntegrationTriggerTool,
   IntegrationSchedulePostTool,

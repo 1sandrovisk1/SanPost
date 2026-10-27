@@ -112,5 +112,26 @@ describe('MediaRepository', () => {
         },
       });
     });
+
+    // #1926: busca pelo nome original (API publica e MCP) e createdAt na lista
+    it('filtra pelo nome original sem diferenciar maiusculas e devolve createdAt', async () => {
+      const { repository, mediaMock } = buildRepository();
+      (mediaMock.model.media as any).count.mockResolvedValue(0);
+      (mediaMock.model.media as any).findMany.mockResolvedValue([]);
+
+      await repository.getMedia('org-1', 1, 'prof-1', 'Logo');
+
+      const args = (mediaMock.model.media as any).findMany.mock.calls[0][0];
+      expect(args.where).toMatchObject({
+        organizationId: 'org-1',
+        deletedAt: null,
+        originalName: { contains: 'Logo', mode: 'insensitive' },
+      });
+      expect(args.select.createdAt).toBe(true);
+      expect((mediaMock.model.media as any).count.mock.calls[0][0].where.originalName).toEqual({
+        contains: 'Logo',
+        mode: 'insensitive',
+      });
+    });
   });
 });

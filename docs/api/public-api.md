@@ -30,7 +30,8 @@ Authorization: SUA_CHAVE_DE_API
 | `GET` | `/public/v1/find-slot/:id` | Próximo horário livre para agendar |
 | `POST` | `/public/v1/upload` | Upload de arquivo (multipart, campo `file`) |
 | `POST` | `/public/v1/upload-from-url` | Upload de mídia a partir de uma URL |
-| `GET` | `/public/v1/posts` | Listar posts (`startDate`/`endDate`) |
+| `GET` | `/public/v1/media` | Listar a biblioteca de mídia (`page`, `search` pelo nome original; 18 por página; chave de perfil: só a mídia do perfil e a sem perfil) |
+| `GET` | `/public/v1/posts` | Listar posts (`startDate`/`endDate`); posts com falha trazem `error` com a mensagem curada do provider (ou `null`) |
 | `POST` | `/public/v1/posts` | Criar / agendar / rascunho de post |
 | `DELETE` | `/public/v1/posts/:id` | Excluir um post — devolve `{ "id": "<post>" }` (grupo inexistente: `{ "error": true }`) |
 | `GET` | `/public/v1/analytics/:integration` | Analytics de um canal (`?date=` dias) |

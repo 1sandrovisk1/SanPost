@@ -85,11 +85,22 @@ export class IntegrationSchedulePostTool implements AgentToolInterface {
     return createTool({
       id: 'schedulePostTool',
       description:
-        'Cria novos posts/agendamentos/rascunhos. Consulte integrationSchema para regras e settings do provider. Suporta lote, tags, intervalo recorrente, comentários/threads com delay, attachments antigos ou media com id/path/alt/thumbnail. Primeiro item de postsAndComments é a publicação, os demais são comentários/partes do thread conforme a rede. Para editar/reagendar um post existente use getPostTool/updatePostTool/managePostScheduleTool, mantendo o ID. Se retornar saved=true, preserve os IDs retornados e não repita o lote inteiro. outcomeUnknown=true exige consultar uncertainPosts antes de qualquer nova criação. Publicar agora ou agendar deve seguir a intenção autorizada do usuário.',
+        'Cria novos posts/agendamentos/rascunhos. Consulte integrationSchema para regras e settings do provider. Suporta lote, tags, intervalo recorrente, comentários/threads com delay, attachments antigos ou media com id/path/alt/thumbnail. Primeiro item de postsAndComments é a publicação, os demais são comentários/partes do thread conforme a rede. Para editar/reagendar um post existente use getPostTool/updatePostTool/managePostScheduleTool, mantendo o ID. Cada item criado volta com previewUrl (página pública de preview) para mostrar ao usuário. Se retornar saved=true, preserve os IDs retornados e não repita o lote inteiro. outcomeUnknown=true exige consultar uncertainPosts antes de qualquer nova criação. Publicar agora ou agendar deve seguir a intenção autorizada do usuário.',
       inputSchema: schedulePostInputSchema,
       outputSchema: z.object({
         output: z
-          .array(z.object({ postId: z.string(), integration: z.string() }))
+          .array(
+            z.object({
+              postId: z.string(),
+              integration: z.string(),
+              previewUrl: z
+                .string()
+                .optional()
+                .describe(
+                  'Página pública de preview do post criado; compartilhe com o usuário'
+                ),
+            })
+          )
           .optional(),
         errors: z.string().optional(),
         saved: z.boolean().optional(),
@@ -99,7 +110,11 @@ export class IntegrationSchedulePostTool implements AgentToolInterface {
           .optional(),
       }),
       execute: async (raw: unknown, options: unknown) => {
-        const output: Array<{ postId: string; integration: string }> = [];
+        const output: Array<{
+          postId: string;
+          integration: string;
+          previewUrl?: string;
+        }> = [];
         let uncertainPosts: Array<{ postId: string; integration: string }> = [];
         try {
           checkAuth(raw, options);
@@ -220,8 +235,17 @@ export class IntegrationSchedulePostTool implements AgentToolInterface {
               postId: post.value[0].id,
               integration: post.integration.id,
             }));
+            // mesma pagina publica do botao "Preview" do calendario (upstream
+            // 8c63e686): o agente devolve o link para o usuario conferir
+            const created = await this.posts.createPost(org.id, body, profileId);
             output.push(
-              ...(await this.posts.createPost(org.id, body, profileId))
+              ...created.map((item: { postId: string; integration: string }) => ({
+                ...item,
+                previewUrl: `${(process.env.FRONTEND_URL || '').replace(
+                  /\/+$/,
+                  ''
+                )}/p/${item.postId}?share=true`,
+              }))
             );
             uncertainPosts = [];
           }

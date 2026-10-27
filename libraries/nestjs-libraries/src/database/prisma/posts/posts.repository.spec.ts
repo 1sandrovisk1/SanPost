@@ -201,3 +201,38 @@ describe('PostsRepository.deletePost (escopo por perfil)', () => {
     expect(findFirst.mock.calls[0][0].where.profileId).toBeUndefined();
   });
 });
+
+// #2119: o calendario mostra o motivo da falha — so a mensagem curada.
+describe('PostsRepository.getPosts (erro curado)', () => {
+  it('seleciona error e devolve so a mensagem curada de bad_body', async () => {
+    const prismaMock = createPrismaRepositoryMock('post');
+    (prismaMock.model.post as any).findMany = jest.fn().mockResolvedValue([
+      {
+        id: 'p1',
+        publishDate: new Date('2026-10-27T10:00:00Z'),
+        intervalInDays: null,
+        state: 'ERROR',
+        error: JSON.stringify({ cause: { type: 'bad_body', failure: { message: 'Vídeo recusado' } } }),
+      },
+      {
+        id: 'p2',
+        publishDate: new Date('2026-10-27T11:00:00Z'),
+        intervalInDays: null,
+        state: 'ERROR',
+        error: '{"refresh_token":"SECRET"}',
+      },
+    ]);
+    const repo = new PostsRepository(prismaMock as any, {} as any, {} as any, {} as any, {} as any, {} as any);
+
+    const list: any[] = await repo.getPosts('org-1', {
+      startDate: '2026-10-26T00:00:00Z',
+      endDate: '2026-11-02T00:00:00Z',
+    } as any);
+
+    const select = (prismaMock.model.post.findMany as jest.Mock).mock.calls[0][0].select;
+    expect(select.error).toBe(true);
+    expect(list.find((p) => p.id === 'p1').error).toBe('Vídeo recusado');
+    expect(list.find((p) => p.id === 'p2').error).toBeNull();
+    expect(JSON.stringify(list)).not.toContain('SECRET');
+  });
+});

@@ -600,3 +600,43 @@ describe('PublicIntegrationsController - getIntegrationUrl (perfil da chave)', (
     expect(keys).not.toContain('profile:st-1');
   });
 });
+
+// #1926: listar a biblioteca de midia pela API publica, no perfil da chave.
+describe('PublicIntegrationsController - GET /media', () => {
+  const media = {
+    getMedia: jest.fn().mockResolvedValue({
+      pages: 1,
+      results: [
+        {
+          id: 'm1',
+          name: 'a.png',
+          originalName: 'logo.png',
+          path: '/uploads/a.png',
+          createdAt: new Date('2026-10-27T10:00:00Z'),
+          thumbnail: 't.png',
+          inUse: false,
+        },
+      ],
+    }),
+  };
+  const build = () =>
+    new PublicIntegrationsController({} as any, {} as any, media as any, {} as any, {} as any, {} as any, {} as any);
+
+  beforeEach(() => media.getMedia.mockClear());
+
+  it('chave de perfil lista so o perfil dela; resposta so com campos de exibicao', async () => {
+    const result = await build().getMedia({ id: 'org-1' } as any, 'prof-1', { page: 3, search: 'logo' } as any);
+    expect(media.getMedia).toHaveBeenCalledWith('org-1', 3, 'prof-1', 'logo');
+    expect(result).toEqual({
+      pages: 1,
+      results: [
+        { id: 'm1', name: 'a.png', originalName: 'logo.png', path: '/uploads/a.png', createdAt: new Date('2026-10-27T10:00:00Z') },
+      ],
+    });
+  });
+
+  it('chave de organizacao lista a organizacao inteira (pagina 1 por padrao)', async () => {
+    await build().getMedia({ id: 'org-1' } as any, undefined, {} as any);
+    expect(media.getMedia).toHaveBeenCalledWith('org-1', 1, undefined, undefined);
+  });
+});

@@ -623,6 +623,32 @@ aplicável agora: #2290 (classe `preview` na página de preview com comentários
 que o fork ainda não tem — entra com o épico de comentários anônimos no
 preview). `6b102afb` (`destructiveHint`) vai para o lote MCP.
 
+### Lote MCP (27/10/2026)
+
+Portados: #1926 (`GET /public/v1/media` + `mediaListTool`, com o escopo de
+perfil do fork e busca pelo nome original), #2119 (erro curado na listagem de
+posts — calendário e API pública — via `curatedPostError`; o fork não tem a
+`posts.list.tool` do upstream), #2249 (`mention` do LinkedIn como `@Tool`, com
+`this.fetch`) e `8c63e686` (`previewUrl` no retorno do `schedulePostTool`).
+Já coberto pelo PR #327: #2175 (`media` com id/path/alt/thumbnail no
+`schedulePostTool`). Dependem do upgrade do Mastra (épico Mastra/CopilotKit:
+`@mastra/core` 1.24 → 1.67, `@mastra/mcp` 1.4 → 1.18, tabelas espelhadas no
+Prisma): #2235 (protocolo `2026-07-28`) e `6b102afb` (`destructiveHint` na
+`post.settings.tool`, que o fork não tem). Depende da imagem inline no editor
+(P2): `28701a98` (`<img>` no conteúdo de ListMonk/WordPress/artigos do X). Não
+aplicável: `4583ac5d` (relay de MCP do Postiz cloud).
+Revisões: `code-reviewer` (2 MUST FIX aplicados — `mediaListTool` falha
+fechada sem org no contexto e spec do repasse da busca em `MediaService` —,
+mais limite de página, `FRONTEND_URL` com barra final e drift do pitfall 14 do
+backend); `security-auditor` (1 HIGH introduzido e corrigido — o mesmo fail
+open sem org —; MEDIUM aplicado: a mensagem curada passa por `redactSecrets`
+porque Reddit/VK/Slack/Lemmy/Telegram interpolam o texto de erro da API;
+MEDIUM pré-existente registrado: token OAuth (`pos_`) aprovado por um USER
+restrito não carrega `profileId`, então lista mídia e canais da org inteira —
+amarrar o grant ao perfil de quem aprova ou restringir a aprovação a ADMIN).
+Mudança aceita conscientemente: o `mention` do LinkedIn via `this.fetch` faz a
+busca do dashboard seguir o fluxo de refresh em 401 (como o upstream).
+
 ## Apêndice — classificação 1 por 1 (171 PRs + 74 commits diretos)
 
 Legenda: **P0** segurança (nesta branch) · **ADOPT** cherry-pick/porte leve ·

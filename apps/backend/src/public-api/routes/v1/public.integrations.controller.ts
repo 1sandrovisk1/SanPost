@@ -41,6 +41,7 @@ import {
 import { VideoDto } from '@gitroom/nestjs-libraries/dtos/videos/video.dto';
 import { VideoFunctionDto } from '@gitroom/nestjs-libraries/dtos/videos/video.function.dto';
 import { UploadDto } from '@gitroom/nestjs-libraries/dtos/media/upload.dto';
+import { GetMediaDto } from '@gitroom/nestjs-libraries/dtos/media/get.media.dto';
 import { NotificationService } from '@gitroom/nestjs-libraries/database/prisma/notifications/notification.service';
 import { GetNotificationsDto } from '@gitroom/nestjs-libraries/dtos/notifications/get.notifications.dto';
 import { isSafePublicHttpsUrl } from '@gitroom/nestjs-libraries/dtos/webhooks/webhook.url.validator';
@@ -508,6 +509,38 @@ export class PublicIntegrationsController {
     } catch (err) {
       throw new HttpException({ msg: 'Failed to generate auth URL' }, 500);
     }
+  }
+
+  @Get('/media')
+  @ApiOperation({
+    summary: 'Listar a biblioteca de mídia',
+    description:
+      'Mídia já enviada, da mais recente para a mais antiga, 18 por página, com busca opcional pelo nome original. Chave de perfil: só a mídia do perfil (e a sem perfil).',
+  })
+  async getMedia(
+    @GetOrgFromRequest() org: Organization,
+    @GetPublicApiProfileId() publicApiProfileId: string | undefined,
+    @Query() query: GetMediaDto
+  ) {
+    Sentry.metrics.count('public_api-request', 1);
+    const { pages, results } = await this._mediaService.getMedia(
+      org.id,
+      query.page || 1,
+      publicApiProfileId,
+      query.search
+    );
+
+    // so campos de exibicao: nada de contagens internas nem uso em posts
+    return {
+      pages,
+      results: results.map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        originalName: p.originalName,
+        path: p.path,
+        createdAt: p.createdAt,
+      })),
+    };
   }
 
   @Get('/notifications')

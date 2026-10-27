@@ -126,6 +126,7 @@
   "save": "Salvar",
   "page": "Página",
   "loading": "Carregando...",
+  "post_publish_error": "Ocorreu um erro ao publicar este post",
   "upload_failed": "O envio falhou, tente de novo",
   "mention_no_autocomplete": "Esta rede social não tem sugestões de menção",
   "no_results_found": "Nenhum resultado encontrado",

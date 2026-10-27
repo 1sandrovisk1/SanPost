@@ -306,8 +306,18 @@ export class MediaService {
    * ANTES do usuário selecionar em massa, senão ele seleciona 20 itens e
    * descobre no final que metade está travada.
    */
-  async getMedia(org: string, page: number, profileId?: string) {
-    const media = await this._mediaRepository.getMedia(org, page, profileId);
+  async getMedia(
+    org: string,
+    page: number,
+    profileId?: string,
+    search?: string
+  ) {
+    const media = await this._mediaRepository.getMedia(
+      org,
+      page,
+      profileId,
+      search
+    );
     const ids = media.results.map((item) => item.id);
     const pendingPosts = await this._mediaRepository.findPendingPostsUsingMedia(
       org,

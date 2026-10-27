@@ -83,7 +83,8 @@ Meta limits **one `sendPrivateReply` per comment**. After the postback, the 24h 
 | `generate.video.tool.ts` / `generate.video.options.tool.ts` | Video generation (catalog + execution) |
 | `video.function.tool.ts` | Video helpers |
 | `integration.list.tool.ts` | List the user's integrations |
-| `integration.schedule.post.ts` | Schedule a post via `PostsService` |
+| `integration.schedule.post.ts` | Schedule a post via `PostsService`; each created item returns `previewUrl` (`${FRONTEND_URL}/p/<id>?share=true`) |
+| `media.list.tool.ts` | `mediaListTool` — read-only listing of the media library (search by original name, 18/page), scoped to the session profile via `requestContext.get('profileId')`; returns display fields only |
 | `integration.trigger.tool.ts` | Manual integration trigger — only `@Tool` methods, and only channels of the active profile (`requestContext.get('profileId')`), like the schedule tool |
 | `integration.validation.tool.ts` | Validate an integration config |
 | `knowledge.query.tool.ts` | Query the profile's Knowledge Base (RAG) |

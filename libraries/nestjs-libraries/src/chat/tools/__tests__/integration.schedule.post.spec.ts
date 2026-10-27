@@ -134,4 +134,23 @@ describe('criacao MCP completa de posts', () => {
     const result = await tool.execute({ socialPost: [{ integrationId: 'i', isPremium: false, date: '2026-11-01T15:00:00.000Z', shortLink: false, type: 'schedule', settings: [], postsAndComments: [{ content: 'Post', attachments: [] }] }] }, options);
     expect(result).toMatchObject({ outcomeUnknown: true, uncertainPosts: [expect.objectContaining({ postId: expect.any(String), integration: 'i' })] });
   });
+
+  // Porte do upstream 8c63e686: cada post criado volta com a pagina publica de
+  // preview (a mesma do botao "Preview" do calendario) para o agente mostrar.
+  it('devolve previewUrl de cada post criado', async () => {
+    const previous = process.env.FRONTEND_URL;
+    process.env.FRONTEND_URL = 'https://multi.example.com';
+    try {
+      const tool: any = new IntegrationSchedulePostTool(posts as any, integration as any, management as any).run();
+      const result = await tool.execute(
+        { socialPost: [{ integrationId: 'i', isPremium: false, date: '2026-11-01T15:00:00Z', shortLink: false, type: 'schedule', settings: [], postsAndComments: [{ content: 'oi', attachments: [] }] }] },
+        options
+      );
+      expect(result.output).toEqual([
+        { postId: 'novo', integration: 'i', previewUrl: 'https://multi.example.com/p/novo?share=true' },
+      ]);
+    } finally {
+      process.env.FRONTEND_URL = previous;
+    }
+  });
 });
