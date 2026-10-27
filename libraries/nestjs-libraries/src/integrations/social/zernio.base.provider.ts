@@ -42,6 +42,15 @@ export class ZernioBaseProvider
     return this.charLimit;
   }
 
+  /**
+   * Regras da rede de destino que a Zernio repassaria como erro generico.
+   * Subclasses sobrescrevem (ex.: ZernioTikTokProvider) e lancam `BadBody`
+   * (nao retentavel) com a orientacao; padrao: sem regra.
+   */
+  protected assertPublishable(postDetails: PostDetails[]): void {
+    void postDetails;
+  }
+
   async generateAuthUrl(
     clientInformation?: ClientInformation
   ): Promise<GenerateAuthUrlResponse> {
@@ -151,6 +160,9 @@ export class ZernioBaseProvider
     postDetails: PostDetails[],
     integration: Integration
   ): Promise<PostResponse[]> {
+    // validacao da rede de destino antes de gastar chamadas na Zernio
+    this.assertPublishable(postDetails);
+
     const zernio = new Zernio({ apiKey: accessToken });
 
     try {

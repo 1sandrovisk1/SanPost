@@ -7,6 +7,12 @@ import {
   Logger,
 } from '@nestjs/common';
 import { summarizeError } from '@gitroom/nestjs-libraries/services/error.summary';
+import {
+  isTikTokPhotoPost,
+  TIKTOK_IDENTIFIERS,
+  tiktokCaptionTooLong,
+  tiktokPlainText,
+} from '@gitroom/nestjs-libraries/integrations/social/tiktok.caption';
 import { PostsRepository } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.repository';
 import { CreatePostDto } from '@gitroom/nestjs-libraries/dtos/posts/create.post.dto';
 import dayjs from 'dayjs';
@@ -940,6 +946,28 @@ export class PostsService {
     } catch (err) { if (options?.strict) throw err; }
   }
 
+  // Texto que o TikTok (nativo ou via Zernio) vai recusar e barrado na criacao
+  // — dashboard, API publica, MCP e CLI passam por aqui. Antes ia para a fila
+  // e voltava como `invalid_params` generico na hora de publicar.
+  private assertTikTokTextLength(body: CreatePostDto) {
+    for (const post of body.posts || []) {
+      if (!TIKTOK_IDENTIFIERS.includes(post?.settings?.__type)) {
+        continue;
+      }
+      const [first] = post.value || [];
+      if (!first) {
+        continue;
+      }
+      const tooLong = tiktokCaptionTooLong(
+        tiktokPlainText(first.content || ''),
+        isTikTokPhotoPost(first.image as Array<{ path?: string }>)
+      );
+      if (tooLong) {
+        throw new BadRequestException(tooLong);
+      }
+    }
+  }
+
   private guardAgainstRepublish(
     post: {
       state: State;
@@ -1016,6 +1044,12 @@ export class PostsService {
       for (const existingPost of existingPosts) {
         this.guardAgainstRepublish(existingPost, 'createPost');
       }
+    }
+
+    // com encurtador o texto muda depois daqui: o provider checa de novo antes
+    // de publicar, com a mesma mensagem
+    if (body.type !== 'draft' && !body.shortLink) {
+      this.assertTikTokTextLength(body);
     }
 
     // canal de cada post precisa ser do perfil: a API publica e a tool MCP ja

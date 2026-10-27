@@ -22,6 +22,7 @@ import type { InstagramProvider } from '@gitroom/nestjs-libraries/integrations/s
 import { EncryptionService } from '@gitroom/nestjs-libraries/crypto/encryption.service';
 import { decryptIntegrationToken } from '@gitroom/nestjs-libraries/crypto/integration-token.helper';
 import { repostMediaFilterReason } from '@gitroom/nestjs-libraries/database/prisma/repost/repost.matrix';
+import { captionForFormat } from '@gitroom/orchestrator/activities/repost.caption';
 
 export interface RepostCycleResult {
   ruleDisabled?: boolean;
@@ -555,33 +556,6 @@ function skipByVideoLimits(
     return 'DURATION_EXCEEDED_LINKEDIN';
   }
   return null;
-}
-
-/**
- * Trunca caption por limite de cada destino. Caption "padrao" (com mais de
- * 250/500 chars) precisa ser cortada antes de mandar pra X/Threads/Pinterest;
- * outros destinos toleram texto longo sem problema.
- *
- * X_POST usa 250 (e nao o limite oficial de 280) porque o contador "weighted"
- * do X conta caracteres especiais (— … emojis) como 2, e captions vindas do
- * Instagram costumam ter pontuacao especial que estoura 280 mesmo com o
- * .slice ingenuo.
- */
-function captionForFormat(
-  format: RepostDestinationFormat,
-  caption: string
-): string {
-  if (!caption) return caption;
-  switch (format) {
-    case 'X_POST':
-      return caption.slice(0, 250);
-    case 'THREADS_POST':
-      return caption.slice(0, 500);
-    case 'PINTEREST_PIN':
-      return caption.slice(0, 500);
-    default:
-      return caption;
-  }
 }
 
 function skipByImageFormat(format: RepostDestinationFormat): string | null {

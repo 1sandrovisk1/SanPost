@@ -268,3 +268,47 @@ describe('TiktokProvider (lote out/2026)', () => {
     expect(body).toContain('client_secret=profile-secret');
   });
 });
+
+// Texto acima do limite do TikTok era enviado e voltava como `invalid_params`
+// ("Invalid request parameters"), sem dizer que o problema era o tamanho.
+describe('TiktokProvider limite de texto', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  const post = (message: string, path: string, method = 'DIRECT_POST') =>
+    ({
+      id: 'p1',
+      message,
+      media: [{ path }],
+      settings: { content_posting_method: method, privacy_level: 'PUBLIC_TO_EVERYONE' },
+    }) as any;
+
+  it('video com legenda acima de 2.200 falha com BadBody antes de chamar o TikTok', async () => {
+    const provider = new TiktokProvider();
+    const fetchSpy = jest.spyOn(provider, 'fetch');
+
+    const error = await provider
+      .post('u1', 'tok', [post('a'.repeat(2201), 'https://cdn.example/v.mp4')], { profile: 'perfil' } as any)
+      .catch((e) => e);
+
+    expect(error).toBeInstanceOf(BadBody);
+    expect(error.message).toMatch(/2[.]?201/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('foto aceita descricao ate 4.000 e recusa acima', async () => {
+    const provider = new TiktokProvider();
+    jest.spyOn(provider, 'fetch');
+
+    await expect(
+      provider.post('u1', 'tok', [post('a'.repeat(4001), 'https://cdn.example/f.jpg')], { profile: 'perfil' } as any)
+    ).rejects.toBeInstanceOf(BadBody);
+  });
+
+  it('titulo de foto vai cortado em 90 tambem no envio para rascunho (UPLOAD)', () => {
+    const body = (new TiktokProvider() as any).buildTikokPostInfoBody({
+      ...post('desc', 'https://cdn.example/f.jpg', 'UPLOAD'),
+      settings: { content_posting_method: 'UPLOAD', title: 't'.repeat(120) },
+    });
+    expect(body.post_info.title).toHaveLength(90);
+  });
+});

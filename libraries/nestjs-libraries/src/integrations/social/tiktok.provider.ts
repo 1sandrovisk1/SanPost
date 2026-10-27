@@ -9,6 +9,11 @@ import {
 } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
 import dayjs from 'dayjs';
 import {
+  isTikTokPhotoPost,
+  TIKTOK_PHOTO_TITLE_LIMIT,
+  tiktokCaptionTooLong,
+} from '@gitroom/nestjs-libraries/integrations/social/tiktok.caption';
+import {
   BadBody,
   RefreshToken,
   SocialAbstract,
@@ -560,14 +565,19 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
   }
 
   private buildTikokPostInfoBody(firstPost: PostDetails<TikTokDto>) {
-    const isPhoto = (firstPost?.media?.[0]?.path?.indexOf('mp4') || -1) === -1;
+    const isPhoto = isTikTokPhotoPost(firstPost?.media);
     const method = firstPost?.settings?.content_posting_method;
 
     if (method === 'DIRECT_POST') {
       return {
         post_info: {
           ...(isPhoto && firstPost.settings.title
-            ? { title: firstPost.settings.title.slice(0, 90) }
+            ? {
+                title: firstPost.settings.title.slice(
+                  0,
+                  TIKTOK_PHOTO_TITLE_LIMIT
+                ),
+              }
             : {}),
           ...(!isPhoto && firstPost.message
             ? { title: firstPost.message }
@@ -617,7 +627,12 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
     return {
       post_info: {
         ...(isPhoto && firstPost.settings.title
-          ? { title: firstPost.settings.title }
+          ? {
+              title: firstPost.settings.title.slice(
+                0,
+                TIKTOK_PHOTO_TITLE_LIMIT
+              ),
+            }
           : {}),
         ...(!isPhoto && firstPost.message ? { title: firstPost.message } : {}),
         ...(isPhoto ? { description: firstPost.message } : {}),
@@ -626,7 +641,7 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
   }
 
   private buildTikokSourceInfoBody(firstPost: PostDetails<TikTokDto>) {
-    const isPhoto = (firstPost?.media?.[0]?.path?.indexOf('mp4') || -1) === -1;
+    const isPhoto = isTikTokPhotoPost(firstPost?.media);
 
     if (isPhoto) {
       return {
@@ -658,7 +673,19 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
     integration: Integration
   ): Promise<PostResponse[]> {
     const [firstPost] = postDetails;
-    const isPhoto = (firstPost?.media?.[0]?.path?.indexOf('mp4') || -1) === -1;
+    const isPhoto = isTikTokPhotoPost(firstPost?.media);
+
+    // texto acima do limite voltava do TikTok como `invalid_params` generico
+    // e o usuario nao sabia que o problema era o tamanho
+    const tooLong = tiktokCaptionTooLong(firstPost?.message || '', isPhoto);
+    if (tooLong) {
+      throw new BadBody(
+        this.identifier,
+        JSON.stringify({ length: (firstPost?.message || '').length }),
+        Buffer.from('{}'),
+        tooLong
+      );
+    }
 
     const {
       data: { publish_id },
@@ -666,7 +693,7 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
       await this.fetch(
         `https://open.tiktokapis.com/v2/post/publish${this.postingMethod(
           firstPost.settings.content_posting_method,
-          (firstPost?.media?.[0]?.path?.indexOf('mp4') || -1) === -1
+          isPhoto
         )}`,
         {
           method: 'POST',
