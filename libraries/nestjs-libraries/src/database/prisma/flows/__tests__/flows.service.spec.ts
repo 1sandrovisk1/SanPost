@@ -1204,7 +1204,7 @@ describe('FlowsService', () => {
       });
       // handlePostbackClick with no matching row logs warn but does not throw
       expect(handled).toBeUndefined();
-      expect(mockRepository.findPostbackByPayload).toHaveBeenCalledWith(payload);
+      expect(mockRepository.findPostbackByPayload).toHaveBeenCalledWith(payload, {senderIgsid:'sender-1',igAccountId:'acct-1'});
     });
   });
 
@@ -1223,6 +1223,18 @@ describe('FlowsService', () => {
         .slice(0, 16);
       return `pb_${shortId}_${hmac}`;
     };
+
+    it('nao registra payload assinado nem identificador do remetente em falhas de postback', async () => {
+      const warn=jest.spyOn((service as any)._logger,'warn').mockImplementation(()=>{});
+      const invalid='pb_PRIVATE_SENTINEL_deadbeefdeadbeef';
+      await service.handlePostbackClick({payload:invalid,senderIgsid:'PRIVATE_SENDER',igAccountId:'acct'});
+      const valid=makeValidPayload();
+      mockRepository.findPostbackByPayload.mockResolvedValue(null);
+      await service.handlePostbackClick({payload:valid,senderIgsid:'PRIVATE_SENDER',igAccountId:'acct'});
+      const output=JSON.stringify(warn.mock.calls);
+      expect(output).not.toContain(invalid);expect(output).not.toContain(valid);expect(output).not.toContain('PRIVATE_SENDER');
+      warn.mockRestore();
+    });
 
     it('ignores payloads without the pb_ prefix (outside traffic)', async () => {
       await service.handlePostbackClick({
@@ -1255,7 +1267,7 @@ describe('FlowsService', () => {
         igAccountId: 'acct-1',
       });
 
-      expect(mockRepository.findPostbackByPayload).toHaveBeenCalledWith(payload);
+      expect(mockRepository.findPostbackByPayload).toHaveBeenCalledWith(payload, {senderIgsid:'sender-1',igAccountId:'acct-1'});
       expect(mockWorkflowStart).not.toHaveBeenCalled();
     });
 

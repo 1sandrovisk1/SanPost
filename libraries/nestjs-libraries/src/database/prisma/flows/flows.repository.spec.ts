@@ -110,3 +110,54 @@ describe('FlowsRepository', () => {
     });
   });
 });
+
+
+describe('isolamento em execucoes legadas ja ativas', () => {
+  const integration = { internalId:'account', organizationId: 'o', profileId: 'p', disabled: false, deletedAt: null as Date | null };
+  const flow = { id: 'f', organizationId: 'o', profileId: 'p', integrationId: 'i', integration };
+  let repo: FlowsRepository;
+  let model: any;
+  let postbacks: any;
+  beforeEach(() => {
+    model = { findFirst: jest.fn(), findMany: jest.fn() };
+    postbacks = { findUnique: jest.fn() };
+    repo = new FlowsRepository({model:{flow:model}} as any, {} as any, {} as any, {} as any, {model:{pendingPostback:postbacks}} as any, {} as any, {} as any, {} as any);
+  });
+  it.each(['getActiveFlowsForIntegration', 'findPendingNextPublicationFlows'] as const)('%s exclui conta movida para outro perfil ou organizacao', async method => {
+    model.findMany.mockResolvedValue([flow, {...flow, profileId:'other'}, {...flow, organizationId:'other'}, {...flow, integration:{...integration, disabled:true}}]);
+    expect(await repo[method]('i')).toEqual([flow]);
+  });
+  it('bloqueia inicio e retomada de flow com conta de outro perfil', async () => {
+    model.findFirst.mockResolvedValue({...flow, profileId:'other'});
+    expect(await repo.getFlowById('f')).toBeNull();
+    model.findFirst.mockResolvedValue(flow);
+    expect(await repo.getFlowById('f')).toEqual(flow);
+  });
+  it('preserva integracao legada sem perfil apenas na mesma organizacao', async () => {
+    model.findFirst.mockResolvedValue({...flow, integration:{...integration, profileId:null}});
+    expect(await repo.getFlowById('f')).toBeTruthy();
+    model.findFirst.mockResolvedValue({...flow, profileId:null});
+    expect(await repo.getFlowById('f')).toBeNull();
+  });
+  it('rejeita clique valido encaminhado por outro remetente ou outra conta', async () => {
+    const pb={id:'pb',flowId:'f',integrationId:'i',organizationId:'o',igSenderId:'original'};
+    postbacks.findUnique.mockResolvedValue(pb);
+    model.findFirst.mockResolvedValue({...flow,integration:{...integration,internalId:'account'}});
+    const read=(identity:any)=>(repo.findPostbackByPayload as any)('signed-fixture',identity);
+    expect(await read({senderIgsid:'other',igAccountId:'account'})).toBeNull();
+    expect(await read({senderIgsid:'original',igAccountId:'other'})).toBeNull();
+    expect(await read({senderIgsid:'original',igAccountId:'account'})).toEqual(pb);
+  });
+  it.each(['findPostbackById','findPostbackByPayload'] as const)('%s bloqueia snapshot cujo canal ou tenant diverge do flow', async method => {
+    model.findFirst.mockResolvedValue(flow);
+    for (const override of [{integrationId:'other'}, {organizationId:'other'}]) {
+      postbacks.findUnique.mockResolvedValue({id:'pb', flowId:'f', integrationId:'i', organizationId:'o', igSenderId:'original', ...override});
+      expect(await (repo[method] as any)('pb', {senderIgsid:'original',igAccountId:'account'})).toBeNull();
+    }
+    const pb = {id:'pb', flowId:'f', integrationId:'i', organizationId:'o', igSenderId:'original'};
+    postbacks.findUnique.mockResolvedValue(pb);
+    expect(await (repo[method] as any)('pb', {senderIgsid:'original',igAccountId:'account'})).toEqual(pb);
+    model.findFirst.mockResolvedValue(null);
+    expect(await (repo[method] as any)('pb', {senderIgsid:'original',igAccountId:'account'})).toBeNull();
+  });
+});

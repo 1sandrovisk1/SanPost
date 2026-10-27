@@ -331,7 +331,7 @@ describe('FlowsRepository', () => {
 
   describe('getActiveFlowsForIntegration', () => {
     it('should return active flows for integration', async () => {
-      const flows = [{ id: 'flow-1', status: FlowStatus.ACTIVE }];
+      const flows = [{ id: 'flow-1', status: FlowStatus.ACTIVE, organizationId:'org-1', profileId:'p', integration:{organizationId:'org-1',profileId:'p',disabled:false,deletedAt:null as Date | null} }];
       mockFlowModel.findMany.mockResolvedValue(flows);
 
       const result = await repository.getActiveFlowsForIntegration('int-1');
@@ -345,6 +345,7 @@ describe('FlowsRepository', () => {
           OR: [{ profileId: null }, { profile: { deletedAt: null } }],
         },
         include: {
+          integration: {select:{organizationId:true,profileId:true,disabled:true,deletedAt:true,internalId:true}},
           nodes: true,
           edges: true,
         },
@@ -402,10 +403,11 @@ describe('FlowsRepository', () => {
 
     describe('findPostbackByPayload', () => {
       it('should find postback by unique payload', async () => {
-        const pb = { id: 'pb-1', status: PendingPostbackStatus.PENDING };
+        const pb = { id: 'pb-1', status: PendingPostbackStatus.PENDING,flowId:'f',integrationId:'i',organizationId:'o',igSenderId:'sender' };
+        mockFlowModel.findFirst.mockResolvedValue({id:'f',integrationId:'i',organizationId:'o',profileId:'p',integration:{organizationId:'o',profileId:'p',disabled:false,deletedAt:null,internalId:'account'}});
         mockPendingPostbackModel.findUnique.mockResolvedValue(pb);
 
-        const result = await repository.findPostbackByPayload('pb_abc_1234abcd');
+        const result = await repository.findPostbackByPayload('pb_abc_1234abcd', {senderIgsid:'sender',igAccountId:'account'});
 
         expect(mockPendingPostbackModel.findUnique).toHaveBeenCalledWith({
           where: { payload: 'pb_abc_1234abcd' },
@@ -416,14 +418,15 @@ describe('FlowsRepository', () => {
       it('should return null when payload does not exist', async () => {
         mockPendingPostbackModel.findUnique.mockResolvedValue(null);
 
-        const result = await repository.findPostbackByPayload('pb_nope_00000000');
+        const result = await repository.findPostbackByPayload('pb_nope_00000000', {senderIgsid:'sender',igAccountId:'account'});
         expect(result).toBeNull();
       });
     });
 
     describe('findPostbackById', () => {
       it('should find postback by id', async () => {
-        const pb = { id: 'pb-1' };
+        const pb = { id: 'pb-1',flowId:'f',integrationId:'i',organizationId:'o' };
+        mockFlowModel.findFirst.mockResolvedValue({id:'f',integrationId:'i',organizationId:'o',profileId:'p',integration:{organizationId:'o',profileId:'p',disabled:false,deletedAt:null,internalId:'account'}});
         mockPendingPostbackModel.findUnique.mockResolvedValue(pb);
 
         const result = await repository.findPostbackById('pb-1');

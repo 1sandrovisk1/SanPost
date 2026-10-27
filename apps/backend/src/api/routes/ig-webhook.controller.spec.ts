@@ -140,6 +140,22 @@ describe('IgWebhookController', () => {
     }
   });
 
+  it('nao registra texto ou payload assinado em logs de comentario, story ou postback', async () => {
+    process.env.INSTAGRAM_APP_SECRET = 'env-secret';
+    integrationService.getIntegrationsByInternalId.mockResolvedValue([integration('int-1','org-1')] as any);
+    const logger = (controller as any)._logger;
+    const log = jest.spyOn(logger, 'log').mockImplementation(() => {});
+    const warn = jest.spyOn(logger, 'warn').mockImplementation(() => {});
+    const body = { object:'instagram', entry:[{id:'account-1', changes:[{field:'comments',value:{text:'PRIVATE_COMMENT_SENTINEL'}}], messaging:[
+      {sender:{id:'sender'},recipient:{id:'account-1'},postback:{payload:'pb_PRIVATE_SIGNED_SENTINEL'}},
+      {sender:{id:'sender'},recipient:{id:'account-1'},message:{text:'PRIVATE_STORY_SENTINEL',reply_to:{story:{id:'story'}}}}
+    ]}]};
+    await controller.handleWebhook(makeReq(body, 'env-secret'));
+    const output=JSON.stringify([log.mock.calls,warn.mock.calls]);
+    expect(output).not.toMatch(/PRIVATE_.*SENTINEL/);
+    expect(flowsService.handlePostbackClick).toHaveBeenCalled();
+  });
+
   describe('handleWebhook (POST) - assinatura', () => {
     it('aceita assinatura valida com segredo global do ambiente e despacha o comentario', async () => {
       process.env.INSTAGRAM_APP_SECRET = 'env-secret';

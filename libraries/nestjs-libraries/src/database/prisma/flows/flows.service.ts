@@ -1747,17 +1747,18 @@ export class FlowsService {
 
     if (!this.verifyPostbackPayload(input.payload)) {
       this._logger.warn(
-        `Postback with invalid HMAC received from sender=${input.senderIgsid}: ${input.payload}`
+        'Postback with invalid HMAC received'
       );
       return;
     }
 
     const pending = await this._flowsRepository.findPostbackByPayload(
-      input.payload
+      input.payload,
+      { senderIgsid: input.senderIgsid, igAccountId: input.igAccountId }
     );
     if (!pending) {
       this._logger.warn(
-        `Postback payload has valid HMAC but no pending row found: ${input.payload}`
+        'Postback payload has valid HMAC but no eligible pending row found'
       );
       return;
     }

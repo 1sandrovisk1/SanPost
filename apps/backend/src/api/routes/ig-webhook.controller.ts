@@ -167,9 +167,7 @@ export class IgWebhookController {
 
         if (!igCommentId || !igCommenterId || !igMediaId) {
           this._logger.warn(
-            `IG webhook: missing fields commentId=${igCommentId} commenter=${igCommenterId} media=${igMediaId} payload=${JSON.stringify(
-              value
-            )}`
+            `IG webhook: missing fields hasCommentId=${Boolean(igCommentId)} hasCommenter=${Boolean(igCommenterId)} hasMedia=${Boolean(igMediaId)}`
           );
           continue;
         }
@@ -228,7 +226,7 @@ export class IgWebhookController {
         const metaMid: string | undefined =
           event?.postback?.mid || event?.mid;
         this._logger.log(
-          `IG webhook postback received sender=${senderId} payload=${payload}`
+          'IG webhook postback received'
         );
         // Gate deste caminho = isEntryAllowed no handleWebhook (por igAccountId).
         // Alem disso, handlePostbackClick tem autorizacao INDEPENDENTE: valida
@@ -272,7 +270,7 @@ export class IgWebhookController {
       message?.mid || reactionEvent?.mid || event?.timestamp?.toString();
     if (!igMessageId) {
       this._logger.warn(
-        `IG webhook: story reply missing message id payload=${JSON.stringify(event)}`
+        'IG webhook: story reply missing message id'
       );
       return;
     }

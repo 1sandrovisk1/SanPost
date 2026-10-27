@@ -1,3 +1,4 @@
+import { Throttle } from '@nestjs/throttler';
 import {
   Body,
   Controller,
@@ -26,6 +27,7 @@ const scope = (org: Organization, profile: Profile | null) => ({
   profileId: profile?.id || '',
 });
 @Controller('/flows-v2')
+@Throttle({ default: { limit: 60, ttl: 60_000 } })
 export class FlowsV2Controller {
   constructor(private readonly service: SharedFlowsService) {}
   @Get() @Header('Cache-Control', 'no-store') list(

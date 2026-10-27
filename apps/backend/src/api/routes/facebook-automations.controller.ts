@@ -1,3 +1,4 @@
+import { Throttle } from '@nestjs/throttler';
 import {
   Body,
   Controller,
@@ -36,6 +37,7 @@ const context = (org: Organization, profile: Profile | null, user: User) => ({
 });
 
 @Controller('/facebook-automations')
+@Throttle({ default: { limit: 60, ttl: 60_000 } })
 export class FacebookAutomationsController {
   constructor(
     private readonly service: FacebookAutomationSetupService,

@@ -1,3 +1,4 @@
+import { legacyFlowScopeMatches, legacyFlowIntegrationSelect } from '../flows/legacy-flow-scope';
 import type { DeferredNextCandidate } from '../../../dtos/flows/scheduled-post.dto';
 import { syncScheduledTarget, scheduledPostReserved } from '../scheduled-automations/scheduled-posts.repository';
 import { messengerRule, selectMessengerWinner } from './messenger-keywords';
@@ -347,16 +348,17 @@ export class SharedFlowsRepository {
     return this.db.$transaction(async (tx) => {
       const flow = await tx.flow.findUnique({
         where: { id: data.flowId },
-        include: { integration: true },
+        include: { integration: { select: legacyFlowIntegrationSelect } },
       });
-      if (!flow) return null;
+      if (!legacyFlowScopeMatches(flow)) return null;
       await this.lockAccounts(tx, [
         { platform: 'instagram', remoteAccountId: flow.integration.internalId },
       ]);
       const current = await tx.flow.findFirst({
-        where: { id: data.flowId, ...active, executionVersion: 1 },
+        where: { id: data.flowId, ...active, executionVersion: 1, OR: [{profileId:null}, {profile:{deletedAt:null}}] },
+        include: { integration: { select: legacyFlowIntegrationSelect } },
       });
-      if (!current) return null;
+      if (!legacyFlowScopeMatches(current) || current.integrationId !== flow.integrationId) return null;
       if (guard && (current.revision !== guard.revision || current.updatedAt.toISOString() !== guard.updatedAt || (guard.kind === 'next' ? !JSON.parse(current.triggerPostIds || '[]').includes(guard.externalPostId) : !await tx.scheduledAutomationTarget.findFirst({ where: { id: guard.targetId, flowId: current.id, integrationId: current.integrationId, boundPostIds: { has: guard.externalPostId }, post: { organizationId: current.organizationId, profileId: current.profileId, integrationId: current.integrationId, deletedAt: null, state: 'PUBLISHED', parentPostId: null, intervalInDays: null } } })))) return null;
       const sharedActive = await tx.flowChannel.count({
         where: {

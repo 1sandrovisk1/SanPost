@@ -118,3 +118,15 @@ describe('persistencia compartilhada', () => {
     expect(result.status).toBe('UNKNOWN');
   });
 });
+
+
+describe('admissao legada valida escopo dentro da transacao', () => {
+  const flow = {id:'f', organizationId:'o', profileId:'p', integration:{organizationId:'o', profileId:'p', internalId:'remote', disabled:false, deletedAt:null as Date | null}};
+  it.each([false,true])('rejeita divergencia antes ou depois do lock: %s', async afterLock => {
+    const invalid = {...flow, profileId:'other'};
+    const tx = {$queryRaw:jest.fn(), flow:{findUnique:jest.fn().mockResolvedValue(afterLock ? flow : invalid),findFirst:jest.fn().mockResolvedValue(invalid)}, flowExecution:{create:jest.fn()}, flowChannel:{count:jest.fn().mockResolvedValue(0)}};
+    const repo = new SharedFlowsRepository({$transaction: (fn:any)=>fn(tx)} as any);
+    expect(await repo.admitLegacy({flowId:'f',status:'PENDING'} as any)).toBeNull();
+    expect(tx.flowExecution.create).not.toHaveBeenCalled();
+  });
+});

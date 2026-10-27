@@ -227,3 +227,9 @@ As ferramentas por regra usam `flowId` e `executionVersion`. Todos os schemas t�
 ## Validação desta entrega
 
 Testes automatizados cobrem campos, HTTP/Swagger, schemas MCP, perfil, preservação do gate/variantes, grafo, rascunho, atualização concorrente e reservas de posts em PostgreSQL isolado. A atualização local usa a imagem Docker existente. Esta revisão não publica posts nem envia mensagens reais; provas futuras na Meta continuam limitadas ao Escorpiano.
+
+## Proteção de execução e limites HTTP
+
+A validação de organização/perfil também ocorre ao admitir e retomar regras legadas já salvas. Mover a conta para outro perfil não transfere suas automações: a execução incompatível é recusada. Contas antigas sem perfil mantêm a compatibilidade dentro da própria organização. Botões postback somente retomam o registro da conta e do remetente originais, preservando os textos do snapshot.
+
+Mutações e consultas remotas da API aplicam o guard de requisições por organização/handler e os limites declarados nas rotas (ou o padrão configurado da instância), com `429` quando esgotados. Leituras locais de capacidades, lista e detalhe não entram nesse orçamento. Painel privado usa 60/minuto nos caminhos protegidos; os webhooks Meta não passam por esse orçamento. O transporte MCP é independente: estes limites HTTP não constituem uma cota MCP.

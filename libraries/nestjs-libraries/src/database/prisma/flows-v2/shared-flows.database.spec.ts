@@ -79,6 +79,21 @@ integrationSuite('persistencia V2 com PostgreSQL isolado', () => {
     };
     return { row, event, channel };
   }
+  it('revalida perfis e organizacoes de regras legadas ACTIVE sem mudar registros', async () => {
+    const flow=await db.flow.create({data:{...scope,name:'Legacy fixture',integrationId,status:'ACTIVE',executionVersion:1}});
+    const data={flowId:flow.id,igCommentId:'scope-test',igMediaId:'media',igCommenterId:'actor',commentText:'fixture'};
+    expect(await repo.admitLegacy(data)).toBeTruthy();
+    const otherProfile=await db.profile.create({data:{organizationId:scope.organizationId,name:'Other',slug:randomUUID()}});
+    await db.integration.update({where:{id:integrationId},data:{profileId:otherProfile.id}});
+    expect(await repo.admitLegacy({...data,igCommentId:'other-profile'})).toBeNull();
+    await db.integration.update({where:{id:integrationId},data:{profileId:null}});
+    expect(await repo.admitLegacy({...data,igCommentId:'legacy-shared'})).toBeTruthy();
+    const org=await db.organization.create({data:{name:'Other fixture'}});
+    await db.integration.update({where:{id:integrationId},data:{organizationId:org.id}});
+    expect(await repo.admitLegacy({...data,igCommentId:'other-org'})).toBeNull();
+    expect(await db.flowExecution.count({where:{flowId:flow.id}})).toBe(2);
+    expect((await db.flow.findUnique({where:{id:flow.id}})).profileId).toBe(scope.profileId);
+  });
   it('grava uma execucao/despacho com webhooks concorrentes e bloqueia perfil estranho', async () => {
     const { row, event } = await create();
     await Promise.all(Array.from({ length: 8 }, () => repo.ingest(event)));

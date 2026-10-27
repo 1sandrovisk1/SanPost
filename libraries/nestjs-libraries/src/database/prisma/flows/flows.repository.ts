@@ -1,3 +1,4 @@
+import { legacyFlowScopeMatches, legacyFlowIntegrationSelect } from './legacy-flow-scope';
 import { SharedFlowsRepository } from '../flows-v2/shared-flows.repository';
 import { PrismaRepository } from '@gitroom/nestjs-libraries/database/prisma/prisma.service';
 import { Injectable, Optional, HttpException } from '@nestjs/common';
@@ -69,14 +70,16 @@ export class FlowsRepository {
     return flow;
   }
 
-  getFlowById(id: string) {
-    return this._flow.model.flow.findFirst({
-      where: { id, deletedAt: null, executionVersion: 1 },
+  async getFlowById(id: string) {
+    const flow = await this._flow.model.flow.findFirst({
+      where: { id, deletedAt: null, executionVersion: 1, OR: [{ profileId: null }, { profile: { deletedAt: null } }] },
       include: {
+        integration: { select: legacyFlowIntegrationSelect },
         nodes: true,
         edges: true,
       },
     });
+    return legacyFlowScopeMatches(flow) ? flow : null;
   }
 
   createFlow(
@@ -413,8 +416,8 @@ export class FlowsRepository {
     });
   }
 
-  getActiveFlowsForIntegration(integrationId: string, mediaId?: string) {
-    return this._flow.model.flow.findMany({
+  async getActiveFlowsForIntegration(integrationId: string, mediaId?: string) {
+    const flows = await this._flow.model.flow.findMany({
       where: {
         integrationId,
         executionVersion: 1,
@@ -423,19 +426,21 @@ export class FlowsRepository {
         OR: [{ profileId: null }, { profile: { deletedAt: null } }],
       },
       include: {
+        integration: { select: legacyFlowIntegrationSelect },
         nodes: true,
         edges: true,
       },
     });
+    return flows.filter(legacyFlowScopeMatches);
   }
 
-  findPendingNextPublicationFlows(integrationId: string) {
+  async findPendingNextPublicationFlows(integrationId: string) {
     // Returns active flows for the integration that have not been bound to a
     // specific mediaId yet (triggerPostIds IS NULL). Caller must still filter
     // in-memory by inspecting the TRIGGER node data for `mode === 'next_publication'`
     // — a flow with `mode === 'all'` also has triggerPostIds null and must not
     // be treated as pending.
-    return this._flow.model.flow.findMany({
+    const flows = await this._flow.model.flow.findMany({
       where: {
         integrationId,
         executionVersion: 1,
@@ -445,9 +450,11 @@ export class FlowsRepository {
         OR: [{ profileId: null }, { profile: { deletedAt: null } }],
       },
       include: {
+        integration: { select: legacyFlowIntegrationSelect },
         nodes: true,
       },
     });
+    return flows.filter(legacyFlowScopeMatches);
   }
 
   async bindFlowTriggerToMedia(
@@ -515,16 +522,27 @@ export class FlowsRepository {
     return this._pendingPostback.model.pendingPostback.create({ data });
   }
 
-  findPostbackByPayload(payload: string) {
-    return this._pendingPostback.model.pendingPostback.findUnique({
+  async findPostbackByPayload(payload: string, identity?: { senderIgsid: string; igAccountId: string }) {
+    if (!identity) return null;
+    const pending = await this._pendingPostback.model.pendingPostback.findUnique({
       where: { payload },
     });
+    return this.validatePendingPostback(pending, identity);
   }
 
-  findPostbackById(id: string) {
-    return this._pendingPostback.model.pendingPostback.findUnique({
+  async findPostbackById(id: string) {
+    const pending = await this._pendingPostback.model.pendingPostback.findUnique({
       where: { id },
     });
+    return this.validatePendingPostback(pending);
+  }
+
+  private async validatePendingPostback<T extends { flowId: string; organizationId: string; integrationId: string; igSenderId: string }>(pending: T | null, identity?: { senderIgsid: string; igAccountId: string }): Promise<T | null> {
+    if (!pending) return null;
+    const flow = await this.getFlowById(pending.flowId);
+    if (!flow || flow.organizationId !== pending.organizationId || flow.integrationId !== pending.integrationId) return null;
+    if (identity && (pending.igSenderId !== identity.senderIgsid || flow.integration.internalId !== identity.igAccountId)) return null;
+    return pending;
   }
 
   /**
