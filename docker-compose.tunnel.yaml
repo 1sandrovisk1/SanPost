@@ -1,0 +1,20 @@
+# Optional overlay for the existing Cloudflare tunnel running on the host.
+# Use together with docker-compose.local.yaml; credentials stay in its env_file.
+services:
+  app:
+    ports:
+      # Route the public frontend through Nginx so /uploads stays available.
+      - '127.0.0.1:4200:5000'
+      - '127.0.0.1:3000:5001'
+    volumes:
+      - ./var/docker/nginx.tunnel.conf:/etc/nginx/nginx.conf:ro
+      - ./apps/frontend/next.config.js:/app/apps/frontend/next.config.base.mjs:ro
+      - ./var/docker/next.tunnel.config.mjs:/app/apps/frontend/next.config.js:ro
+    environment:
+      MAIN_URL: https://localmultipost.automacaosemlimites.com.br
+      FRONTEND_URL: https://localmultipost.automacaosemlimites.com.br
+      NEXT_PUBLIC_BACKEND_URL: https://localmultipostapi.automacaosemlimites.com.br
+      # The application tests truthiness: the string 'false' is NOT secure mode.
+      NOT_SECURED: ''
+      # The existing bootstrap permits the first workspace, then closes signup.
+      DISABLE_REGISTRATION: 'true'

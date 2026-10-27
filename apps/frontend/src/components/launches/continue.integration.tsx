@@ -1,6 +1,6 @@
 'use client';
 
-import { FC, useCallback, useEffect, useMemo, useState } from 'react';
+import { FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { HttpStatusCode } from 'axios';
 import { useRouter } from 'next/navigation';
 import { Redirect } from '@gitroom/frontend/components/layout/redirect';
@@ -38,6 +38,7 @@ export const ContinueIntegration: FC<{
   const [twoStepState, setTwoStepState] = useState<TwoStepState | null>(null);
   const [successState, setSuccessState] = useState<SuccessState | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const facebookAutomationStarted = useRef(false);
 
   // Helper to handle navigation - redirects if logged or returnURL exists, otherwise shows inline
   const navigateOrShow = useCallback(
@@ -96,6 +97,27 @@ export const ContinueIntegration: FC<{
 
   useEffect(() => {
     (async () => {
+      if (provider === 'facebook' && typeof searchParams.state === 'string' && searchParams.state.startsWith('fbauto_')) {
+        // React dev effects may replay; a one-use OAuth state must be exchanged once.
+        if (facebookAutomationStarted.current) return;
+        facebookAutomationStarted.current = true;
+        try {
+          if (searchParams.error || !searchParams.code) throw new Error('OAUTH_CANCELLED');
+          const response = await fetch('/facebook-automations/complete', {
+            method: 'POST',
+            body: JSON.stringify({ state: searchParams.state, code: searchParams.code }),
+          });
+          if (!response.ok) throw new Error('OAUTH_FAILED');
+          const result = await response.json();
+          window.history.replaceState({}, '', '/integrations/social/facebook');
+          push(`/settings?tab=credentials&facebookAutomation=${encodeURIComponent(result.integrationId)}`);
+        } catch {
+          window.history.replaceState({}, '', '/integrations/social/facebook');
+          setErrorMessage(t('fb_auto_oauth_error'));
+          setError(true);
+        }
+        return;
+      }
       const timezone = String(dayjs.tz().utcOffset());
 
       // Try public endpoint first (handles both public and fallback scenarios)
@@ -404,7 +426,7 @@ export const ContinueIntegration: FC<{
                 'An error occurred. Please try again.'
               )}
           </div>
-          {logged && <Redirect url="/launches" delay={3000} />}
+          {logged && <Redirect url={provider === 'facebook' && searchParams.state?.startsWith('fbauto_') ? '/settings?tab=credentials&facebookAutomation=error' : '/launches'} delay={3000} />}
         </div>
       </div>
     );

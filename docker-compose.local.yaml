@@ -1,0 +1,109 @@
+# Local homologation only. All data stays in this project's own named volumes.
+name: multipost-facebook-local
+
+x-app: &app
+  image: multipost-facebook-local:source
+  pull_policy: never
+  build:
+    context: .
+    dockerfile: var/docker/local.Dockerfile
+  env_file: .secrets/multipost-local.env
+  environment:
+    DATABASE_URL: postgresql://multipost:${LOCAL_DATABASE_PASSWORD:?Use --env-file .secrets/multipost-local.env}@postgres:5432/multipost
+    REDIS_URL: redis://redis:6379
+    TEMPORAL_ADDRESS: temporal:7233
+    TEMPORAL_NAMESPACE: default
+    BACKEND_INTERNAL_URL: http://localhost:3000
+    STORAGE_PROVIDER: local
+    UPLOAD_DIRECTORY: /uploads
+    NEXT_PUBLIC_UPLOAD_DIRECTORY: /uploads
+    IS_GENERAL: 'true'
+    DISABLE_BILLING: 'true'
+    DISABLE_MARKETPLACE: 'true'
+    AI_CREDITS_MODE: unlimited
+    NEXT_TELEMETRY_DISABLED: '1'
+    WORKER_CONCURRENCY_DIVIDER: '10'
+    TEMPORAL_HEALTH_ACTIVITY_TASK_QUEUES: facebook,instagram
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: multipost
+      POSTGRES_PASSWORD: ${LOCAL_DATABASE_PASSWORD:?Use --env-file .secrets/multipost-local.env}
+      POSTGRES_DB: multipost
+    volumes:
+      - database:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U multipost -d multipost]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: [redis-server, --appendonly, 'yes']
+    volumes:
+      - cache:/data
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  temporal:
+    image: temporalio/temporal:1.4.1
+    command: [server, start-dev, --ip, 0.0.0.0, --db-filename, /home/temporal/temporal.db, --ui-ip, 0.0.0.0]
+    volumes:
+      - workflows:/home/temporal
+    ports:
+      - '127.0.0.1:8233:8233'
+    healthcheck:
+      test: [CMD, temporal, operator, cluster, health, --address, '127.0.0.1:7233']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  schema:
+    <<: *app
+    command: [pnpm, exec, prisma, db, push, --skip-generate, --schema, libraries/nestjs-libraries/src/database/prisma/schema.prisma]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: 'no'
+
+  app:
+    <<: *app
+    init: true
+    ports:
+      - '127.0.0.1:4007:5000'
+    volumes:
+      - uploads:/uploads
+      - ./var/docker/local-start.sh:/app/var/docker/local-start.sh:ro
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "Promise.all(['http://127.0.0.1:3000/','http://127.0.0.1:3002/health/workers','http://127.0.0.1:5000/favicon.ico'].map(async url => { const r = await fetch(url, {signal: AbortSignal.timeout(8000)}); if (!r.ok) throw Error('unhealthy'); })).catch(() => process.exit(1))"
+      interval: 30s
+      timeout: 10s
+      start_period: 180s
+      retries: 5
+    depends_on:
+      schema:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      temporal:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  database:
+  cache:
+  workflows:
+  uploads:

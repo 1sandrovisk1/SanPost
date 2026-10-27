@@ -1,3 +1,5 @@
+import { SharedAutomationsModule } from '@gitroom/nestjs-libraries/integrations/automations/shared-automations.module';
+import { SharedFlowActivity } from './activities/shared-flow.activity';
 import { Module } from '@nestjs/common';
 import { PostActivity } from '@gitroom/orchestrator/activities/post.activity';
 import { getTemporalModule } from '@gitroom/nestjs-libraries/temporal/temporal.module';
@@ -15,11 +17,13 @@ const activities = [
   EmailActivity,
   IntegrationsActivity,
   FlowActivity,
+  SharedFlowActivity,
   RepostActivity,
 ];
 @Module({
   imports: [
     DatabaseModule,
+    SharedAutomationsModule,
     getTemporalModule(true, require.resolve('./workflows'), activities),
   ],
   controllers: [HealthController],

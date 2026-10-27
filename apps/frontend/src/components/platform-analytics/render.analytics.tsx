@@ -1,17 +1,17 @@
-import { FC, useCallback, useMemo, useState } from 'react';
+import { FC, useCallback, useMemo } from 'react';
 import { Integration } from '@prisma/client';
 import useSWR from 'swr';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import { ChartSocial } from '@gitroom/frontend/components/analytics/chart-social';
 import { LoadingComponent } from '@gitroom/frontend/components/layout/loading';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
+import {
+  formatAnalyticsTotal,
+  normalizeAnalytics,
+  type NumericAnalytics,
+} from '../analytics/analytics-data';
 
-interface AnalyticsDataItem {
-  label: string;
-  data: Array<{ total: number; date: string }>;
-  average?: boolean;
-  percentageChange?: number;
-}
+type AnalyticsDataItem = NumericAnalytics;
 
 const TrendIndicator: FC<{ value: number; average?: boolean }> = ({
   value,
@@ -35,10 +35,7 @@ const TrendIndicator: FC<{ value: number; average?: boolean }> = ({
         fill="none"
         className={isPositive ? '' : 'rotate-180'}
       >
-        <path
-          d="M6 2.5L10 7.5H2L6 2.5Z"
-          fill="currentColor"
-        />
+        <path d="M6 2.5L10 7.5H2L6 2.5Z" fill="currentColor" />
       </svg>
       <span>
         {displayValue}
@@ -56,7 +53,10 @@ const AnalyticsCard: FC<{
   const t = useT();
   const colorVariants = ['purple', 'green', 'blue'] as const;
   const color = colorVariants[index % colorVariants.length];
-  const labelKey = `analytics_label_${item.label.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
+  const labelKey = `analytics_label_${item.label
+    .toLowerCase()
+    .replace(/\s+/g, '_')
+    .replace(/[^a-z0-9_]/g, '')}`;
 
   const hasDataPoints = item.data.length >= 1;
 
@@ -89,7 +89,10 @@ const AnalyticsCard: FC<{
             </span>
           </div>
           {item.percentageChange !== undefined && (
-            <TrendIndicator value={item.percentageChange} average={item.average} />
+            <TrendIndicator
+              value={item.percentageChange}
+              average={item.average}
+            />
           )}
         </div>
 
@@ -99,13 +102,18 @@ const AnalyticsCard: FC<{
             {/* Chart */}
             <div className="flex-1 px-[12px] py-[8px]">
               <div className="h-[120px] relative">
-                <ChartSocial data={item.data} color={color} key={`chart-${index}`} />
+                <ChartSocial
+                  data={item.data}
+                  average={item.average}
+                  color={color}
+                  key={`chart-${index}`}
+                />
               </div>
             </div>
 
             {/* Value */}
             <div className="px-[16px] pb-[14px]">
-              <div className="text-[36px] leading-[42px] font-semibold tracking-tight">
+              <div className="text-[clamp(1.25rem,3vw,2.25rem)] leading-tight font-semibold tracking-tight break-all tabular-nums">
                 {total}
               </div>
             </div>
@@ -143,10 +151,7 @@ const EmptyState: FC<{ onRefresh: () => void }> = ({ onRefresh }) => {
         </svg>
       </div>
       <p className="text-[15px] text-newTableText text-center mb-[12px]">
-        {t(
-          'this_channel_needs_to_be_refreshed',
-          'This channel needs to be refreshed to display analytics'
-        )}
+        {t('analytics_no_data', 'No metrics are available for this period.')}
       </p>
       <button
         onClick={onRefresh}
@@ -163,7 +168,7 @@ const EmptyState: FC<{ onRefresh: () => void }> = ({ onRefresh }) => {
           <path d="M23 4v6h-6M1 20v-6h6" />
           <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
         </svg>
-        {t('refresh_channel', 'Refresh Channel')}
+        {t('analytics_retry', 'Try again')}
       </button>
     </div>
   );
@@ -174,63 +179,36 @@ export const RenderAnalytics: FC<{
   date: number;
 }> = (props) => {
   const { integration, date } = props;
-  const [loading, setLoading] = useState(true);
   const fetch = useFetch();
 
   const load = useCallback(async () => {
-    setLoading(true);
-    const load = (
-      await fetch(`/analytics/${integration.id}?date=${date}`)
-    ).json();
-    setLoading(false);
-    return load;
-  }, [integration, date]);
+    const response = await fetch(`/analytics/${integration.id}?date=${date}`);
+    if (!response.ok) throw new Error('ANALYTICS_REQUEST_FAILED');
+    return normalizeAnalytics(await response.json());
+  }, [fetch, integration.id, date]);
 
-  const { data } = useSWR(`/analytics-${integration?.id}-${date}`, load, {
-    refreshInterval: 0,
-    refreshWhenHidden: false,
-    revalidateOnFocus: false,
-    revalidateOnReconnect: false,
-    revalidateIfStale: false,
-    refreshWhenOffline: false,
-    revalidateOnMount: true,
-  });
-
-  const refreshChannel = useCallback(
-    (
-        integrationData: Integration & {
-          identifier: string;
-        }
-      ) =>
-      async () => {
-        const { url } = await (
-          await fetch(
-            `/integrations/social/${integrationData.identifier}?refresh=${integrationData.internalId}`,
-            {
-              method: 'GET',
-            }
-          )
-        ).json();
-        window.location.href = url;
-      },
-    []
+  const { data, error, isLoading, mutate } = useSWR(
+    `/analytics-${integration?.id}-${date}`,
+    load,
+    {
+      refreshInterval: 0,
+      refreshWhenHidden: false,
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+      revalidateIfStale: false,
+      refreshWhenOffline: false,
+      revalidateOnMount: true,
+      shouldRetryOnError: false,
+    }
   );
 
   const t = useT();
 
   const totals = useMemo(() => {
-    return data?.map((p: AnalyticsDataItem) => {
-      const value =
-        (p?.data.reduce((acc: number, curr: { total: number }) => acc + curr.total, 0) || 0) /
-        (p.average ? p.data.length : 1);
-      if (p.average) {
-        return value.toFixed(2) + '%';
-      }
-      return new Intl.NumberFormat().format(Math.round(value));
-    });
+    return data?.map(formatAnalyticsTotal);
   }, [data]);
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center py-[48px]">
         <LoadingComponent />
@@ -238,11 +216,28 @@ export const RenderAnalytics: FC<{
     );
   }
 
+  if (error)
+    return (
+      <div role="alert" className="p-6 space-y-3">
+        <p>
+          {t(
+            'analytics_load_failed',
+            'Could not load metrics. Please try again.'
+          )}
+        </p>
+        <button
+          type="button"
+          className="underline"
+          onClick={() => void mutate()}
+        >
+          {t('analytics_retry', 'Try again')}
+        </button>
+      </div>
+    );
+
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-[16px]">
-      {data?.length === 0 && (
-        <EmptyState onRefresh={refreshChannel(integration as any)} />
-      )}
+      {data?.length === 0 && <EmptyState onRefresh={() => void mutate()} />}
       {data?.map((item: AnalyticsDataItem, index: number) => (
         <AnalyticsCard
           key={`analytics-${index}`}

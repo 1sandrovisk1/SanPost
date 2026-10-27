@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { HttpException, Injectable, Logger } from '@nestjs/common';
 import { CredentialService } from '@gitroom/nestjs-libraries/database/prisma/credentials/credential.service';
 import { InstagramDmButton } from '@gitroom/nestjs-libraries/integrations/social/instagram-dm-button.type';
 import {
@@ -120,7 +120,6 @@ export class InstagramMessagingService {
     const tokenToUse = await this.ensureFreshIgToken(
       params.organizationId,
       params.profileId,
-      state,
       entry
     );
 
@@ -167,7 +166,6 @@ export class InstagramMessagingService {
       const fresh = await this.ensureFreshIgToken(
         params.organizationId,
         params.profileId,
-        state,
         entry
       );
       baseUrl = `${GRAPH_IG}/${params.recipientIgsid}`;
@@ -463,7 +461,6 @@ export class InstagramMessagingService {
   private async ensureFreshIgToken(
     organizationId: string,
     profileId: string | null,
-    state: MessagingTokensState,
     entry: IgMessagingTokenEntry
   ): Promise<string> {
     const refreshedAt = Date.parse(entry.refreshedAt);
@@ -481,33 +478,19 @@ export class InstagramMessagingService {
       return entry.token;
     }
 
+    let refreshed: string | null;
     try {
-      const refreshed = await this.callRefresh(entry.token);
-      if (!refreshed) return entry.token;
-
-      const newEntry: IgMessagingTokenEntry = {
-        ...entry,
-        token: refreshed,
-        refreshedAt: new Date().toISOString(),
-      };
-
-      const updatedTokens = state.instagramTokens.map((t) =>
-        t.igUserId === entry.igUserId ? newEntry : t
-      );
-
-      await this._credentialService.updateMessagingTokens(
-        organizationId,
-        profileId || undefined,
-        { instagramTokens: updatedTokens }
-      );
-
-      return refreshed;
-    } catch (e: any) {
-      this._logger.warn(
-        `Lazy refresh failed for igUserId=${entry.igUserId}: ${e?.message || String(e)}. Falling back to existing token.`
-      );
+      refreshed = await this.callRefresh(entry.token);
+    } catch {
+      this._logger.warn(`Lazy refresh failed for igUserId=${entry.igUserId}. Falling back to existing token.`);
       return entry.token;
     }
+    if (!refreshed) return entry.token;
+    const saved = await this._credentialService.replaceInstagramTokenAfterRefresh(
+      organizationId, profileId || undefined, entry, refreshed
+    );
+    if (!saved) throw new HttpException('AUTHORIZATION_CHANGED', 409);
+    return refreshed;
   }
 
   private async callRefresh(currentToken: string): Promise<string | null> {
@@ -553,10 +536,10 @@ export class InstagramMessagingService {
       return await this.ensureFreshIgToken(
         organizationId,
         profileId,
-        state,
         entry
       );
     } catch (e: any) {
+      if (e instanceof HttpException && e.getStatus() === 409) throw e;
       this._logger.warn(
         `resolveIgUserToken failed for igUserId=${igBusinessAccountId}: ${e?.message || String(e)}`
       );

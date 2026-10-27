@@ -21,6 +21,7 @@ import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import type { InstagramProvider } from '@gitroom/nestjs-libraries/integrations/social/instagram.provider';
 import { EncryptionService } from '@gitroom/nestjs-libraries/crypto/encryption.service';
 import { decryptIntegrationToken } from '@gitroom/nestjs-libraries/crypto/integration-token.helper';
+import { repostMediaFilterReason } from '@gitroom/nestjs-libraries/database/prisma/repost/repost.matrix';
 
 export interface RepostCycleResult {
   ruleDisabled?: boolean;
@@ -267,8 +268,9 @@ export class RepostActivity {
       return;
     }
 
-    if (isImage && !rule.filterIncludeImages) {
-      await this._repostRepository.markLogSkipped(log.id, 'FILTER_IMAGE');
+    const mediaFilterReason = repostMediaFilterReason(mediaType, rule);
+    if (mediaFilterReason) {
+      await this._repostRepository.markLogSkipped(log.id, mediaFilterReason);
       return;
     }
     if (!isVideo && !isImage) {

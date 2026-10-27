@@ -1,11 +1,13 @@
 'use client';
 
+import { sharedFailureCode } from './shared-flow-ui';
+import { useSharedFlowData } from './hooks/use-shared-flows';
+import type { SharedFlowView } from '@gitroom/nestjs-libraries/dtos/flows/flow-v2.dto';
 import { FC, useCallback, useState } from 'react';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import { useFlows } from '@gitroom/frontend/components/automations/hooks/use-flows';
 import { useRouter } from 'next/navigation';
-import { LoadingComponent } from '@gitroom/frontend/components/layout/loading';
 import { useToaster } from '@gitroom/react/toaster/toaster';
 import { NovaAutomacaoModal } from '@gitroom/frontend/components/automations/nova-automacao-modal.component';
 import { RepostListComponent } from '@gitroom/frontend/components/automations/repost/repost-list.component';
@@ -33,9 +35,11 @@ interface FlowListItem {
   } | null;
   nodes?: FlowTriggerNode[];
   _count?: { nodes: number; executions: number };
+  shared?: SharedFlowView;
 }
 
 interface TriggerSummary {
+  scheduled?: boolean;
   keywords: string[];
   postsCount: number | null;
 }
@@ -52,19 +56,22 @@ const parseJsonSafe = (value: unknown): any => {
 };
 
 const buildTriggerSummary = (flow: FlowListItem): TriggerSummary => {
-  const triggerNode = flow.nodes?.find((n) => n.type === 'TRIGGER') ?? flow.nodes?.[0];
+  const triggerNode =
+    flow.nodes?.find((n) => n.type === 'TRIGGER') ?? flow.nodes?.[0];
   const triggerData = parseJsonSafe(triggerNode?.data ?? null);
   const rawKeywords = Array.isArray(triggerData?.keywords)
     ? triggerData.keywords
     : [];
   const keywords = rawKeywords
-    .filter((k: unknown): k is string => typeof k === 'string' && k.trim().length > 0)
+    .filter(
+      (k: unknown): k is string => typeof k === 'string' && k.trim().length > 0
+    )
     .map((k: string) => k.trim());
 
   const postIdsParsed = parseJsonSafe(flow.triggerPostIds);
   const postsCount = Array.isArray(postIdsParsed) ? postIdsParsed.length : null;
 
-  return { keywords, postsCount };
+  return { keywords, postsCount, scheduled: triggerData?.mode === 'scheduled' };
 };
 
 export const FlowListComponent: FC = () => {
@@ -72,7 +79,15 @@ export const FlowListComponent: FC = () => {
   const fetchApi = useFetch();
   const router = useRouter();
   const toaster = useToaster();
-  const { data: flows, isLoading, mutate } = useFlows();
+  const { data: flows, isLoading, mutate, error: legacyError } = useFlows();
+  const {
+    data: sharedFlows,
+    error: sharedError,
+    isLoading: sharedLoading,
+    mutate: mutateShared,
+  } = useSharedFlowData<SharedFlowView[]>('/flows-v2');
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [listError, setListError] = useState<string | null>(null);
   const [showNovaModal, setShowNovaModal] = useState(false);
 
   const toggleFlow = useCallback(
@@ -107,35 +122,95 @@ export const FlowListComponent: FC = () => {
       try {
         const res = await fetchApi(`/flows/${id}`, { method: 'DELETE' });
         if (!res.ok) {
-          toaster.show(t('failed_to_delete_flow', 'Falha ao excluir automação'), 'warning');
+          toaster.show(
+            t('failed_to_delete_flow', 'Falha ao excluir automação'),
+            'warning'
+          );
           return;
         }
         await mutate();
         toaster.show(t('flow_deleted', 'Automação excluída'), 'success');
       } catch {
-        toaster.show(t('failed_to_delete_flow', 'Falha ao excluir automação'), 'warning');
+        toaster.show(
+          t('failed_to_delete_flow', 'Falha ao excluir automação'),
+          'warning'
+        );
       }
     },
     [fetchApi, mutate, t, toaster]
   );
 
-  if (isLoading) return <LoadingComponent />;
+  const sharedAction = async (flow: SharedFlowView, archive = false) => {
+    if (busyId) return;
+    if (archive && !window.confirm(t('shared_archive_confirm'))) return;
+    setBusyId(flow.id);
+    setListError(null);
+    try {
+      const response = await fetchApi(
+        `/flows-v2/${flow.id}${archive ? '' : '/status'}`,
+        {
+          method: archive ? 'DELETE' : 'POST',
+          body: JSON.stringify({
+            expectedRevision: flow.revision,
+            ...(archive
+              ? {}
+              : { status: flow.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE' }),
+          }),
+        }
+      );
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        const code = sharedFailureCode(response.status, body);
+        const conflictName =
+          ['MESSENGER_RULE_CONFLICT', 'MESSENGER_PRIORITY_CONFLICT'].includes(
+            code
+          ) && typeof body.conflictingFlowName === 'string'
+            ? ` · ${body.conflictingFlowName.slice(0, 200)}`
+            : '';
+        setListError(
+          t(`shared_error_${code.toLowerCase()}`, t('shared_save_failed')) +
+            conflictName
+        );
+        if (code === 'REVISION_CONFLICT') await mutateShared();
+        return;
+      }
+      await mutateShared();
+    } catch {
+      setListError(t('shared_save_failed'));
+    } finally {
+      setBusyId(null);
+    }
+  };
+  const rows: FlowListItem[] = [
+    ...(Array.isArray(flows) ? flows : []),
+    ...(Array.isArray(sharedFlows)
+      ? sharedFlows
+          .filter((f) => f.status !== 'ARCHIVED')
+          .map((f) => ({
+            id: f.id,
+            name: f.name,
+            status: f.status as FlowStatus,
+            triggerPostIds: null,
+            shared: f,
+          }))
+      : []),
+  ];
 
   return (
-    <div className="flex flex-col gap-[16px] p-[24px] flex-1">
-      <div className="flex items-center justify-between">
+    <div className="flex flex-col gap-4 p-4 md:p-6 flex-1 min-w-0 w-full">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-[20px] font-semibold text-textColor">
             {t('automacoes', 'Automations')}
           </h1>
           <p className="text-[14px] text-customColor18 mt-[4px]">
             {t(
-              'automacoes_description',
-              'Create automations to automatically respond to Instagram comments'
+              'shared_list_description',
+              'Responda comentários e mensagens nos seus canais conectados'
             )}
           </p>
         </div>
-        <div className="flex items-center gap-[8px]">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => router.push('/automacoes/logs')}
             className="rounded-[4px] border border-fifth bg-sixth px-[16px] py-[8px] text-[14px] text-textColor hover:border-btnPrimary/50 transition-colors"
@@ -144,7 +219,10 @@ export const FlowListComponent: FC = () => {
               'Comments on posts not monitored (ad dark posts)'
             )}
           >
-            {t('logs_button', 'Logs')}
+            {t(
+              'shared_instagram_logs',
+              'Comentários sem automação · Instagram'
+            )}
           </button>
           <button
             onClick={() => setShowNovaModal(true)}
@@ -161,7 +239,35 @@ export const FlowListComponent: FC = () => {
         onCreated={() => mutate()}
       />
 
-      {!Array.isArray(flows) || flows.length === 0 ? (
+      {(legacyError || sharedError || listError) && (
+        <div
+          role="alert"
+          className="rounded-xl border border-amber-600/40 p-4 text-sm space-y-2"
+        >
+          <p>{listError || t('shared_list_partial_error')}</p>
+          <button
+            className="underline"
+            onClick={() => {
+              setListError(null);
+              void mutate();
+              void mutateShared();
+            }}
+          >
+            {t('fb_auto_retry')}
+          </button>
+        </div>
+      )}
+      {(isLoading || sharedLoading) && (
+        <p role="status" className="text-sm text-newTextColor/60">
+          {t('loading')}
+        </p>
+      )}
+
+      {!rows.length &&
+      !isLoading &&
+      !sharedLoading &&
+      !legacyError &&
+      !sharedError ? (
         <div className="flex flex-col items-center justify-center py-[64px] text-customColor18 border border-fifth rounded-[8px] bg-sixth">
           <svg
             width="48"
@@ -180,8 +286,8 @@ export const FlowListComponent: FC = () => {
             )}
           </p>
         </div>
-      ) : (
-        <div className="rounded-[8px] border border-fifth bg-sixth overflow-hidden">
+      ) : rows.length > 0 ? (
+        <div className="rounded-[8px] border border-newTableBorder bg-newBgColorInner overflow-x-auto min-w-0 max-w-full">
           <table className="w-full text-left text-[13px]">
             <thead className="bg-newBgColorInner text-[11px] uppercase tracking-wide text-customColor18">
               <tr>
@@ -203,20 +309,33 @@ export const FlowListComponent: FC = () => {
               </tr>
             </thead>
             <tbody>
-              {flows.map((flow: FlowListItem, idx: number) => (
+              {rows.map((flow, idx) => (
                 <FlowRow
-                  key={flow.id}
+                  key={`${flow.shared ? 'shared' : 'legacy'}:${flow.id}`}
                   flow={flow}
-                  isLast={idx === flows.length - 1}
-                  onToggle={() => toggleFlow(flow)}
-                  onEdit={() => router.push(`/automacoes/${flow.id}`)}
-                  onDelete={() => handleDelete(flow.id)}
+                  isLast={idx === rows.length - 1}
+                  busy={busyId === flow.id}
+                  onToggle={() =>
+                    flow.shared ? sharedAction(flow.shared) : toggleFlow(flow)
+                  }
+                  onEdit={() =>
+                    router.push(
+                      flow.shared
+                        ? `/automacoes/compartilhada/${flow.id}`
+                        : `/automacoes/${flow.id}`
+                    )
+                  }
+                  onDelete={() =>
+                    flow.shared
+                      ? sharedAction(flow.shared, true)
+                      : handleDelete(flow.id)
+                  }
                 />
               ))}
             </tbody>
           </table>
         </div>
-      )}
+      ) : null}
 
       <div className="mt-[16px] pt-[16px] border-t border-fifth">
         <RepostListComponent />
@@ -228,28 +347,40 @@ export const FlowListComponent: FC = () => {
 interface RowProps {
   flow: FlowListItem;
   isLast: boolean;
+  busy?: boolean;
   onToggle: () => void;
   onEdit: () => void;
   onDelete: () => void;
 }
 
-const STATUS_BADGE_STYLE: Record<
-  FlowStatus,
-  { bg: string; color: string }
-> = {
+const STATUS_BADGE_STYLE: Record<FlowStatus, { bg: string; color: string }> = {
   ACTIVE: { bg: 'rgba(34,197,94,0.15)', color: '#16a34a' },
   PAUSED: { bg: 'rgba(82,82,91,0.18)', color: '#a1a1aa' },
   DRAFT: { bg: 'rgba(245,158,11,0.15)', color: '#d97706' },
   ARCHIVED: { bg: 'rgba(82,82,91,0.18)', color: '#a1a1aa' },
 };
 
-const FlowRow: FC<RowProps> = ({ flow, isLast, onToggle, onEdit, onDelete }) => {
+const FlowRow: FC<RowProps> = ({
+  flow,
+  isLast,
+  busy,
+  onToggle,
+  onEdit,
+  onDelete,
+}) => {
   const t = useT();
   const isActive = flow.status === 'ACTIVE';
-  const isToggleDisabled = flow.status === 'DRAFT' || flow.status === 'ARCHIVED';
-  const execCount = flow._count?.executions ?? 0;
+  const isToggleDisabled =
+    busy || flow.status === 'DRAFT' || flow.status === 'ARCHIVED';
+  const execCount = flow.shared ? '—' : flow._count?.executions ?? 0;
   const integration = flow.integration;
   const summary = buildTriggerSummary(flow);
+  if (flow.shared) {
+    summary.keywords =
+      parseJsonSafe(
+        flow.shared.definition.nodes.find((n) => n.type === 'TRIGGER')?.data
+      )?.keywords || [];
+  }
 
   const statusLabel =
     flow.status === 'ACTIVE'
@@ -268,8 +399,27 @@ const FlowRow: FC<RowProps> = ({ flow, isLast, onToggle, onEdit, onDelete }) => 
       : summary.keywords.slice(0, 2).join(', ') +
         (summary.keywords.length > 2 ? ` +${summary.keywords.length - 2}` : '');
 
+  const sharedTrigger =
+    flow.shared &&
+    parseJsonSafe(
+      flow.shared.definition.nodes.find((n) => n.type === 'TRIGGER')?.data
+    );
   const postsPart =
-    summary.postsCount == null
+    sharedTrigger?.triggerType === 'messenger_message'
+      ? `${t('messenger_trigger_message')} · ${t('messenger_priority')}: ${
+          sharedTrigger.priority
+        }`
+      : flow.shared
+      ? flow.shared.channels
+          .map((c) =>
+            c.postMode === 'all'
+              ? t('shared_all')
+              : c.postMode === 'scheduled' ? t('scheduled_selected_post') : c.postMode === 'next_publication'
+              ? t('shared_next')
+              : t('shared_selected_count', { count: c.postIds.length })
+          )
+          .join(' · ')
+      : summary.scheduled ? t('scheduled_selected_post') : summary.postsCount == null
       ? t('flow_trigger_all_posts', 'Todos os posts')
       : t('flow_trigger_posts_count', '{{count}} posts').replace(
           '{{count}}',
@@ -319,7 +469,11 @@ const FlowRow: FC<RowProps> = ({ flow, isLast, onToggle, onEdit, onDelete }) => 
       </td>
 
       <td className="px-[16px] py-[14px]">
-        <button type="button" onClick={onEdit} className="text-left hover:underline">
+        <button
+          type="button"
+          onClick={onEdit}
+          className="text-left hover:underline"
+        >
           <div className="text-[13px] font-medium text-textColor truncate max-w-[360px]">
             {flow.name}
           </div>
@@ -332,7 +486,19 @@ const FlowRow: FC<RowProps> = ({ flow, isLast, onToggle, onEdit, onDelete }) => 
       </td>
 
       <td className="px-[16px] py-[14px]">
-        {integration ? (
+        {flow.shared ? (
+          <div className="space-y-2">
+            {flow.shared.channels.map((c) => (
+              <div
+                key={c.integrationId}
+                className="flex items-center gap-2 text-xs"
+              >
+                <PlatformIconBadge identifier={c.platform} size={24} />
+                <span>{c.name}</span>
+              </div>
+            ))}
+          </div>
+        ) : integration ? (
           <div className="flex items-center gap-[10px]">
             <PlatformIconBadge
               identifier={integration.providerIdentifier}
@@ -352,7 +518,18 @@ const FlowRow: FC<RowProps> = ({ flow, isLast, onToggle, onEdit, onDelete }) => 
       </td>
 
       <td className="px-[16px] py-[14px]">
-        <span className="text-[14px] font-semibold text-textColor">{execCount}</span>
+        {flow.shared ? (
+          <a
+            className="text-sm underline"
+            href={`/automacoes/compartilhada/${flow.id}?tab=history`}
+          >
+            {t('show_history')}
+          </a>
+        ) : (
+          <span className="text-[14px] font-semibold text-textColor">
+            {execCount}
+          </span>
+        )}
       </td>
 
       <td className="px-[16px] py-[14px] whitespace-nowrap">
@@ -367,10 +544,17 @@ const FlowRow: FC<RowProps> = ({ flow, isLast, onToggle, onEdit, onDelete }) => 
           <button
             type="button"
             onClick={onDelete}
-            title={t('flow_action_delete', 'Excluir')}
+            disabled={busy}
+            title={
+              flow.shared
+                ? t('shared_archive')
+                : t('flow_action_delete', 'Excluir')
+            }
             className="inline-flex items-center gap-[6px] rounded-[4px] border border-[#ef4444]/50 bg-transparent px-[10px] py-[6px] text-[12px] text-[#ef4444] hover:bg-[#ef4444]/10"
           >
-            {t('flow_action_delete', 'Excluir')}
+            {flow.shared
+              ? t('shared_archive')
+              : t('flow_action_delete', 'Excluir')}
           </button>
         </div>
       </td>

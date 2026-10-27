@@ -19,6 +19,7 @@ import { HttpExceptionFilter } from '@gitroom/nestjs-libraries/services/exceptio
 import { ConfigurationChecker } from '@gitroom/helpers/configuration/configuration.checker';
 import { startMcp } from '@gitroom/nestjs-libraries/chat/start.mcp';
 import { PrismaClient } from '@prisma/client';
+import { facebookAutomationBodyParser } from '@gitroom/nestjs-libraries/integrations/automations/facebook-automation-body-parser';
 
 async function start() {
   const app = await NestFactory.create(AppModule, {
@@ -36,6 +37,8 @@ async function start() {
         'auth',
         'showorg',
         'showprofile',
+        'x-expected-org-id',
+        'x-expected-profile-id',
         'impersonate',
       ],
       exposedHeaders: [
@@ -54,6 +57,8 @@ async function start() {
   });
 
   await startMcp(app);
+
+  app.use('/public/facebook-automations', facebookAutomationBodyParser);
 
   app.useGlobalPipes(
     new ValidationPipe({

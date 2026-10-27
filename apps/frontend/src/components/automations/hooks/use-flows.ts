@@ -1,20 +1,11 @@
 'use client';
 
 import useSWR from 'swr';
+import { useSharedFlowData } from './use-shared-flows';
 import { useCallback } from 'react';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 
-export const useFlows = () => {
-  const fetch = useFetch();
-  const load = useCallback(
-    async (path: string) => {
-      return await (await fetch(path)).json();
-    },
-    [fetch]
-  );
-
-  return useSWR('/flows', load);
-};
+export const useFlows = () => useSharedFlowData<any[]>('/flows');
 
 export const useFlow = (id: string) => {
   const fetch = useFetch();
@@ -40,7 +31,10 @@ export const useFlowExecutions = (id: string) => {
   return useSWR(`/flows/${id}/executions`, load);
 };
 
-export const useFlowExecution = (flowId: string, executionId: string | null) => {
+export const useFlowExecution = (
+  flowId: string,
+  executionId: string | null
+) => {
   const fetch = useFetch();
   const load = useCallback(
     async (path: string) => {
@@ -61,7 +55,7 @@ export const useIntegrationPosts = (integrationId: string | null) => {
     async (path: string) => {
       const data = await (await fetch(path)).json();
       // API returns { posts, nextCursor } — unwrap posts for grid usage
-      return Array.isArray(data) ? data : (data?.posts ?? []);
+      return Array.isArray(data) ? data : data?.posts ?? [];
     },
     [fetch]
   );
@@ -77,7 +71,7 @@ export const useIntegrationStories = (integrationId: string | null) => {
   const load = useCallback(
     async (path: string) => {
       const data = await (await fetch(path)).json();
-      return Array.isArray(data) ? data : (data?.stories ?? []);
+      return Array.isArray(data) ? data : data?.stories ?? [];
     },
     [fetch]
   );

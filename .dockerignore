@@ -21,3 +21,19 @@ dist
 .git
 .github
 reports
+
+# Local credentials and private proof captures must never enter an image.
+.env
+.env.*
+**/.env
+**/.env.*
+.secrets
+**/.secrets
+coverage
+graphify-out
+**/dist
+**/.next
+tmp
+
+# Browser captures are local validation artifacts, not runtime assets.
+output

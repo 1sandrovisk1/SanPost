@@ -1,5 +1,6 @@
 'use client';
 
+import { AutomationPublicationSelector } from './shared-publication-selector.component';
 import { FC, useCallback, useState, useEffect } from 'react';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import useSWR from 'swr';
@@ -10,6 +11,7 @@ import { CommaSeparatedKeywordsInput } from '@gitroom/frontend/components/automa
 interface NodeConfigPanelProps {
   node: any;
   flowId: string;
+  integrationId: string;
   onUpdate: (nodeId: string, data: Record<string, any>) => void;
   onClose: () => void;
 }
@@ -113,6 +115,7 @@ const KeywordsField: FC<{
 export const NodeConfigPanel: FC<NodeConfigPanelProps> = ({
   node,
   flowId,
+  integrationId,
   onUpdate,
   onClose,
 }) => {
@@ -169,8 +172,8 @@ export const NodeConfigPanel: FC<NodeConfigPanelProps> = ({
           config.triggerType === 'story_reply'
             ? 'story_reply'
             : 'comment_on_post';
-        const currentMode: 'all' | 'specific' | 'next_publication' =
-          config.mode === 'next_publication'
+        const currentMode: 'all' | 'specific' | 'next_publication' | 'scheduled' =
+          config.mode === 'scheduled' ? 'scheduled' : config.mode === 'next_publication'
             ? 'next_publication'
             : config.mode === 'specific' ||
               (Array.isArray(config.postIds) && config.postIds.length > 0) ||
@@ -182,12 +185,13 @@ export const NodeConfigPanel: FC<NodeConfigPanelProps> = ({
           const next: Record<string, any> = { ...config, triggerType: type };
           // Clear id list from the other type to avoid stale references
           if (type === 'comment_on_post') delete next.storyIds;
-          if (type === 'story_reply') delete next.postIds;
+          if (type === 'story_reply') { delete next.postIds; delete next.scheduledPostId; if (next.mode === 'scheduled') next.mode = 'all'; }
           setConfig(next);
         };
 
-        const setMode = (mode: 'all' | 'specific' | 'next_publication') => {
+        const setMode = (mode: 'all' | 'specific' | 'next_publication' | 'scheduled') => {
           const next: Record<string, any> = { ...config, mode };
+          if (mode !== 'scheduled') delete next.scheduledPostId;
           if (mode !== 'specific') {
             delete next.postIds;
             delete next.storyIds;
@@ -230,6 +234,7 @@ export const NodeConfigPanel: FC<NodeConfigPanelProps> = ({
               ))}
             </div>
 
+            {triggerType === 'story_reply' && <>
             {/* Mode */}
             <label className="block text-[13px] font-semibold text-textColor mb-[8px]">
               {triggerType === 'story_reply'
@@ -275,14 +280,14 @@ export const NodeConfigPanel: FC<NodeConfigPanelProps> = ({
               </label>
               <label
                 className={`flex items-center gap-[8px] p-[8px] rounded-[6px] border cursor-pointer ${
-                  currentMode === 'specific'
+                  (currentMode === 'specific' || currentMode === 'scheduled')
                     ? 'border-btnPrimary bg-btnPrimary/10'
                     : 'border-newTableBorder hover:border-btnPrimary'
                 }`}
               >
                 <input
                   type="radio"
-                  checked={currentMode === 'specific'}
+                  checked={(currentMode === 'specific' || currentMode === 'scheduled')}
                   onChange={() => setMode('specific')}
                 />
                 <span className="text-[13px] text-textColor">
@@ -293,64 +298,9 @@ export const NodeConfigPanel: FC<NodeConfigPanelProps> = ({
               </label>
             </div>
 
+            </>}
             {/* Specific selectors */}
-            {currentMode === 'specific' && triggerType === 'comment_on_post' && (
-              <>
-                {postsLoading && (
-                  <p className="text-[12px] text-customColor18">
-                    {t('loading_posts', 'Carregando posts...')}
-                  </p>
-                )}
-                {!postsLoading && (!posts || posts.length === 0) && (
-                  <p className="text-[12px] text-customColor18">
-                    {t(
-                      'no_posts_found',
-                      'Nenhum post do Instagram encontrado. Reconecte a conta ou publique antes.'
-                    )}
-                  </p>
-                )}
-                {!postsLoading && posts && posts.length > 0 && (
-                  <div className="max-h-[320px] overflow-y-auto space-y-[8px] mb-[12px]">
-                    {posts.map((post) => {
-                      const isSelected = selectedPostIds.includes(post.id);
-                      const thumb = post.thumbnailUrl || post.mediaUrl;
-                      return (
-                        <label
-                          key={post.id}
-                          className={`flex gap-[8px] p-[8px] rounded-[6px] cursor-pointer border ${
-                            isSelected
-                              ? 'border-btnPrimary bg-newBgColorInner'
-                              : 'border-newTableBorder hover:border-btnPrimary'
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => togglePost(post.id)}
-                            className="mt-[4px]"
-                          />
-                          {thumb && (
-                            <img
-                              src={thumb}
-                              alt=""
-                              className="w-[48px] h-[48px] rounded-[4px] object-cover flex-shrink-0"
-                            />
-                          )}
-                          <div className="flex-1 min-w-0">
-                            <p className="text-[11px] text-customColor18 uppercase">
-                              {post.mediaType}
-                            </p>
-                            <p className="text-[12px] text-textColor truncate">
-                              {post.caption || t('no_caption', '(sem legenda)')}
-                            </p>
-                          </div>
-                        </label>
-                      );
-                    })}
-                  </div>
-                )}
-              </>
-            )}
+            {triggerType === 'comment_on_post' && <AutomationPublicationSelector key={integrationId} integrationId={integrationId} mode={currentMode} postIds={selectedPostIds} scheduledPostId={config.scheduledPostId} posts={posts || []} loading={postsLoading} onChange={selection => { const next: Record<string, any> = { ...config, mode: selection.mode, postIds: selection.postIds }; delete next.scheduledPostId; if (selection.scheduledPostId) next.scheduledPostId = selection.scheduledPostId; setConfig(next); }} />}
 
             {currentMode === 'specific' && triggerType === 'story_reply' && (
               <div className="mb-[12px]">

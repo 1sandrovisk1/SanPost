@@ -11,6 +11,7 @@ import {
   IsIn,
   IsBoolean,
   IsInt,
+  IsDateString,
   Min,
   Max,
   MaxLength,
@@ -65,45 +66,64 @@ export class UpdateFlowStatusDto {
 }
 
 export class FlowNodeDto {
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   id?: string;
 
+  @ApiProperty({ enum: FlowNodeType })
   @IsEnum(FlowNodeType)
   type: FlowNodeType;
 
   @IsOptional()
   @IsString()
+  @ApiPropertyOptional()
   label?: string;
 
   @IsOptional()
   @IsString()
+  @ApiPropertyOptional({ description: 'JSON string da configuração do tipo de nó; consulte /public/v1/automations/capabilities para campos e sintaxe por canal.' })
   data?: string;
 
+  @ApiProperty()
   @IsNumber()
   positionX: number;
 
+  @ApiProperty()
   @IsNumber()
   positionY: number;
 }
 
 export class FlowEdgeDto {
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   id?: string;
 
+  @ApiProperty()
   @IsString()
   sourceNodeId: string;
 
+  @ApiProperty()
   @IsString()
   targetNodeId: string;
 
   @IsOptional()
   @IsString()
+  @ApiPropertyOptional({ enum: ['match','no_match'] })
   sourceHandle?: string;
 }
 
 export class QuickCreateFlowDto {
+  @ApiPropertyOptional({ description: 'Controle de concorrência na edição: updatedAt obtido no detalhe. Não usar na criação.' })
+  @IsOptional()
+  @IsDateString()
+  expectedUpdatedAt?: string;
+  @ApiPropertyOptional({ default: true, description: 'Ativa ao criar/salvar um rascunho. false mantém o rascunho para revisão antes da ativação explícita.' })
+  @IsOptional()
+  @IsBoolean()
+  activate?: boolean;
+
   @ApiProperty({
     description: 'Nome da automação (apenas para identificação na interface).',
     maxLength: 200,
@@ -134,15 +154,21 @@ export class QuickCreateFlowDto {
   triggerType?: 'comment_on_post' | 'story_reply';
 
   @ApiPropertyOptional({
-    enum: ['all', 'specific', 'next_publication'],
+    enum: ['all', 'specific', 'next_publication', 'scheduled'],
     default: 'next_publication',
     description:
       'Vínculo ao post: all (qualquer post do canal) · specific (apenas os ids em postIds/storyIds) · ' +
       'next_publication (vincula automaticamente ao PRÓXIMO post publicado — ideal para encadear).',
   })
   @IsOptional()
-  @IsIn(['all', 'specific', 'next_publication'])
-  postMode?: 'all' | 'specific' | 'next_publication';
+  @IsIn(['all', 'specific', 'next_publication', 'scheduled'])
+  postMode?: 'all' | 'specific' | 'next_publication' | 'scheduled';
+
+  @ApiPropertyOptional({ description: 'ID interno Post.id retornado ao agendar no MultiPost. Obrigatório no modo scheduled; comentários de Feed/Reels apenas.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  scheduledPostId?: string;
 
   // Obrigatorio e nao-vazio quando postMode='specific' em comentario de post.
   // Em story_reply o alvo vem de storyIds, entao postIds fica opcional.
@@ -334,11 +360,22 @@ export class QuickCreateFlowDto {
 }
 
 export class SaveCanvasDto {
+  @IsOptional()
+  @IsDateString()
+  expectedUpdatedAt?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  name?: string;
+
+  @ApiProperty({ type: [FlowNodeDto] })
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => FlowNodeDto)
   nodes: FlowNodeDto[];
 
+  @ApiProperty({ type: [FlowEdgeDto] })
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => FlowEdgeDto)

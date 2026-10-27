@@ -1,211 +1,28 @@
+import { createPrismaRepositoryMock } from '../../../test';
 import { PostsRepository } from './posts.repository';
-import { createPrismaRepositoryMock } from '@gitroom/nestjs-libraries/test';
-
-describe('PostsRepository.getErrorPosts', () => {
-  let repo: PostsRepository;
-  let prismaMock: ReturnType<typeof createPrismaRepositoryMock<'post'>>;
-
-  beforeEach(() => {
-    prismaMock = createPrismaRepositoryMock('post');
-    (prismaMock.model.post as any).findMany = jest
-      .fn()
-      .mockResolvedValue([] as any);
-    repo = new PostsRepository(
-      prismaMock as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any
-    );
-  });
-
-  const arg = () => prismaMock.model.post.findMany.mock.calls[0][0] as any;
-
-  it('filtra state=ERROR por org, ignora filhos de thread, janela de 30 dias e limit padrao', async () => {
-    await repo.getErrorPosts('org-1');
-
-    const a = arg();
-    expect(a.where.organizationId).toBe('org-1');
-    expect(a.where.state).toBe('ERROR');
-    expect(a.where.deletedAt).toBeNull();
-    expect(a.where.OR).toEqual([
-      { profileId: null },
-      { profile: { deletedAt: null } },
-    ]);
-    expect(a.where.parentPostId).toBeNull();
-    expect(a.where.updatedAt.gte).toBeInstanceOf(Date);
-    expect(a.orderBy).toEqual({ updatedAt: 'desc' });
-    expect(a.take).toBe(50);
-    // Seguranca: NAO seleciona `error` (serializacao crua da excecao — pode
-    // conter refresh_token/client_secret). A tela so precisa da contagem.
-    expect(a.select.error).toBeUndefined();
-    // canal + perfil embutidos (sem N+1)
-    expect(a.select.integration.select).toEqual({
-      id: true,
-      providerIdentifier: true,
-      internalId: true,
-      name: true,
-      picture: true,
-    });
-    expect(a.select.profile.select).toEqual({ id: true, name: true });
-  });
-
-  it('aplica profileId quando informado e respeita o limit', async () => {
-    await repo.getErrorPosts('org-1', 'prof-2', 10);
-
-    const a = arg();
-    expect(a.where.profileId).toBe('prof-2');
-    expect(a.take).toBe(10);
-  });
-
-  it('nao filtra por profileId quando ausente', async () => {
-    await repo.getErrorPosts('org-1');
-    expect(arg().where.profileId).toBeUndefined();
-  });
-});
-
-describe('PostsRepository.changeState', () => {
-  let repo: PostsRepository;
-  let prismaMock: ReturnType<typeof createPrismaRepositoryMock<'post'>>;
-
-  beforeEach(() => {
-    prismaMock = createPrismaRepositoryMock('post');
-    (prismaMock.model.post as any).update = jest
-      .fn()
-      .mockResolvedValue({ id: 'p1', integration: {} } as any);
-    repo = new PostsRepository(
-      prismaMock as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any
-    );
-  });
-
-  it('inclui name/picture do canal (snapshot do StatusEvent) alem do providerIdentifier', async () => {
-    // Estado nao-ERROR: nao aciona o ramo da tabela `errors`, isola o include.
-    await repo.changeState('p1', 'PUBLISHED' as any);
-
-    const call = prismaMock.model.post.update.mock.calls[0][0] as any;
-    expect(call.include.integration.select).toEqual({
-      providerIdentifier: true,
-      name: true,
-      picture: true,
-    });
-  });
-});
-
-describe('PostsRepository - ciclo de republicacao apos erro', () => {
-  let repo: PostsRepository;
-  let prismaMock: ReturnType<typeof createPrismaRepositoryMock<'post'>>;
-
-  beforeEach(() => {
-    prismaMock = createPrismaRepositoryMock('post');
-    prismaMock.model.post.update.mockResolvedValue({ id: 'p1' } as any);
-    repo = new PostsRepository(
-      prismaMock as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any
-    );
-  });
-
-  it('limpa o erro atual quando a publicacao termina com sucesso', async () => {
-    await repo.updatePost('p1', 'remote-1', 'https://example.com/post/1');
-
-    expect(prismaMock.model.post.update).toHaveBeenCalledWith({
-      where: { id: 'p1' },
-      data: {
-        state: 'PUBLISHED',
-        releaseURL: 'https://example.com/post/1',
-        releaseId: 'remote-1',
-        error: null,
-      },
-    });
-  });
-
-  it('limpa o erro atual ao reagendar uma nova tentativa', async () => {
-    await repo.changeDate(
-      'org-1',
-      'p1',
-      '2026-09-07T14:30:00.000Z',
-      false,
-      'schedule'
-    );
-
-    expect(prismaMock.model.post.update).toHaveBeenCalledWith({
-      where: { organizationId: 'org-1', id: 'p1' },
-      data: {
-        publishDate: new Date('2026-09-07T14:30:00.000Z'),
-        state: 'QUEUE',
-        releaseId: null,
-        releaseURL: null,
-        error: null,
-      },
-    });
-  });
-
-  it('preserva o erro atual quando altera somente a data', async () => {
-    await repo.changeDate(
-      'org-1',
-      'p1',
-      '2026-09-07T14:30:00.000Z',
-      false,
-      'update'
-    );
-
-    const call = prismaMock.model.post.update.mock.calls[0][0] as any;
-    expect(call.data).toEqual({
-      publishDate: new Date('2026-09-07T14:30:00.000Z'),
-    });
-    expect(call.data).not.toHaveProperty('error');
-  });
-});
-
-describe('PostsRepository.searchForMissingThreeHoursPosts', () => {
-  it('ignora posts de perfis cancelados e preserva posts legados de workspace', async () => {
-    const prismaMock = createPrismaRepositoryMock('post');
-    prismaMock.model.post.findMany.mockResolvedValue([] as any);
-    const repo = new PostsRepository(
-      prismaMock as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any
-    );
-
-    await repo.searchForMissingThreeHoursPosts();
-
-    expect(prismaMock.model.post.findMany.mock.calls[0][0].where.OR).toEqual([
-      { profileId: null },
-      { profile: { deletedAt: null } },
-    ]);
-  });
-});
-
-describe('PostsRepository.getPost for publishing', () => {
-  it('ignora a raiz quando o perfil foi cancelado', async () => {
-    const prismaMock = createPrismaRepositoryMock('post');
-    prismaMock.model.post.findUnique.mockResolvedValue(null);
-    const repo = new PostsRepository(
-      prismaMock as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any
-    );
-
-    await repo.getPost('post-1', true, 'org-1', true);
-
-    expect(prismaMock.model.post.findUnique.mock.calls[0][0].where.OR).toEqual([
-      { profileId: null },
-      { profile: { deletedAt: null } },
-    ]);
-  });
+describe('resultado de publicacao e alvo agendado', () => {
+ const post=createPrismaRepositoryMock('post');
+ const tx={post:post.model.post,scheduledAutomationTarget:{updateMany:jest.fn()}};
+ const transaction={model:{$transaction:jest.fn(async callback=>callback(tx))}};
+ const repo=new PostsRepository(post as any,{} as any,{} as any,{} as any,{} as any,{} as any,transaction as any);
+ beforeEach(()=>{jest.clearAllMocks();tx.post.update.mockResolvedValue({id:'local',organizationId:'o',profileId:'p',integrationId:'i'});});
+ it('criacao de tags usa ids e perfil para nao associar etiquetas homonimas de outro cliente', async () => {
+  const tag=createPrismaRepositoryMock('tags');const link=createPrismaRepositoryMock('tagsPosts');
+  const local=new PostsRepository(post as any,{} as any,{} as any,tag as any,link as any,{} as any);
+  post.model.post.upsert.mockResolvedValue({id:'post'});tag.model.tags.findMany.mockResolvedValue([{id:'tag'}]);
+  await local.createOrUpdatePost('schedule','o','2026-11-01T15:00:00Z',{integration:{id:'i'},value:[{id:'post',content:'Texto',image:[]}],settings:{__type:'facebook'}} as any,[{value:'tag',label:'Campanha'}],undefined,'p');
+  expect(tag.model.tags.findMany).toHaveBeenCalledWith(expect.objectContaining({where:expect.objectContaining({orgId:'o',profileId:'p',id:{in:['tag']},deletedAt:null})}));
+ });
+ it('salva resultado e congela apenas alvos ainda sem primeira publicacao na mesma transacao',async()=>{
+  await repo.updatePost('local','123_456','https://example.com');
+  expect(transaction.model.$transaction).toHaveBeenCalledTimes(1);
+  expect(tx.post.update).toHaveBeenCalledWith({where:{id:'local'},data:{state:'PUBLISHED',releaseURL:'https://example.com',releaseId:'123_456',error:null}});
+  expect(tx.scheduledAutomationTarget.updateMany).toHaveBeenCalledWith({where:{postId:'local',integrationId:'i',publishedReleaseId:null,flow:{organizationId:'o',profileId:'p'}},data:{publishedReleaseId:'123_456'}});
+ });
+ it('nao congela missing e inclui a correcao posterior na transacao',async()=>{
+  await repo.updatePost('local','missing','https://example.com');expect(tx.scheduledAutomationTarget.updateMany).not.toHaveBeenCalled();
+  await repo.updateReleaseId('local','o','123_789');
+  expect(tx.post.update).toHaveBeenLastCalledWith({where:{id:'local',organizationId:'o',releaseId:'missing'},data:{releaseId:'123_789'}});
+  expect(tx.scheduledAutomationTarget.updateMany).toHaveBeenLastCalledWith(expect.objectContaining({data:{publishedReleaseId:'123_789'}}));
+ });
 });

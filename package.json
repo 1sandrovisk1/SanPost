@@ -29,6 +29,7 @@
     "start:prod:backend": "pnpm --filter ./apps/backend run start",
     "start:prod:frontend": "pnpm --filter ./apps/frontend run start",
     "dev:docker": "docker compose -f ./docker-compose.dev.yaml up -d",
+    "dev:local": "bash var/docker/local-dev.sh",
     "commands:build:development": "pnpm --filter ./apps/commands run build",
     "prisma-generate": "pnpm dlx prisma@6.5.0 generate --schema ./libraries/nestjs-libraries/src/database/prisma/schema.prisma",
     "prisma-db-push": "pnpm dlx prisma@6.5.0 db push --accept-data-loss --schema ./libraries/nestjs-libraries/src/database/prisma/schema.prisma",
@@ -42,7 +43,11 @@
     "test:backend": "jest --selectProjects backend",
     "test:orchestrator": "jest --config apps/orchestrator/jest.config.ts --coverage --detectOpenHandles",
     "temporal:replay-post": "cross-env TS_NODE_PROJECT=apps/orchestrator/tsconfig.json node -r ts-node/register/transpile-only apps/orchestrator/scripts/replay-post-workflow-history.ts",
-    "test:libs": "jest --selectProjects nestjs-libraries"
+    "test:libs": "jest --selectProjects nestjs-libraries",
+    "automations:meta-proof": "cross-env TS_NODE_PROJECT=tools/tsconfig.meta-proof.json node -r ts-node/register tools/meta-automation-proof.ts",
+    "automations:meta-webhook": "cross-env TS_NODE_PROJECT=tools/tsconfig.meta-proof.json node -r ts-node/register tools/meta-automation-webhook.ts",
+    "test:automations:meta": "jest --selectProjects nestjs-libraries --runInBand --testPathPattern=integrations/automations/",
+    "test:automations:regression": "cross-env REDIS_URL= NODE_OPTIONS=--max-old-space-size=8192 jest --selectProjects nestjs-libraries backend --runInBand --detectOpenHandles --testPathPattern=\"database/prisma/flows/|database/prisma/flows-v2/|flows-v2.controller|integrations/automations/|instagram.*spec|facebook.provider.spec|ig-webhook.controller.spec|facebook-automations|database/prisma/credentials/credential.service.spec|public.flows.controller.spec|meta-graph.constants.spec\""
   },
   "dependencies": {
     "@ag-ui/mastra": "^1.0.1",

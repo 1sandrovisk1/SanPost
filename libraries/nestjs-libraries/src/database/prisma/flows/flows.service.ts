@@ -1,5 +1,7 @@
+import type { DeferredNextCandidate } from '../../../dtos/flows/scheduled-post.dto';
 import {
   Injectable,
+  Optional,
   BadRequestException,
   ForbiddenException,
   HttpException,
@@ -39,6 +41,8 @@ import { EncryptionService } from '@gitroom/nestjs-libraries/crypto/encryption.s
 import { StatusEventService } from '@gitroom/nestjs-libraries/database/prisma/status/status-event.service';
 import { decryptIntegrationToken } from '@gitroom/nestjs-libraries/crypto/integration-token.helper';
 import * as crypto from 'crypto';
+import { WorkflowIdReusePolicy } from '@temporalio/common';
+import { ScheduledPostsService } from '../scheduled-automations/scheduled-posts.service';
 
 // Janela de 24h da Meta para trocar mensagens apos interacao do usuario.
 // Usamos 23h para dar margem de seguranca e nao tentar DM expirado.
@@ -57,7 +61,8 @@ export class FlowsService {
     private _instagramMessaging: InstagramMessagingService,
     private _profileService: ProfileService,
     private _encryption: EncryptionService,
-    private _statusEventService: StatusEventService
+    private _statusEventService: StatusEventService,
+    @Optional() private readonly scheduled?: ScheduledPostsService
   ) {}
 
   /**
@@ -102,17 +107,20 @@ export class FlowsService {
     return this._flowsRepository.getFlow(orgId, id, profileId);
   }
 
-  getFlowById(id: string) {
-    return this._flowsRepository.getFlowById(id);
+  async getFlowById(id: string, guard?: { targetId: string; revision: number; updatedAt: string; externalPostId: string; kind?: 'next' }) {
+    if (guard && !await this.scheduled?.repository.validGuard(id, guard)) return null;
+    const flow = await this._flowsRepository.getFlowById(id);
+    if (guard && flow?.updatedAt?.toISOString() !== guard.updatedAt) return null;
+    return flow;
   }
 
   /**
    * Guard de autorizacao por integracao — chokepoint para TODOS os caminhos de
    * criacao (REST publica, MCP, wizard interno). Fecha o gap em que a validacao
    * antiga so olhava `orgId`: garante que a integracao existe, pertence a org,
-   * nao esta desativada/removida e — quando o chamador e escopado a um perfil
-   * (ex.: chave de API por-perfil) — pertence aquele perfil OU e org-wide
-   * (`profileId` null). Integracao de OUTRO perfil -> 403.
+   * nao esta desativada/removida e pertence ao perfil efetivo do flow OU e
+   * org-wide (`profileId` null). Na criacao, resolver Default antes desta
+   * guarda mesmo para chave de organizacao. Integracao de OUTRO perfil -> 403.
    *
    * Nao valida `providerIdentifier` aqui de proposito: a checagem "so Instagram"
    * + verificacao de webhook continua em `checkIntegrationWebhook` (que roda em
@@ -163,15 +171,22 @@ export class FlowsService {
   }
 
   async createFlow(orgId: string, body: CreateFlowDto, profileId?: string) {
-    await this.assertIntegrationAccess(orgId, body.integrationId, profileId);
-    const check = await this.checkIntegrationWebhook(orgId, body.integrationId);
-    if (!check.ok) {
-      throw new BadRequestException(check.error);
-    }
     const resolvedProfileId = await this.resolveCreationProfileId(
       orgId,
       profileId
     );
+    await this.assertIntegrationAccess(orgId, body.integrationId, resolvedProfileId);
+    const check = await this.checkIntegrationWebhook(orgId, body.integrationId);
+    if (!check.ok) {
+      throw new BadRequestException(check.error);
+    }
+    return this._flowsRepository.createFlow(orgId, body, resolvedProfileId);
+  }
+
+  /** Explicit preparation path for agents; activation still validates the webhook. */
+  async createDraftFlow(orgId: string, body: CreateFlowDto, profileId?: string) {
+    const resolvedProfileId = await this.resolveCreationProfileId(orgId, profileId);
+    await this.assertIntegrationAccess(orgId, body.integrationId, resolvedProfileId);
     return this._flowsRepository.createFlow(orgId, body, resolvedProfileId);
   }
 
@@ -459,14 +474,28 @@ export class FlowsService {
     return this._flowsRepository.deleteFlow(orgId, id, profileId);
   }
 
-  saveCanvas(orgId: string, id: string, body: SaveCanvasDto, profileId?: string) {
-    return this._flowsRepository.saveCanvas(
-      orgId,
-      id,
-      body.nodes,
-      body.edges,
-      profileId
-    );
+  async saveCanvas(orgId: string, id: string, body: SaveCanvasDto, profileId?: string) {
+    if (body.expectedUpdatedAt) {
+      if (!this.scheduled) throw new HttpException('CONDITIONAL_EDIT_UNAVAILABLE', 412);
+      const current = await this._flowsRepository.getFlow(orgId, id, profileId);
+      if (!current) throw new HttpException('FLOW_NOT_FOUND', 404);
+      return this.scheduled.repository.saveLegacyCanvas(
+        { organizationId: orgId, profileId: current.profileId || profileId || '' }, id,
+        body.nodes, body.edges, { expectedUpdatedAt: body.expectedUpdatedAt, name: body.name }
+      );
+    }
+    if (!this.scheduled) return this._flowsRepository.saveCanvas(orgId, id, body.nodes, body.edges, profileId);
+    const flow = await this._flowsRepository.getFlow(orgId, id, profileId);
+    if (!flow) throw new BadRequestException('Flow not found');
+    let cfg: Record<string, unknown> = {};
+    try { cfg = JSON.parse(body.nodes.find(n => n.type === 'TRIGGER')?.data || '{}'); } catch { /* Preserve legacy malformed-node behavior outside scheduled mode. */ }
+    const scope = { organizationId: orgId, profileId: flow.profileId || profileId || '' };
+    if (cfg.mode !== 'scheduled') {
+      // Preserve historical multi-trigger/null-profile canvas behavior.
+      const hasScheduledTarget = scope.profileId && await this.scheduled.repository.targetForFlow(scope, id, flow.integrationId);
+      if (!hasScheduledTarget) return this._flowsRepository.saveCanvas(orgId, id, body.nodes, body.edges, profileId);
+    }
+    return this.scheduled.repository.saveLegacyCanvas(scope, id, body.nodes, body.edges);
   }
 
   async updateFlowStatus(
@@ -481,6 +510,10 @@ export class FlowsService {
         throw new BadRequestException('Automacao nao encontrada');
       }
 
+      const flowProfileId = await this.resolveCreationProfileId(orgId, flow.profileId || profileId);
+      await this.assertIntegrationAccess(orgId, flow.integrationId, flowProfileId);
+      const cfg = JSON.parse(flow.nodes.find(n => n.type === 'TRIGGER')?.data || '{}');
+      await this.scheduled?.validateMode({ organizationId: orgId, profileId: flowProfileId }, flow.integrationId, { ...cfg, postMode: cfg.mode }, id);
       const hasTrigger = flow.nodes.some(
         (n) => n.type === FlowNodeType.TRIGGER
       );
@@ -619,12 +652,16 @@ export class FlowsService {
     if (!current) {
       throw new BadRequestException('Flow not found');
     }
+    if (body.integrationId !== current.integrationId) throw new HttpException('INTEGRATION_IMMUTABLE', 400);
     // A integracao do flow nao muda no update, mas revalidamos: bloqueia
     // reativacao (DRAFT->ACTIVE) sobre integracao desativada/removida e mantem
     // simetria com o caminho de criacao (mesmo guard).
-    await this.assertIntegrationAccess(orgId, current.integrationId, profileId);
+    const flowProfileId = await this.resolveCreationProfileId(orgId, current.profileId || profileId);
+    await this.assertIntegrationAccess(orgId, current.integrationId, flowProfileId);
     this.assertDmButtonUrl(body.dmButtonUrl);
-    await this._flowsRepository.updateFlow(orgId, id, { name: body.name }, profileId);
+    if (body.postMode === 'scheduled' && !this.scheduled) throw new BadRequestException('SCHEDULED_POST_UNAVAILABLE');
+    await this.scheduled?.validateMode({ organizationId: orgId, profileId: flowProfileId }, current.integrationId, body, id);
+    if (!body.expectedUpdatedAt) await this._flowsRepository.updateFlow(orgId, id, { name: body.name }, profileId);
 
     const triggerType = body.triggerType ?? 'comment_on_post';
     const nodes: Array<{ type: string; label?: string; positionX: number; positionY: number; data: string }> = [];
@@ -658,16 +695,19 @@ export class FlowsService {
       edges.push({ sourceIndex: lastIndex, targetIndex: nodes.length - 1 });
     }
 
-    const flowNodes = nodes.map((n, i) => ({ id: `temp-${i}`, type: n.type as any, label: n.label, positionX: n.positionX, positionY: n.positionY, data: n.data }));
+    const flowNodes = nodes.map((n, i) => {
+      const previous = body.expectedUpdatedAt ? current.nodes.find(node => node.type === n.type) : undefined;
+      return { id: `temp-${i}`, type: n.type as any, label: previous?.label ?? n.label, positionX: previous?.positionX ?? n.positionX, positionY: previous?.positionY ?? n.positionY, data: n.data };
+    });
     const flowEdges = edges.map((e, i) => ({ id: `temp-edge-${i}`, sourceNodeId: `temp-${e.sourceIndex}`, targetNodeId: `temp-${e.targetIndex}` }));
 
-    await this._flowsRepository.saveCanvas(orgId, id, flowNodes, flowEdges, profileId);
+    await this.saveCanvas(orgId, id, { nodes: flowNodes, edges: flowEdges, ...(body.expectedUpdatedAt ? { expectedUpdatedAt: body.expectedUpdatedAt, name: body.name } : {}) }, profileId);
 
     // Auto-activate on first wizard save: if the flow was still DRAFT (created
     // via the popup hub which makes an empty draft before the wizard runs),
     // promote it to ACTIVE so the user doesn't need to remember to activate
     // it manually. Flows already ACTIVE or PAUSED keep their current status.
-    if (current.status === FlowStatus.DRAFT) {
+    if (current.status === FlowStatus.DRAFT && body.activate !== false) {
       await this._flowsRepository.updateFlowStatus(
         orgId,
         id,
@@ -680,17 +720,17 @@ export class FlowsService {
   }
 
   async quickCreateFlow(orgId: string, body: QuickCreateFlowDto, profileId?: string) {
+    // Resolve the storage scope first, including Default for organization keys.
+    // Authorize the account against the same profile before any Meta call/write.
+    profileId = await this.resolveCreationProfileId(orgId, profileId);
     await this.assertIntegrationAccess(orgId, body.integrationId, profileId);
     this.assertDmButtonUrl(body.dmButtonUrl);
-    const check = await this.checkIntegrationWebhook(orgId, body.integrationId);
-    if (!check.ok) {
-      throw new BadRequestException(check.error);
+    if (body.activate !== false) {
+      const check = await this.checkIntegrationWebhook(orgId, body.integrationId);
+      if (!check.ok) throw new BadRequestException(check.error);
     }
-    // Nunca cria flow com profileId null (ficaria invisivel na UI por-perfil):
-    // sem profileId -> Default da org; com profileId -> validado. A partir daqui
-    // todo o resto do metodo usa o profileId resolvido.
-    profileId = await this.resolveCreationProfileId(orgId, profileId);
-
+    if (body.postMode === 'scheduled' && !this.scheduled) throw new BadRequestException('SCHEDULED_POST_UNAVAILABLE');
+    await this.scheduled?.validateMode({ organizationId: orgId, profileId }, body.integrationId, body);
     const triggerType = body.triggerType ?? 'comment_on_post';
     const triggerIds =
       triggerType === 'story_reply' ? body.storyIds : body.postIds;
@@ -772,16 +812,9 @@ export class FlowsService {
       targetNodeId: `temp-${e.targetIndex}`,
     }));
 
-    await this._flowsRepository.saveCanvas(
-      orgId,
-      flow.id,
-      flowNodes,
-      flowEdges,
-      profileId
-    );
-
+    await this.saveCanvas(orgId, flow.id, { nodes: flowNodes, edges: flowEdges }, profileId);
     // Auto-activate new flows created via wizard
-    await this._flowsRepository.updateFlowStatus(orgId, flow.id, FlowStatus.ACTIVE, profileId);
+    if (body.activate !== false) await this._flowsRepository.updateFlowStatus(orgId, flow.id, FlowStatus.ACTIVE, profileId);
 
     return this._flowsRepository.getFlow(orgId, flow.id, profileId);
   }
@@ -790,7 +823,10 @@ export class FlowsService {
     const triggerType = body.triggerType ?? 'comment_on_post';
     const triggerConfig: Record<string, any> = { triggerType };
 
-    if (body.postMode === 'next_publication') {
+    if (body.postMode === 'scheduled') {
+      triggerConfig.mode = 'scheduled';
+      triggerConfig.scheduledPostId = body.scheduledPostId;
+    } else if (body.postMode === 'next_publication') {
       triggerConfig.mode = 'next_publication';
     } else if (triggerType === 'story_reply' && body.storyIds?.length) {
       triggerConfig.mode = 'specific';
@@ -798,6 +834,10 @@ export class FlowsService {
     } else if (triggerType === 'comment_on_post' && body.postIds?.length) {
       triggerConfig.mode = 'specific';
       triggerConfig.postIds = body.postIds;
+    } else if (triggerType === 'comment_on_post' && body.postMode === 'specific') {
+      // An alias-only rule must not become an unscoped rule when saved.
+      triggerConfig.mode = 'specific';
+      triggerConfig.postIds = [];
     } else if (body.postMode === 'all') {
       triggerConfig.mode = 'all';
     }
@@ -870,9 +910,12 @@ export class FlowsService {
   async bindPendingFlowsToPost(
     integrationId: string,
     mediaId: string,
-    triggerType: 'comment_on_post' | 'story_reply' = 'comment_on_post'
+    triggerType: 'comment_on_post' | 'story_reply' = 'comment_on_post',
+    internalPostId?: string,
+    nextReplay?: DeferredNextCandidate[]
   ): Promise<number> {
     if (!integrationId || !mediaId) return 0;
+    if (triggerType === 'comment_on_post' && await this.scheduled?.repository.isReserved(integrationId, mediaId, !internalPostId, internalPostId)) return 0;
 
     try {
       const pending =
@@ -882,6 +925,7 @@ export class FlowsService {
 
       let bound = 0;
       for (const flow of pending) {
+        if (nextReplay && !nextReplay.some(c => c.id === flow.id && c.revision === flow.revision && c.updatedAt === flow.updatedAt.toISOString())) continue;
         if (!this.isPendingNextPublication(flow, triggerType)) continue;
 
         const triggerNode = flow.nodes?.find((n) => n.type === 'TRIGGER');
@@ -904,12 +948,8 @@ export class FlowsService {
           newData.postIds = [mediaId];
         }
 
-        const ok = await this._flowsRepository.bindFlowTriggerToMedia(
-          flow.id,
-          triggerNode.id,
-          newData,
-          mediaId
-        );
+        const candidate = nextReplay?.find(c => c.id === flow.id);
+        const ok = await (candidate ? this._flowsRepository.bindFlowTriggerToMedia(flow.id, triggerNode.id, newData, mediaId, candidate) : this._flowsRepository.bindFlowTriggerToMedia(flow.id, triggerNode.id, newData, mediaId));
         if (ok) bound++;
       }
 
@@ -1099,13 +1139,23 @@ export class FlowsService {
     igMediaId: string;
     commentText: string;
     organizationId: string;
-  }) {
+    occurredAt?: number;
+  }, scheduledFlowId?: string, scheduledGuard?: { targetId: string; revision: number; updatedAt: string; externalPostId: string; kind?: 'next' }, nextReplay?: DeferredNextCandidate[]) {
     let activeFlows =
       await this._flowsRepository.getActiveFlowsForIntegration(
         payload.integrationId,
         payload.igMediaId
       );
 
+    if (nextReplay) activeFlows = activeFlows.filter(f => nextReplay.some(c => c.executionVersion === 1 && c.id === f.id && c.revision === f.revision && c.updatedAt === f.updatedAt.toISOString()));
+    if (scheduledFlowId) {
+      if (!scheduledGuard || !await this.scheduled?.repository.validGuard(scheduledFlowId, scheduledGuard)) return [];
+      activeFlows = activeFlows.filter(f => f.id === scheduledFlowId && f.updatedAt.toISOString() === scheduledGuard.updatedAt);
+    }
+    if (!scheduledFlowId && !nextReplay && this.scheduled && Number.isFinite(payload.occurredAt) && payload.occurredAt > 0 && payload.occurredAt <= Date.now() + 60000) {
+      const integration = await this._integrationService.getIntegrationById(payload.organizationId, payload.integrationId);
+      if (integration?.profileId) await this.scheduled.capture({ organizationId: payload.organizationId, profileId: integration.profileId, integrationId: integration.id, platform: 'instagram', remoteAccountId: integration.internalId, externalEventId: payload.igCommentId, externalPostId: payload.igMediaId, externalActorId: payload.igCommenterId, actorName: payload.igCommenterName, text: payload.commentText, occurredAt: payload.occurredAt });
+    }
     // Only feed/reel (comment_on_post) flows react to comment webhooks.
     activeFlows = activeFlows.filter(
       (f) => this.getTriggerType(f) === 'comment_on_post'
@@ -1118,31 +1168,41 @@ export class FlowsService {
     const hasPending = activeFlows.some((f) =>
       this.isPendingNextPublication(f, 'comment_on_post')
     );
-    if (hasPending) {
-      await this.bindPendingFlowsToPost(
-        payload.integrationId,
-        payload.igMediaId,
-        'comment_on_post'
-      );
+    if (hasPending && !scheduledFlowId) {
+      if (nextReplay) await this.bindPendingFlowsToPost(payload.integrationId, payload.igMediaId, 'comment_on_post', undefined, nextReplay);
+      else await this.bindPendingFlowsToPost(payload.integrationId, payload.igMediaId, 'comment_on_post');
       activeFlows = (
         await this._flowsRepository.getActiveFlowsForIntegration(
           payload.integrationId,
           payload.igMediaId
         )
-      ).filter((f) => this.getTriggerType(f) === 'comment_on_post');
+      ).filter((f) => this.getTriggerType(f) === 'comment_on_post' && (!nextReplay || nextReplay.some(c => c.id === f.id && c.revision === f.revision && c.updatedAt === f.updatedAt.toISOString())));
     }
 
     // Filter flows that monitor this specific media (or all posts)
     let matchingFlows = activeFlows.filter((flow) => {
       // Defense-in-depth: a flow still pending in next_publication must NOT
       // fire as "all posts" — skip it entirely if the bind didn't take.
+      if (scheduledFlowId) return flow.id === scheduledFlowId;
       if (this.isPendingNextPublication(flow, 'comment_on_post')) return false;
-      if (!flow.triggerPostIds) return true;
+      const trigger = flow.nodes?.find((node) => node.type === 'TRIGGER');
+      let specificOnly = false;
+      try {
+        const mode = JSON.parse(trigger?.data || '{}').mode;
+        if (mode === 'scheduled') return false;
+        specificOnly = mode === 'specific';
+      } catch {
+        // Preserve legacy rules without a readable explicit scope.
+      }
+      // saveCanvas denormalizes an empty postIds array to null. An explicit
+      // specific scope can still match through FlowMediaAlias below, but never
+      // through an unrelated organic post. Deleting the alias revokes that match.
+      if (!flow.triggerPostIds) return !specificOnly;
       try {
         const postIds: string[] = JSON.parse(flow.triggerPostIds);
-        return postIds.length === 0 || postIds.includes(payload.igMediaId);
+        return postIds.length === 0 ? !specificOnly : postIds.includes(payload.igMediaId);
       } catch {
-        return true;
+        return !specificOnly;
       }
     });
 
@@ -1155,32 +1215,33 @@ export class FlowsService {
         payload.integrationId,
         payload.igMediaId
       );
-    if (aliasMatches.length > 0) {
+    if (!scheduledFlowId && aliasMatches.length > 0) {
       const aliasedFlowIds = new Set(aliasMatches.map((a) => a.flowId));
       const fromAlias = activeFlows.filter(
-        (f) => aliasedFlowIds.has(f.id) && !matchingFlows.includes(f)
+        (f) => aliasedFlowIds.has(f.id) && !matchingFlows.includes(f) && !f.nodes.some(n => { try { return n.type === 'TRIGGER' && JSON.parse(n.data || '{}').mode === 'scheduled'; } catch { return false; } })
       );
       matchingFlows = matchingFlows.concat(fromAlias);
     }
 
     // Sem flows que matcham: persistir UnmatchedComment + dispatch enrichment
     if (matchingFlows.length === 0) {
-      await this.persistUnmatchedComment(payload);
+      if (!scheduledFlowId) await this.persistUnmatchedComment(payload);
       return [];
     }
 
     const results = [];
     for (const flow of matchingFlows) {
+      const executionGuard = scheduledGuard || (nextReplay ? { kind: 'next' as const, targetId: '', revision: flow.revision, updatedAt: flow.updatedAt.toISOString(), externalPostId: payload.igMediaId } : undefined);
       // Idempotency: skip if already executed for this comment+flow
       const existing = await this._flowsRepository.findExistingExecution(
         flow.id,
         payload.igCommentId
       );
-      if (existing) continue;
+      if (existing && (!executionGuard || existing.status === FlowExecutionStatus.COMPLETED)) continue;
 
       const workflowId = `flow-exec-${flow.id}-${payload.igCommentId}`;
 
-      const execution = await this._flowsRepository.createExecution({
+      const executionData = {
         flowId: flow.id,
         temporalWorkflowId: workflowId,
         triggerType: 'comment_on_post',
@@ -1189,9 +1250,12 @@ export class FlowsService {
         igCommenterName: payload.igCommenterName,
         igMediaId: payload.igMediaId,
         commentText: payload.commentText,
-      });
+      };
+      const execution = existing || await (executionGuard ? this._flowsRepository.createExecution(executionData, executionGuard) : this._flowsRepository.createExecution(executionData));
 
+      if (!execution) continue;
       const temporalClient = this._temporalService.client.getRawClient();
+      if (!temporalClient && executionGuard) throw new Error('TEMPORAL_UNAVAILABLE');
       if (!temporalClient) {
         this._logger.error(
           `Temporal client unavailable — orchestrator offline? Marking execution ${execution.id} (flow=${flow.id}) as FAILED`
@@ -1209,8 +1273,10 @@ export class FlowsService {
         await temporalClient.workflow.start('flowExecutionWorkflow', {
             workflowId,
             taskQueue: 'main',
+            ...(executionGuard ? { workflowIdReusePolicy: WorkflowIdReusePolicy.REJECT_DUPLICATE } : {}),
             args: [
               {
+                ...(executionGuard ? { scheduledGuard: executionGuard } : {}),
                 executionId: execution.id,
                 flowId: flow.id,
                 triggerType: 'comment_on_post',
@@ -1230,6 +1296,11 @@ export class FlowsService {
             ]),
           });
       } catch (err) {
+        if (executionGuard) {
+          if ((err as Error)?.name !== 'WorkflowExecutionAlreadyStartedError') throw err;
+          results.push(execution);
+          continue;
+        }
         await this.updateExecution(execution.id, {
           status: FlowExecutionStatus.FAILED,
           error: err instanceof Error ? err.message : 'Failed to start workflow',
@@ -1475,6 +1546,7 @@ export class FlowsService {
         commentText: payload.messageText || payload.reaction || '',
       });
 
+      if (!execution) continue;
       const temporalClient = this._temporalService.client.getRawClient();
       if (!temporalClient) {
         this._logger.error(

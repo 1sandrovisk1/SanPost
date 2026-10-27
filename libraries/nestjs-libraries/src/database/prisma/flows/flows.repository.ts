@@ -1,5 +1,6 @@
+import { SharedFlowsRepository } from '../flows-v2/shared-flows.repository';
 import { PrismaRepository } from '@gitroom/nestjs-libraries/database/prisma/prisma.service';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional, HttpException } from '@nestjs/common';
 import {
   FlowStatus,
   FlowExecutionStatus,
@@ -19,13 +20,15 @@ export class FlowsRepository {
     private _pendingPostback: PrismaRepository<'pendingPostback'>,
     private _flowMediaAlias: PrismaRepository<'flowMediaAlias'>,
     private _unmatchedComment: PrismaRepository<'unmatchedComment'>,
-    private _ignoredMedia: PrismaRepository<'ignoredMedia'>
+    private _ignoredMedia: PrismaRepository<'ignoredMedia'>,
+    @Optional() private readonly sharedFlows?: SharedFlowsRepository
   ) {}
 
   getFlows(orgId: string, profileId?: string) {
     return this._flow.model.flow.findMany({
       where: {
         organizationId: orgId,
+        executionVersion: 1,
         ...(profileId ? { profileId } : {}),
         deletedAt: null,
       },
@@ -46,8 +49,8 @@ export class FlowsRepository {
     });
   }
 
-  getFlow(orgId: string, id: string, profileId?: string) {
-    return this._flow.model.flow.findFirst({
+  async getFlow(orgId: string, id: string, profileId?: string) {
+    const flow = await this._flow.model.flow.findFirst({
       where: {
         id,
         organizationId: orgId,
@@ -62,11 +65,13 @@ export class FlowsRepository {
         edges: true,
       },
     });
+    if (flow && flow.executionVersion === 2) throw new HttpException('FLOW_REQUIRES_V2', 409);
+    return flow;
   }
 
   getFlowById(id: string) {
     return this._flow.model.flow.findFirst({
-      where: { id, deletedAt: null },
+      where: { id, deletedAt: null, executionVersion: 1 },
       include: {
         nodes: true,
         edges: true,
@@ -87,6 +92,7 @@ export class FlowsRepository {
     return this._flow.model.flow.create({
       data: {
         organizationId: orgId,
+        executionVersion: 1,
         ...(profileId ? { profileId } : {}),
         name: data.name,
         description: data.description,
@@ -112,6 +118,7 @@ export class FlowsRepository {
       where: {
         id,
         organizationId: orgId,
+        executionVersion: 1,
         ...(profileId ? { profileId } : {}),
         deletedAt: null,
       },
@@ -132,6 +139,7 @@ export class FlowsRepository {
       where: {
         id,
         organizationId: orgId,
+        executionVersion: 1,
         ...(profileId ? { profileId } : {}),
       },
       data: {
@@ -147,10 +155,12 @@ export class FlowsRepository {
     status: FlowStatus,
     profileId?: string
   ) {
+    if (status === FlowStatus.ACTIVE && this.sharedFlows) return this.sharedFlows.activateLegacy({ organizationId: orgId, ...(profileId ? { profileId } : {}) }, id);
     return this._flow.model.flow.update({
       where: {
         id,
         organizationId: orgId,
+        executionVersion: 1,
         ...(profileId ? { profileId } : {}),
         deletedAt: null,
       },
@@ -169,6 +179,7 @@ export class FlowsRepository {
       where: {
         id: flowId,
         organizationId: orgId,
+        executionVersion: 1,
         ...(profileId ? { profileId } : {}),
         deletedAt: null,
       },
@@ -263,7 +274,8 @@ export class FlowsRepository {
     igThreadId?: string;
     igMessageId?: string;
     commentText: string;
-  }) {
+  }, scheduledGuard?: { targetId: string; revision: number; updatedAt: string; externalPostId: string; kind?: 'next' }) {
+    if (data.triggerType !== 'story_reply' && this.sharedFlows) return scheduledGuard ? this.sharedFlows.admitLegacy(data, scheduledGuard) : this.sharedFlows.admitLegacy(data);
     return this._flowExecution.model.flowExecution.create({ data });
   }
 
@@ -348,6 +360,7 @@ export class FlowsRepository {
         createdAt: { gte: since },
         flow: {
           organizationId: orgId,
+        executionVersion: 1,
           deletedAt: null,
           OR: [{ profileId: null }, { profile: { deletedAt: null } }],
           ...(profileId ? { profileId } : {}),
@@ -404,6 +417,7 @@ export class FlowsRepository {
     return this._flow.model.flow.findMany({
       where: {
         integrationId,
+        executionVersion: 1,
         status: FlowStatus.ACTIVE,
         deletedAt: null,
         OR: [{ profileId: null }, { profile: { deletedAt: null } }],
@@ -424,6 +438,7 @@ export class FlowsRepository {
     return this._flow.model.flow.findMany({
       where: {
         integrationId,
+        executionVersion: 1,
         status: FlowStatus.ACTIVE,
         deletedAt: null,
         triggerPostIds: null,
@@ -439,8 +454,10 @@ export class FlowsRepository {
     flowId: string,
     triggerNodeId: string,
     newNodeData: Record<string, any>,
-    mediaId: string
+    mediaId: string,
+    expected?: { revision: number; updatedAt: string }
   ): Promise<boolean> {
+    if (expected) return this.sharedFlows ? this.sharedFlows.bindLegacyNext(flowId, triggerNodeId, newNodeData, mediaId, expected) : false;
     // Idempotent bind: the updateMany with `triggerPostIds: null` in WHERE
     // guarantees that only still-pending flows get updated. A concurrent
     // caller that already bound this flow will see 0 rows affected.
@@ -583,7 +600,7 @@ export class FlowsRepository {
     aliasMediaId: string
   ) {
     return this._flowMediaAlias.model.flowMediaAlias.findMany({
-      where: { integrationId, aliasMediaId },
+      where: { integrationId, aliasMediaId, flow: { executionVersion: 1 } },
       select: { id: true, flowId: true },
     });
   }
@@ -597,7 +614,7 @@ export class FlowsRepository {
       where: {
         integrationId,
         aliasMediaId,
-        flow: { organizationId: orgId, deletedAt: null },
+        flow: { organizationId: orgId, deletedAt: null, executionVersion: 1 },
       },
       select: {
         id: true,
@@ -635,7 +652,7 @@ export class FlowsRepository {
     return this._flowMediaAlias.model.flowMediaAlias.findMany({
       where: {
         flowId,
-        flow: { organizationId: orgId, deletedAt: null },
+        flow: { organizationId: orgId, deletedAt: null, executionVersion: 1 },
       },
       orderBy: { createdAt: 'desc' },
     });

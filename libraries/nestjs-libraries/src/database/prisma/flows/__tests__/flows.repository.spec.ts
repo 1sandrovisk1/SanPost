@@ -100,6 +100,7 @@ describe('FlowsRepository', () => {
       expect(mockFlowModel.findMany).toHaveBeenCalledWith({
         where: {
           organizationId: 'org-1',
+          executionVersion: 1,
           deletedAt: null,
         },
         include: {
@@ -150,6 +151,7 @@ describe('FlowsRepository', () => {
       expect(mockFlowModel.create).toHaveBeenCalledWith({
         data: {
           organizationId: 'org-1',
+          executionVersion: 1,
           name: 'My Flow',
           description: 'Test description',
           integrationId: 'int-1',
@@ -201,6 +203,7 @@ describe('FlowsRepository', () => {
         where: {
           id: 'flow-1',
           organizationId: 'org-1',
+          executionVersion: 1,
         },
         data: {
           deletedAt: expect.any(Date),
@@ -336,6 +339,7 @@ describe('FlowsRepository', () => {
       expect(mockFlowModel.findMany).toHaveBeenCalledWith({
         where: {
           integrationId: 'int-1',
+          executionVersion: 1,
           status: FlowStatus.ACTIVE,
           deletedAt: null,
           OR: [{ profileId: null }, { profile: { deletedAt: null } }],
@@ -537,7 +541,7 @@ describe('FlowsRepository', () => {
       );
 
       expect(mockFlowMediaAliasModel.findMany).toHaveBeenCalledWith({
-        where: { integrationId: 'int-1', aliasMediaId: 'media-X' },
+        where: { integrationId: 'int-1', aliasMediaId: 'media-X', flow: { executionVersion: 1 } },
         select: { id: true, flowId: true },
       });
       expect(result).toEqual(aliases);
@@ -560,7 +564,7 @@ describe('FlowsRepository', () => {
         where: {
           integrationId: 'int-1',
           aliasMediaId: 'media-X',
-          flow: { organizationId: 'org-1', deletedAt: null },
+          flow: { organizationId: 'org-1', deletedAt: null, executionVersion: 1 },
         },
         select: {
           id: true,
@@ -629,7 +633,7 @@ describe('FlowsRepository', () => {
       expect(mockFlowMediaAliasModel.findMany).toHaveBeenCalledWith({
         where: {
           flowId: 'f-1',
-          flow: { organizationId: 'org-1', deletedAt: null },
+          flow: { organizationId: 'org-1', deletedAt: null, executionVersion: 1 },
         },
         orderBy: { createdAt: 'desc' },
       });

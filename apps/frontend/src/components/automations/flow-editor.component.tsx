@@ -633,6 +633,7 @@ const FlowEditorInner: FC<FlowEditorProps> = ({ id }) => {
           <NodeConfigPanel
             node={selectedNode}
             flowId={id}
+            integrationId={flow?.integrationId || ''}
             onUpdate={handleNodeUpdate}
             onClose={() => setSelectedNode(null)}
           />

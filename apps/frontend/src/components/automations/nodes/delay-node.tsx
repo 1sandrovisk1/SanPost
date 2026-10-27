@@ -32,7 +32,7 @@ export const DelayNode: FC<NodeProps> = memo(({ data, selected }) => {
           <circle cx="12" cy="12" r="10" />
           <polyline points="12 6 12 12 16 14" />
         </svg>
-        <span className="text-[13px] font-semibold" style={{ color: '#fb923c' }}>
+        <span className="text-[13px] font-semibold text-textColor">
           {t('delay_node_label', 'Delay')}
         </span>
       </div>

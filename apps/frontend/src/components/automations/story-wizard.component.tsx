@@ -1,5 +1,8 @@
 'use client';
 
+import { AutomationPreviewPanel, AutomationPhoneFrame } from './shared-editor-preview.component';
+import { AutomationAccountSelect } from './shared-account-select.component';
+import { InstagramEditorConnection, useInstagramEditorConnection } from './shared-instagram-connection.component';
 import { FC, useCallback, useEffect, useMemo, useState } from 'react';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
@@ -45,8 +48,9 @@ export const StoryWizardComponent: FC<Props> = ({ flowId, initialFlow }) => {
   const { data: integrations } = useIntegrationList();
   const isEditing = !!flowId;
 
-  const [name, setName] = useState('');
+  const [name, setName] = useState(() => flowId ? '' : t('automation_name_instagram_story'));
   const [integrationId, setIntegrationId] = useState('');
+  const connection = useInstagramEditorConnection(integrationId);
   const [storyMode, setStoryMode] = useState<'all' | 'specific' | 'next_publication'>('all');
   const [selectedStoryIds, setSelectedStoryIds] = useState<string[]>([]);
   const [keywordMode, setKeywordMode] = useState<'any_word_or_reaction' | 'specific'>('any_word_or_reaction');
@@ -168,7 +172,7 @@ export const StoryWizardComponent: FC<Props> = ({ flowId, initialFlow }) => {
   const removeKeyword = (k: string) => setKeywords(keywords.filter((x) => x !== k));
 
   const canSave =
-    !!name.trim() && !!integrationId && dmMessage.trim().length > 0;
+    !!name.trim() && !!integrationId && (isEditing || connection.ready) && dmMessage.trim().length > 0 && (storyMode !== 'specific' || selectedStoryIds.length > 0);
 
   const handleSave = useCallback(async () => {
     if (!canSave) return;
@@ -269,7 +273,7 @@ export const StoryWizardComponent: FC<Props> = ({ flowId, initialFlow }) => {
   })();
 
   return (
-    <div className="flex flex-1 min-h-0">
+    <div className="automation-editor flex flex-1 min-h-0">
       {/* Left: form (internal scroll) */}
       <div className="flex-1 overflow-y-auto p-[24px] max-w-[600px] flex flex-col gap-[24px]">
         {/* Header */}
@@ -321,11 +325,12 @@ export const StoryWizardComponent: FC<Props> = ({ flowId, initialFlow }) => {
 
         {/* Name + integration */}
         <div className={sectionClass}>
-          <label className="text-[12px] text-customColor18">
+          <label htmlFor="story-automation-name" className="text-[12px] text-customColor18">
             {t('flow_name', 'Nome')}
           </label>
           <div className="bg-newBgColorInner h-[42px] border-newTableBorder border rounded-[8px] flex items-center">
             <input
+              id="story-automation-name"
               type="text"
               className="h-full bg-transparent outline-none flex-1 text-[14px] text-textColor px-[16px]"
               placeholder={t(
@@ -337,35 +342,18 @@ export const StoryWizardComponent: FC<Props> = ({ flowId, initialFlow }) => {
             />
           </div>
 
-          {!isEditing && (
-            <>
-              <label className="text-[12px] text-customColor18 mt-[6px]">
-                {t('select_instagram_account', 'Conta do Instagram')}
-              </label>
-              <div className="bg-newBgColorInner h-[42px] border-newTableBorder border rounded-[8px] flex items-center">
-                <select
-                  className="h-full bg-transparent outline-none flex-1 text-[14px] text-textColor px-[16px] appearance-none"
-                  value={integrationId}
-                  onChange={(e) => setIntegrationId(e.target.value)}
-                >
-                  <option value="">
-                    {t('select_account', 'Selecione uma conta...')}
-                  </option>
-                  {instagramIntegrations.map((ig: any) => (
-                    <option key={ig.id} value={ig.id}>
-                      {ig.name || ig.display || ig.id}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </>
-          )}
+          <h2 className="mt-3 text-base font-semibold">{t('automation_section_account')}</h2>
+          <AutomationAccountSelect label={t('wizard_account')} value={integrationId}
+            accounts={instagramIntegrations.map((ig: any) => ({ id: ig.id, name: ig.name || ig.display || ig.id }))}
+            disabled={isEditing || saving} onChange={(id) => { setIntegrationId(id); setSelectedStoryIds([]); }} />
+          {instagramIntegrations.length === 0 && <a className="text-sm underline" href="/launches" target="_blank" rel="noreferrer">{t('shared_connect_channel')}</a>}
+          {integrationId && <InstagramEditorConnection connection={connection} />}
         </div>
 
         {/* Story mode */}
         <div className={sectionClass}>
           <h3 className={sectionTitleClass}>
-            {t('story_section_when', 'Quando alguem responder')}
+            {t('automation_section_origin')}
           </h3>
           <label
             className={radioRowClass}
@@ -503,7 +491,7 @@ export const StoryWizardComponent: FC<Props> = ({ flowId, initialFlow }) => {
         {/* Keyword mode */}
         <div className={sectionClass}>
           <h3 className={sectionTitleClass}>
-            {t('story_section_contains', 'E essa resposta contem')}
+            {t('automation_section_conditions')}
           </h3>
           <label
             className={radioRowClass}
@@ -582,7 +570,7 @@ export const StoryWizardComponent: FC<Props> = ({ flowId, initialFlow }) => {
         {/* DM section */}
         <div className={sectionClass}>
           <h3 className={sectionTitleClass}>
-            {t('story_section_dm', 'A DM com o link sera enviada')}
+            {t('automation_section_response')}
           </h3>
           <textarea
             value={dmMessage}
@@ -656,6 +644,8 @@ export const StoryWizardComponent: FC<Props> = ({ flowId, initialFlow }) => {
           </div>
         </div>
 
+        {!isEditing && <p className="text-xs text-newTextColor/60">{t('automation_instagram_activate_hint')}</p>}
+        {storyMode === 'specific' && selectedStoryIds.length === 0 && <p role="status" className="text-sm text-newTextColor/70">{t('automation_choose_story_required')}</p>}
         {/* Save */}
         <div className="flex gap-[8px] pt-[8px]">
           <button
@@ -668,7 +658,7 @@ export const StoryWizardComponent: FC<Props> = ({ flowId, initialFlow }) => {
               ? t('saving', 'Salvando...')
               : isEditing
               ? t('save', 'Salvar')
-              : t('create', 'Criar')}
+              : t('automation_create_activate')}
           </button>
           <button
             type="button"
@@ -681,8 +671,8 @@ export const StoryWizardComponent: FC<Props> = ({ flowId, initialFlow }) => {
       </div>
 
       {/* Right: preview (fixed; the left column scrolls internally) */}
-      <div className="hidden lg:flex flex-1 items-center justify-center bg-newBgColor border-l border-fifth p-[24px]">
-        <WizardPhonePreview
+      <AutomationPreviewPanel desktopOnly>
+        <AutomationPhoneFrame><WizardPhonePreview
           variant="story"
           storyMode={storyMode}
           storyThumb={selectedStory?.thumbnailUrl || selectedStory?.mediaUrl}
@@ -694,8 +684,8 @@ export const StoryWizardComponent: FC<Props> = ({ flowId, initialFlow }) => {
           integrationName={(selectedIntegration as any)?.name}
           activeTab={activePreviewTab}
           onTabChange={(t) => setActivePreviewTab(t)}
-        />
-      </div>
+        /></AutomationPhoneFrame>
+      </AutomationPreviewPanel>
 
       <AddLinkModal
         open={showAddLink}

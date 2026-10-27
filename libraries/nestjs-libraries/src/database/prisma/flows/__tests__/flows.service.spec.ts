@@ -170,7 +170,121 @@ describe('FlowsService', () => {
     );
   });
 
+  describe('perfil efetivo antes de autorizar a conta', () => {
+    it.each(['createFlow', 'createDraftFlow', 'quickCreateFlow'] as const)(
+      '%s recusa conta de outro perfil com chave de org sem perfil antes de qualquer efeito',
+      async (method) => {
+        mockIntegrationService.getIntegrationById.mockResolvedValue({ id: 'int-1', providerIdentifier: 'instagram', profileId: 'escorpiano' });
+        const check = jest.spyOn(service, 'checkIntegrationWebhook').mockResolvedValue({ ok: true });
+        await expect(service[method]('org-1', { name: 'Outro perfil', integrationId: 'int-1', activate: false } as any)).rejects.toMatchObject({ status: 403 });
+        expect(mockProfileService.getDefaultProfile).toHaveBeenCalledWith('org-1');
+        expect(check).not.toHaveBeenCalled();
+        expect(mockEnsureWebhookSubscription).not.toHaveBeenCalled();
+        expect(mockRepository.createFlow).not.toHaveBeenCalled();
+        expect(mockRepository.saveCanvas).not.toHaveBeenCalled();
+        expect(mockRepository.updateFlowStatus).not.toHaveBeenCalled();
+      }
+    );
+    it.each(['createFlow', 'createDraftFlow', 'quickCreateFlow'] as const)(
+      '%s aceita conta do Default sem perfil explicito',
+      async (method) => {
+        mockIntegrationService.getIntegrationById.mockResolvedValue({ id: 'int-1', providerIdentifier: 'instagram', profileId: 'default-profile' });
+        mockRepository.createFlow.mockResolvedValue(makeFlow({ profileId: 'default-profile' }));
+        mockRepository.getFlow.mockResolvedValue(makeFlow({ profileId: 'default-profile' }));
+        jest.spyOn(service, 'checkIntegrationWebhook').mockResolvedValue({ ok: true });
+        await service[method]('org-1', { name: 'Default', integrationId: 'int-1', activate: false } as any);
+        expect(mockRepository.createFlow).toHaveBeenCalledWith('org-1', expect.any(Object), 'default-profile');
+      }
+    );
+    it('recusa editar flow desalinhado com chave de org sem perfil e sem gravar', async () => {
+      mockRepository.getFlow.mockResolvedValue(makeFlow({ profileId: 'default-profile' }));
+      mockIntegrationService.getIntegrationById.mockResolvedValue({ id: 'int-1', providerIdentifier: 'instagram', profileId: 'escorpiano' });
+      await expect(service.quickUpdateFlow('org-1', 'flow-1', { name: 'Atualizado', integrationId: 'int-1' })).rejects.toMatchObject({ status: 403 });
+      expect(mockRepository.updateFlow).not.toHaveBeenCalled();
+      expect(mockRepository.saveCanvas).not.toHaveBeenCalled();
+      expect(mockRepository.updateFlowStatus).not.toHaveBeenCalled();
+    });
+    it.each(['createFlow', 'createDraftFlow', 'quickCreateFlow'] as const)(
+      '%s aceita conta do perfil explicitamente escolhido', async (method) => {
+        mockIntegrationService.getIntegrationById.mockResolvedValue({ id: 'int-1', providerIdentifier: 'instagram', profileId: 'escorpiano' });
+        mockRepository.createFlow.mockResolvedValue(makeFlow({ profileId: 'escorpiano' }));
+        mockRepository.getFlow.mockResolvedValue(makeFlow({ profileId: 'escorpiano' }));
+        jest.spyOn(service, 'checkIntegrationWebhook').mockResolvedValue({ ok: true });
+        await service[method]('org-1', { name: 'Certo', integrationId: 'int-1', activate: false } as any, 'escorpiano');
+        expect(mockRepository.createFlow).toHaveBeenCalledWith('org-1', expect.any(Object), 'escorpiano');
+        expect(mockProfileService.getDefaultProfile).not.toHaveBeenCalled();
+      }
+    );
+    it.each(['quickUpdateFlow', 'updateFlowStatus'] as const)(
+      '%s usa Default para validar flow legado sem perfil', async (method) => {
+        mockRepository.getFlow.mockResolvedValue(makeFlow({ profileId: null, nodes: [{ type: FlowNodeType.TRIGGER }, { type: FlowNodeType.SEND_DM }] }));
+        mockIntegrationService.getIntegrationById.mockResolvedValue({ id: 'int-1', providerIdentifier: 'instagram', profileId: 'escorpiano' });
+        const action = method === 'quickUpdateFlow'
+          ? service.quickUpdateFlow('org-1', 'flow-1', { name: 'Outro', integrationId: 'int-1' })
+          : service.updateFlowStatus('org-1', 'flow-1', FlowStatus.ACTIVE);
+        await expect(action).rejects.toMatchObject({ status: 403 });
+        expect(mockRepository.updateFlow).not.toHaveBeenCalled();
+        expect(mockRepository.saveCanvas).not.toHaveBeenCalled();
+        expect(mockRepository.updateFlowStatus).not.toHaveBeenCalled();
+      }
+    );
+    it('recusa reativar flow desalinhado antes de inscrever webhook ou gravar', async () => {
+      mockRepository.getFlow.mockResolvedValue(makeFlow({ profileId: 'default-profile', nodes: [{ type: FlowNodeType.TRIGGER }, { type: FlowNodeType.SEND_DM }] }));
+      mockIntegrationService.getIntegrationById.mockResolvedValue({ id: 'int-1', providerIdentifier: 'instagram', profileId: 'escorpiano' });
+      const subscribe = jest.spyOn(service as any, 'ensureWebhookSubscription').mockResolvedValue(undefined);
+      await expect(service.updateFlowStatus('org-1', 'flow-1', FlowStatus.ACTIVE)).rejects.toMatchObject({ status: 403 });
+      expect(subscribe).not.toHaveBeenCalled();
+      expect(mockRepository.updateFlowStatus).not.toHaveBeenCalled();
+    });
+    it.each([FlowStatus.PAUSED, FlowStatus.ARCHIVED])('permite %s para desligar flow antigo desalinhado', async (status) => {
+      mockRepository.getFlow.mockResolvedValue(makeFlow({ profileId: 'default-profile' }));
+      mockIntegrationService.getIntegrationById.mockResolvedValue({ id: 'int-1', profileId: 'escorpiano' });
+      await service.updateFlowStatus('org-1', 'flow-1', status);
+      expect(mockRepository.updateFlowStatus).toHaveBeenCalledWith('org-1', 'flow-1', status, undefined);
+    });
+  });
+
   // --- Issue 1: roteamento de host/token via resolveIgRoute ---
+  it('prepara rascunho explicitamente sem preflight mas conserva guarda de integracao', async () => {
+    mockRepository.createFlow.mockResolvedValue({ id: 'draft', status: 'DRAFT' });
+    const check = jest.spyOn(service, 'checkIntegrationWebhook').mockResolvedValue({ ok: false, error: 'offline' });
+    await service.createDraftFlow('org-1', { name: 'Rascunho', integrationId: 'int-1' }, 'profile-1');
+    expect(check).not.toHaveBeenCalled();
+    expect(mockRepository.createFlow).toHaveBeenCalledWith('org-1', expect.objectContaining({ name: 'Rascunho' }), 'profile-1');
+    mockRepository.createFlow.mockClear();
+    mockIntegrationService.getIntegrationById.mockResolvedValue({ id: 'int-1', disabled: true });
+    await expect(service.createDraftFlow('org-1', { name: 'Rascunho', integrationId: 'int-1' }, 'profile-1')).rejects.toBeDefined();
+    expect(mockRepository.createFlow).not.toHaveBeenCalled();
+  });
+  it('salva criacao e atualizacao como rascunho sem webhook ou ativacao implicita', async () => {
+    mockRepository.createFlow.mockResolvedValue({ id: 'draft', integrationId: 'int-1', status: 'DRAFT' });
+    mockRepository.getFlow.mockResolvedValue({ id: 'draft', integrationId: 'int-1', status: 'DRAFT', nodes: [], edges: [] });
+    jest.spyOn(service, 'saveCanvas').mockResolvedValue({ nodes: [], edges: [] } as any);
+    const check = jest.spyOn(service, 'checkIntegrationWebhook');
+    const body = { name: 'Rascunho', integrationId: 'int-1', postMode: 'all' as const, dmMessage: 'Link', activate: false };
+    await service.quickCreateFlow('org-1', body);
+    await service.quickUpdateFlow('org-1', 'draft', body);
+    expect(check).not.toHaveBeenCalled();
+    expect(mockRepository.updateFlowStatus).not.toHaveBeenCalled();
+  });
+  it('edicao condicional encaminha snapshot e nome juntos sem alterar antes do canvas', async () => {
+    mockRepository.getFlow.mockResolvedValue({ id: 'f', integrationId: 'int-1', status: 'ACTIVE', nodes: [], edges: [] });
+    const save = jest.spyOn(service, 'saveCanvas').mockResolvedValue({ nodes: [], edges: [] } as any);
+    await service.quickUpdateFlow('org-1', 'f', { name: 'Novo', integrationId: 'int-1', dmMessage: 'Link', postMode: 'all', expectedUpdatedAt: '2026-10-27T12:00:00.000Z' });
+    expect(mockRepository.updateFlow).not.toHaveBeenCalled();
+    expect(save).toHaveBeenCalledWith('org-1', 'f', expect.objectContaining({ name: 'Novo', expectedUpdatedAt: '2026-10-27T12:00:00.000Z' }), undefined);
+  });
+  it('recusa tentativa de trocar integracao na edicao rapida', async () => {
+    mockRepository.getFlow.mockResolvedValue({ id: 'f', integrationId: 'int-1' });
+    await expect(service.quickUpdateFlow('org-1', 'f', { name: 'Outro', integrationId: 'outra' })).rejects.toThrow('INTEGRATION_IMMUTABLE');
+    expect(mockRepository.updateFlow).not.toHaveBeenCalled();
+  });
+  it('preserva labels e coordenadas existentes na edicao condicional por API', async () => {
+    mockRepository.getFlow.mockResolvedValue({ id: 'f', integrationId: 'int-1', status: 'ACTIVE', nodes: [{ id: 'trigger', type: 'TRIGGER', label: 'Minha origem', positionX: 120, positionY: 35 }, { id: 'dm', type: 'SEND_DM', label: 'Entrega', positionX: 650, positionY: 410 }], edges: [] });
+    const save = jest.spyOn(service, 'saveCanvas').mockResolvedValue({ nodes: [], edges: [] } as any);
+    await service.quickUpdateFlow('org-1', 'f', { name: 'Novo', integrationId: 'int-1', dmMessage: 'Link', postMode: 'all', expectedUpdatedAt: '2026-10-27T12:00:00.000Z' });
+    expect(save.mock.calls[0][2].nodes).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'TRIGGER', label: 'Minha origem', positionX: 120, positionY: 35 }), expect.objectContaining({ type: 'SEND_DM', label: 'Entrega', positionX: 650, positionY: 410 })]));
+  });
 
   describe('getInstagramPostsByIntegration (host routing)', () => {
     const setProviderMedia = () => {
@@ -453,6 +567,19 @@ describe('FlowsService', () => {
       });
     });
 
+    it('grava escopo especifico vazio sem convertelo para qualquer publicacao', async () => {
+      mockRepository.createFlow.mockResolvedValue({ id: 'flow-1' });
+      mockRepository.getFlow.mockResolvedValue(makeFlow({ id: 'flow-1' }));
+      const realFetch = global.fetch;
+      global.fetch = passWebhook();
+      try {
+        await service.quickCreateFlow('org-1', { name: 'Dark', integrationId: 'int-1', postMode: 'specific' } as any, undefined);
+        const nodes = mockRepository.saveCanvas.mock.calls[0][2];
+        const trigger = nodes.find((node: any) => node.type === FlowNodeType.TRIGGER);
+        expect(JSON.parse(trigger.data)).toMatchObject({ mode: 'specific', postIds: [] });
+      } finally { global.fetch = realFetch; }
+    });
+
     it('req 1: chave de org sem profileId -> usa o perfil Default', async () => {
       mockRepository.createFlow.mockResolvedValue({ id: 'flow-1' });
       mockRepository.getFlow.mockResolvedValue(makeFlow({ id: 'flow-1' }));
@@ -692,6 +819,19 @@ describe('FlowsService', () => {
       organizationId: 'org-1',
     };
 
+    it('retoma execucao next existente com guarda e repete tentativa quando Temporal esta offline', async () => {
+      const date = new Date(0);
+      const flow = makeFlow({ revision: 2, updatedAt: date, status: FlowStatus.ACTIVE, triggerPostIds: '["media-1"]', nodes: [{ id: 't', type: FlowNodeType.TRIGGER, data: '{"mode":"specific","postIds":["media-1"]}' }] });
+      const candidates = [{ id: flow.id, revision: 2, updatedAt: date.toISOString(), executionVersion: 1 }];
+      mockRepository.getActiveFlowsForIntegration.mockResolvedValue([flow]);
+      mockRepository.findExistingExecution.mockResolvedValue({ id: 'existing', status: FlowExecutionStatus.RUNNING });
+      mockTemporalService.client.getRawClient.mockReturnValue(null);
+      await expect(service.handleIncomingComment(commentPayload, undefined, undefined, candidates)).rejects.toThrow('TEMPORAL_UNAVAILABLE');
+      expect(mockRepository.createExecution).not.toHaveBeenCalled();
+      mockTemporalService.client.getRawClient.mockReturnValue(mockRawClient);
+      await service.handleIncomingComment(commentPayload, undefined, undefined, candidates);
+      expect(mockWorkflowStart).toHaveBeenCalledWith('flowExecutionWorkflow', expect.objectContaining({ workflowId: `flow-exec-${flow.id}-comment-1`, args: [expect.objectContaining({ scheduledGuard: expect.objectContaining({ kind: 'next', revision: 2, updatedAt: date.toISOString() }) })] }));
+    });
     it('should find matching active flows and start Temporal workflow', async () => {
       const flow = makeFlow({
         nodes: [{ id: 'n1', type: FlowNodeType.TRIGGER }],
@@ -936,6 +1076,14 @@ describe('FlowsService', () => {
   // --- bindPendingFlowsToPost ---
 
   describe('bindPendingFlowsToPost', () => {
+    it('nao vincula proxima publicacao a post reservado por agendamento', async () => {
+      const original = (service as any).scheduled;
+      (service as any).scheduled = { repository: { isReserved: jest.fn().mockResolvedValue(true) } };
+      try {
+        expect(await service.bindPendingFlowsToPost('int-1', 'media')).toBe(0);
+        expect(mockRepository.findPendingNextPublicationFlows).not.toHaveBeenCalled();
+      } finally { (service as any).scheduled = original; }
+    });
     it('binds only flows whose trigger mode is next_publication', async () => {
       const pending = makeFlow({
         id: 'flow-p',
@@ -1662,6 +1810,22 @@ describe('FlowsService', () => {
       organizationId: 'org-1',
     };
 
+    it.each([null, '[]'])('escopo especifico sem posts %s depende do alias e para apos sua remocao', async (triggerPostIds) => {
+      const flow = makeFlow({ id: 'flow-alias', triggerPostIds,
+        nodes: [{ id: 'n-1', type: FlowNodeType.TRIGGER, label: null,
+          data: JSON.stringify({ triggerType: 'comment_on_post', mode: 'specific', postIds: [] }) }] });
+      mockRepository.getActiveFlowsForIntegration.mockResolvedValue([flow]);
+      mockRepository.findAliasesByIntegrationAndMedia.mockResolvedValue([{ id: 'a-1', flowId: 'flow-alias' }]);
+      mockRepository.findExistingExecution.mockResolvedValue(null);
+      mockRepository.createExecution.mockResolvedValue({ id: 'exec-1' });
+      expect(await service.handleIncomingComment(commentPayload)).toHaveLength(1);
+      mockRepository.findAliasesByIntegrationAndMedia.mockResolvedValue([]);
+      mockRepository.createExecution.mockClear();
+      expect(await service.handleIncomingComment({ ...commentPayload, igCommentId: 'after-delete' })).toHaveLength(0);
+      expect(mockRepository.createExecution).not.toHaveBeenCalled();
+      expect(mockRepository.upsertUnmatchedComment).toHaveBeenCalled();
+    });
+
     it('deve disparar flow via alias (sem triggerPostIds match)', async () => {
       const flow = makeFlow({
         id: 'flow-alias',
@@ -1843,4 +2007,30 @@ describe('FlowsService', () => {
       expect(result).toHaveLength(1);
     });
   });
+  describe('vinculo exato com agendamento', () => {
+    const payload = { integrationId:'int-1', organizationId:'org-1', igMediaId:'media-old', igCommentId:'comment-new', igCommenterId:'actor', commentText:'quero' };
+    it('modo agendado nao cai em todos os posts nem em alias antigo', async () => {
+      mockRepository.getActiveFlowsForIntegration.mockResolvedValue([{ id:'scheduled', triggerPostIds:JSON.stringify(['media-old']), nodes:[{type:'TRIGGER',data:'{"mode":"scheduled","scheduledPostId":"local"}'}] }]);
+      mockRepository.findAliasesByIntegrationAndMedia.mockResolvedValue([{flowId:'scheduled'}]);
+      expect(await service.handleIncomingComment(payload)).toEqual([]);
+      expect(mockRepository.createExecution).not.toHaveBeenCalled();
+    });
+    it('retoma o workflow estavel sem permitir repeticao de ID concluido', async () => {
+      const updatedAt = new Date(0);
+      const guard = {targetId:'target',revision:1,updatedAt:updatedAt.toISOString(),externalPostId:'media-old'};
+      Object.assign(service, { scheduled: { repository: { validGuard:jest.fn().mockResolvedValue(true) } } });
+      mockRepository.getActiveFlowsForIntegration.mockResolvedValue([{id:'scheduled',updatedAt,nodes:[{type:'TRIGGER',data:'{"mode":"scheduled"}'}]}]);
+      mockRepository.findExistingExecution.mockResolvedValue({id:'existing',status:'RUNNING'});
+      const error = new Error('already');error.name='WorkflowExecutionAlreadyStartedError';mockWorkflowStart.mockRejectedValue(error);
+      await service.handleIncomingComment(payload,'scheduled',guard);
+      expect(mockWorkflowStart).toHaveBeenCalledWith('flowExecutionWorkflow',expect.objectContaining({workflowId:'flow-exec-scheduled-comment-new',workflowIdReusePolicy:'REJECT_DUPLICATE',args:[expect.objectContaining({executionId:'existing',scheduledGuard:guard})]}));
+      expect(mockRepository.createExecution).not.toHaveBeenCalled();
+    });
+    it.each([undefined,0,NaN,Date.now()+120000])('nao captura timestamp invalido %s como evento novo', async occurredAt => {
+      const capture=jest.fn();Object.assign(service,{scheduled:{capture}});
+      mockRepository.getActiveFlowsForIntegration.mockResolvedValue([]);
+      await service.handleIncomingComment({...payload,occurredAt});expect(capture).not.toHaveBeenCalled();
+    });
+  });
+
 });

@@ -1,5 +1,13 @@
 import { RepostDestinationFormat, RepostSourceType } from '@prisma/client';
 
+/** Keep persisted filter flags effective before downloading or publishing media. */
+export function repostMediaFilterReason(mediaType: string, rule: { filterIncludeVideos?: boolean; filterIncludeImages?: boolean }): 'FILTER_VIDEO' | 'FILTER_IMAGE' | null {
+  const type = mediaType.toUpperCase();
+  if (['VIDEO', 'REELS'].includes(type) && rule.filterIncludeVideos === false) return 'FILTER_VIDEO';
+  if (type === 'IMAGE' && !rule.filterIncludeImages) return 'FILTER_IMAGE';
+  return null;
+}
+
 /**
  * Formatos de destino que cada `providerIdentifier` consegue publicar via
  * API. Deriva do que ja existe nos providers do Postiz/Multipost:

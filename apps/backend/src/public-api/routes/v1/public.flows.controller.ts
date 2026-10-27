@@ -132,7 +132,7 @@ export class PublicFlowsController {
   @ApiOperation({
     summary: 'Criar automação de comentário/story do Instagram',
     description:
-      'Cria um Flow (automação). Com chave de organização sem `?profileId`, é atribuído ao perfil Default. ' +
+      'Cria um Flow (automação). Com chave de organização sem `?profileId`, usa o perfil Default e recusa conta pertencente a outro perfil antes de criar. Para outra conta, informe seu perfil explicitamente ou use a chave daquele perfil. ' +
       'Quando `postMode` é omitido, assume `next_publication` (vincula ao próximo post publicado no canal).',
   })
   @ApiQuery({
@@ -151,7 +151,7 @@ export class PublicFlowsController {
   @ApiResponse({ status: 401, description: 'Chave de API ausente ou inválida.' })
   @ApiResponse({
     status: 403,
-    description: 'Chave de perfil tentando criar em outro profileId.',
+    description: 'Chave de perfil tentando criar em outro profileId ou conta pertencente a outro perfil, inclusive fora do Default quando profileId foi omitido.',
   })
   @ApiResponse({
     status: 412,

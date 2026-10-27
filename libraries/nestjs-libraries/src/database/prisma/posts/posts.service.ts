@@ -748,13 +748,20 @@ export class PostsService {
     postId: string,
     orgId: string,
     state: State,
-    integration: { id: string; providerIdentifier: string }
-  ) {
+    integration: { id: string; providerIdentifier: string },
+    options?: { strict?: boolean; stopOnly?: boolean; deadlineApplied?: boolean }
+  ): Promise<void> {
+    if (options?.strict && state === 'PUBLISHED' && !options.stopOnly) throw new HttpException('POST_SYNC_STATE_UNSUPPORTED', 409);
+    if (options?.strict && !options.deadlineApplied) {
+      const client = this._temporalService.client.getRawClient();
+      if (!client?.workflow?.withDeadline) throw new HttpException('POST_SCHEDULE_UNAVAILABLE', 503);
+      return client.workflow.withDeadline(Date.now() + 10000, () => this.startWorkflow(taskQueue, postId, orgId, state, integration, { ...options, deadlineApplied: true }));
+    }
     try {
       const workflows = this._temporalService.client
         .getRawClient()
         ?.workflow.list({
-          query: `postId="${postId}" AND ExecutionStatus="Running"`,
+            query: `postId=${JSON.stringify(postId)} AND ExecutionStatus="Running"`,
         });
 
       for await (const executionInfo of workflows) {
@@ -768,11 +775,11 @@ export class PostsService {
           ) {
             await workflow.terminate();
           }
-        } catch (err) {}
+        } catch (err) { if (options?.strict && (err as Error)?.name !== 'WorkflowNotFoundError') throw err; }
       }
-    } catch (err) {}
+    } catch (err) { if (options?.strict) throw err; }
 
-    if (state === 'DRAFT') {
+    if (state === 'DRAFT' || options?.stopOnly) {
       return;
     }
 
@@ -805,7 +812,7 @@ export class PostsService {
             },
           ]),
         });
-    } catch (err) {}
+    } catch (err) { if (options?.strict) throw err; }
   }
 
   private guardAgainstRepublish(

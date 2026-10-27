@@ -1,58 +1,11 @@
 jest.mock('@gitroom/nestjs-libraries/integrations/integration.manager', () => ({}));
-
 import { ListCommentAutomationsTool } from '../list.comment.automations.tool';
-
-const makeFlowsService = () => ({ getFlows: jest.fn() });
-
-const makeOptions = (org: any, profileId?: string) => ({
-  requestContext: {
-    get: (k: string) =>
-      ({
-        organization: org === null ? undefined : JSON.stringify(org),
-        profileId,
-      } as Record<string, any>)[k],
-  },
-});
-
+const scope = { organizationId: 'org', profileId: 'perfil' };
+const options = { requestContext: { get: (key: string) => ({ organization: '{"id":"org"}', profileId: 'perfil' }[key]) } };
 describe('ListCommentAutomationsTool', () => {
-  let tool: ListCommentAutomationsTool;
-  let flowsService: ReturnType<typeof makeFlowsService>;
-  let exec: (input: any, options: any) => Promise<any>;
-
-  beforeEach(() => {
-    flowsService = makeFlowsService();
-    tool = new ListCommentAutomationsTool(flowsService as any);
-    exec = (tool.run() as any).execute;
-  });
-
-  it('deve listar com org/profileId do contexto e mapear campos', async () => {
-    flowsService.getFlows.mockResolvedValue([
-      { id: 'f1', name: 'A', status: 'ACTIVE', integrationId: 'int-1', extra: 'x' },
-    ]);
-    const res = await exec({}, makeOptions({ id: 'org-1' }, 'perfil-A'));
-    expect(flowsService.getFlows).toHaveBeenCalledWith('org-1', 'perfil-A');
-    expect(res.output).toEqual([
-      { id: 'f1', name: 'A', status: 'ACTIVE', integrationId: 'int-1' },
-    ]);
-  });
-
-  it('deve filtrar por integrationId quando informado', async () => {
-    flowsService.getFlows.mockResolvedValue([
-      { id: 'f1', name: 'A', status: 'ACTIVE', integrationId: 'int-1' },
-      { id: 'f2', name: 'B', status: 'ACTIVE', integrationId: 'int-2' },
-    ]);
-    const res = await exec(
-      { integrationId: 'int-2' },
-      makeOptions({ id: 'org-1' }, undefined)
-    );
-    expect(res.output).toEqual([
-      { id: 'f2', name: 'B', status: 'ACTIVE', integrationId: 'int-2' },
-    ]);
-  });
-
-  it('deve retornar erro quando nao ha organizacao no contexto', async () => {
-    const res = await exec({}, makeOptions(null, undefined));
-    expect(res.errors).toBeDefined();
-    expect(flowsService.getFlows).not.toHaveBeenCalled();
-  });
+  const service = { scope: jest.fn().mockResolvedValue(scope), list: jest.fn().mockResolvedValue([]) };
+  beforeEach(() => jest.clearAllMocks());
+  it('lista os dois motores quando a versao foi omitida', async () => { const tool: any = new ListCommentAutomationsTool(service as any).run(); await tool.execute({}, options); expect(service.list).toHaveBeenCalledWith(scope, undefined, undefined); });
+  it('encaminha filtro de versao e integracao no perfil autenticado', async () => { const tool: any = new ListCommentAutomationsTool(service as any).run(); await tool.execute({ executionVersion: 2, integrationId: 'fb' }, options); expect(service.list).toHaveBeenCalledWith(scope, 2, 'fb'); });
+  it('recusa versao desconhecida e campos de escopo no input', async () => { const tool: any = new ListCommentAutomationsTool(service as any).run(); const invalidVersion = await tool.execute({ executionVersion: 3 }, options); expect(invalidVersion.errors || invalidVersion.error).toBeDefined(); const forged = await tool.execute({ profileId: 'outro' }, options); expect(forged.errors || forged.error).toBeDefined(); expect(service.list).not.toHaveBeenCalled(); });
 });

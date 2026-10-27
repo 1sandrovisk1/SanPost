@@ -22,6 +22,7 @@ import {
   META_FACEBOOK_OAUTH_URL,
 } from '@gitroom/nestjs-libraries/integrations/social/meta-graph.constants';
 import { timer } from '@gitroom/helpers/utils/timer';
+import { FACEBOOK_COMMENT_AUTOMATION_PERMISSIONS } from '../automations/facebook-comment-automation.adapter';
 
 // Aborta a chamada Graph API se passar de `timeoutMs` ms. Evita que uma
 // chamada lenta a graph.facebook.com (comum em agencias com muitas pages
@@ -33,7 +34,10 @@ async function fetchWithTimeout(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(url, { signal: controller.signal });
+    return await fetch(url, { signal: controller.signal, redirect: 'error' });
+  } catch {
+    // A network error can contain its URL (including an OAuth secret).
+    throw new Error('Meta request failed');
   } finally {
     clearTimeout(timeout);
   }
@@ -223,10 +227,17 @@ export class FacebookProvider extends SocialAbstract implements SocialProvider {
           `${process.env.FRONTEND_URL}/integrations/social/facebook`
         )}` +
         `&state=${state}` +
-        `&scope=${this.scopes.join(',')}`,
+        `&scope=${this.authorizationScopes(clientInformation).join(',')}` +
+        (clientInformation?.facebookAutomation ? '&auth_type=rerequest' : ''),
       codeVerifier: makeSecureId(10),
       state,
     };
+  }
+
+  private authorizationScopes(clientInformation?: ClientInformation) {
+    return clientInformation?.facebookAutomation
+      ? [...new Set([...this.scopes, ...FACEBOOK_COMMENT_AUTOMATION_PERMISSIONS])]
+      : this.scopes;
   }
 
   async reConnect(
@@ -255,15 +266,6 @@ export class FacebookProvider extends SocialAbstract implements SocialProvider {
     const clientId = clientInformation?.client_id || process.env.FACEBOOK_APP_ID;
     const clientSecret = clientInformation?.client_secret || process.env.FACEBOOK_APP_SECRET;
 
-    console.log('[Facebook.authenticate] credentials source:', {
-      hasClientInfo: !!clientInformation,
-      clientIdPrefix: String(clientId || '').slice(0, 6) + '...',
-      hasSecret: !!clientSecret,
-      redirectUri: `${process.env.FRONTEND_URL}/integrations/social/facebook${
-        params.refresh ? `?refresh=${params.refresh}` : ''
-      }`,
-    });
-
     const getAccessToken = await (
       await fetchWithTimeout(
         `${META_FACEBOOK_GRAPH_URL}/oauth/access_token` +
@@ -273,16 +275,13 @@ export class FacebookProvider extends SocialAbstract implements SocialProvider {
               params.refresh ? `?refresh=${params.refresh}` : ''
             }`
           )}` +
-          `&client_secret=${clientSecret}` +
-          `&code=${params.code}`
+          `&client_secret=${encodeURIComponent(clientSecret || '')}` +
+          `&code=${encodeURIComponent(params.code)}`
       )
     ).json();
 
     if (!getAccessToken.access_token) {
-      console.error('[Facebook.authenticate] token exchange retornou erro:', getAccessToken);
-      throw new Error(
-        `Meta token exchange failed: ${JSON.stringify(getAccessToken.error || getAccessToken)}`
-      );
+      throw new Error('Meta token exchange failed');
     }
 
     const longLivedResponse = await (
@@ -290,37 +289,31 @@ export class FacebookProvider extends SocialAbstract implements SocialProvider {
         `${META_FACEBOOK_GRAPH_URL}/oauth/access_token` +
           '?grant_type=fb_exchange_token' +
           `&client_id=${clientId}` +
-          `&client_secret=${clientSecret}` +
-          `&fb_exchange_token=${getAccessToken.access_token}&fields=access_token,expires_in`
+          `&client_secret=${encodeURIComponent(clientSecret || '')}` +
+          `&fb_exchange_token=${encodeURIComponent(getAccessToken.access_token)}&fields=access_token,expires_in`
       )
     ).json();
 
     if (!longLivedResponse.access_token) {
-      console.error('[Facebook.authenticate] long-lived token exchange retornou erro:', longLivedResponse);
-      throw new Error(
-        `Meta long-lived token exchange failed: ${JSON.stringify(longLivedResponse.error || longLivedResponse)}`
-      );
+      throw new Error('Meta long-lived token exchange failed');
     }
     const { access_token } = longLivedResponse;
 
     const permsResponse = await (
       await fetchWithTimeout(
-        `${META_FACEBOOK_GRAPH_URL}/me/permissions?access_token=${access_token}`
+        `${META_FACEBOOK_GRAPH_URL}/me/permissions?access_token=${encodeURIComponent(access_token)}`
       )
     ).json();
 
     if (!permsResponse.data) {
-      console.error('[Facebook.authenticate] /me/permissions retornou erro:', permsResponse);
-      throw new Error(
-        `Meta /me/permissions failed: ${JSON.stringify(permsResponse.error || permsResponse)}`
-      );
+      throw new Error('Meta permissions check failed');
     }
     const { data } = permsResponse;
 
     const permissions = data
       .filter((d: any) => d.status === 'granted')
       .map((p: any) => p.permission);
-    this.checkScopes(this.scopes, permissions);
+    this.checkScopes(this.authorizationScopes(clientInformation), permissions);
 
     const { id, name, picture } = await (
       await fetchWithTimeout(
@@ -848,7 +841,6 @@ export class FacebookProvider extends SocialAbstract implements SocialProvider {
             : d.name === 'page_daily_follows'
             ? 'Page followers'
             : 'Media views',
-        percentageChange: 5,
         data: d?.values?.map((v: any) => ({
           total: metricTotal(v.value),
           date: dayjs(v.end_time).format('YYYY-MM-DD'),

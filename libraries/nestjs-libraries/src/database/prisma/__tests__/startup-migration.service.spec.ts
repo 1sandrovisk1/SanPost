@@ -17,6 +17,7 @@ describe('StartupMigrationService.cleanupExpiredUnmatchedComments', () => {
 
   beforeEach(() => {
     prisma = {
+      scheduledAutomationEvent: { count: jest.fn().mockResolvedValue(0), deleteMany: jest.fn() },
       providerCredential: { count: jest.fn().mockResolvedValue(0) },
       organization: { count: jest.fn().mockResolvedValue(0) },
       integration: {
@@ -49,6 +50,15 @@ describe('StartupMigrationService.cleanupExpiredUnmatchedComments', () => {
     );
   });
 
+  it('limpa capturas agendadas expiradas no boot de forma idempotente', async () => {
+    prisma.scheduledAutomationEvent.count.mockResolvedValue(2);
+    await service.onModuleInit();
+    expect(prisma.scheduledAutomationEvent.deleteMany).toHaveBeenCalledWith({where:{expiresAt:{lt:expect.any(Date)}}});
+    prisma.scheduledAutomationEvent.deleteMany.mockClear();
+    prisma.scheduledAutomationEvent.count.mockResolvedValue(0);
+    await service.onModuleInit();
+    expect(prisma.scheduledAutomationEvent.deleteMany).not.toHaveBeenCalled();
+  });
   it('deve ser no-op quando nao ha PENDING > 30 dias', async () => {
     prisma.unmatchedComment.count.mockResolvedValue(0);
 

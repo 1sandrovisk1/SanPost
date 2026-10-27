@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { SharedFlowsRepository } from '@gitroom/nestjs-libraries/database/prisma/flows-v2/shared-flows.repository';
+import { Injectable, Optional } from '@nestjs/common';
 import {
   Activity,
   ActivityMethod,
@@ -51,7 +52,8 @@ export class PostActivity {
     private _temporalService: TemporalService,
     private _subscriptionService: SubscriptionService,
     private _flowsService: FlowsService,
-    private _encryption: EncryptionService
+    private _encryption: EncryptionService,
+    @Optional() private readonly sharedFlows?: SharedFlowsRepository
   ) {}
 
   @ActivityMethod()
@@ -109,6 +111,11 @@ export class PostActivity {
     try {
       if (!postId) return result;
       const post = await this._postService.getPostById(id);
+      if (post && process.env.SHARED_AUTOMATIONS_ENABLED === 'true' && this.sharedFlows && ['facebook', 'instagram', 'instagram-standalone'].includes(post.integration?.providerIdentifier)) {
+        let sharedSettings: { post_type?: string } = {};
+        try { sharedSettings = JSON.parse(post.settings || '{}'); } catch {}
+        if (sharedSettings.post_type !== 'story') await this.sharedFlows.bindNext(post.integrationId, postId, post.id);
+      }
       if (!post || post.integration?.providerIdentifier !== 'instagram') {
         return result;
       }
@@ -121,7 +128,9 @@ export class PostActivity {
       if (settings?.post_type === 'story') return result;
       await this._flowsService.bindPendingFlowsToPost(
         post.integrationId,
-        postId
+        postId,
+        'comment_on_post',
+        post.id
       );
     } catch {
       // ignore — bind errors must not fail the post publish

@@ -515,6 +515,7 @@ model Post {
   submittedForOrganization   Organization?             @relation("submittedForOrg", fields: [submittedForOrganizationId], references: [id])
   tags                       TagsPosts[]
   reviewLinks                ReviewLink[]
+  scheduledAutomationTargets ScheduledAutomationTarget[]
 
   @@index([group])
   @@index([deletedAt])
@@ -1263,6 +1264,12 @@ model Flow {
   name           String
   description    String?
   status         FlowStatus @default(DRAFT)
+  definitionVersion Int @default(1)
+  executionVersion Int @default(1)
+  revision Int @default(1)
+  definition Json?
+  channels FlowChannel[]
+  executionsV2 FlowExecutionV2[]
   triggerPostIds String?
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
@@ -1277,6 +1284,7 @@ model Flow {
   pendingPostbacks PendingPostback[]
   mediaAliases     FlowMediaAlias[]
   boundUnmatchedComments UnmatchedComment[] @relation("BoundFlow")
+  scheduledTargets ScheduledAutomationTarget[]
 
   @@index([organizationId])
   @@index([profileId])
@@ -1635,4 +1643,142 @@ model StatusEvent {
   @@index([organizationId, type])
   @@index([organizationId, profileId])
   @@index([createdAt])
+}
+
+// Shared comment automations. All external identifiers are platform-neutral.
+model FlowChannel {
+  id String @id @default(uuid())
+  flowId String
+  integrationId String
+  platform String
+  remoteAccountId String
+  postMode String
+  postIds String[]
+  boundPostId String?
+  activatedAt DateTime?
+  flow Flow @relation(fields: [flowId], references: [id])
+  @@unique([flowId, integrationId])
+  @@index([integrationId])
+  @@index([platform, remoteAccountId])
+}
+
+model AutomationEvent {
+  id String @id @default(uuid())
+  organizationId String
+  profileId String
+  integrationId String
+  platform String
+  remoteAccountId String
+  eventType String
+  externalEventId String
+  externalPostId String
+  externalActorId String
+  actorName String?
+  text String
+  occurredAt DateTime
+  receivedAt DateTime @default(now())
+  @@unique([integrationId, eventType, externalEventId])
+}
+
+model AutomationDispatch {
+  id String @id @default(uuid())
+  flowId String
+  channelId String
+  eventId String
+  executionId String @unique
+  state String @default("PENDING")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([flowId, channelId, eventId])
+  @@index([state, createdAt])
+}
+
+model FlowExecutionV2 {
+  id String @id @default(uuid())
+  flowId String
+  channelId String
+  eventId String
+  organizationId String
+  profileId String
+  integrationId String
+  platform String
+  remoteAccountId String
+  revision Int
+  snapshot Json
+  status String @default("PENDING")
+  error String?
+  createdAt DateTime @default(now())
+  completedAt DateTime?
+  flow Flow @relation(fields: [flowId], references: [id])
+  deliveries FlowDelivery[]
+  @@index([flowId, createdAt])
+  @@index([integrationId, status])
+}
+
+model FlowDelivery {
+  id String @id @default(uuid())
+  executionId String
+  actionKey String
+  effectKey String @unique
+  status String @default("SENDING")
+  remoteId String?
+  error String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  execution FlowExecutionV2 @relation(fields: [executionId], references: [id])
+  @@unique([executionId, actionKey])
+}
+
+// Exact local scheduled destination, shared by the two comment engines.
+model ScheduledAutomationTarget {
+  id String @id @default(uuid())
+  flowId String
+  integrationId String
+  postId String
+  publishedReleaseId String?
+  boundPostIds String[] @default([])
+  boundAt DateTime?
+  createdAt DateTime @default(now())
+  flow Flow @relation(fields: [flowId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id])
+  events ScheduledAutomationEvent[]
+  @@unique([flowId, integrationId])
+  @@index([integrationId])
+}
+
+model ScheduledAutomationEvent {
+  id String @id @default(uuid())
+  targetId String
+  externalEventId String
+  event Json
+  flowUpdatedAt DateTime
+  revision Int
+  state String @default("PENDING")
+  availableAt DateTime @default(now())
+  leaseUntil DateTime?
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  target ScheduledAutomationTarget @relation(fields: [targetId], references: [id], onDelete: Cascade)
+  @@unique([targetId, externalEventId])
+  @@index([state, availableAt])
+  @@index([expiresAt])
+}
+
+// Independent of scheduled targets: cancelling one rule must not erase a deferred next event.
+model DeferredNextAutomationEvent {
+  id String @id @default(uuid())
+  organizationId String
+  profileId String
+  integrationId String
+  externalEventId String
+  event Json
+  candidates Json
+  state String @default("PENDING")
+  availableAt DateTime @default(now())
+  leaseUntil DateTime?
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  @@unique([integrationId, externalEventId])
+  @@index([state, availableAt])
+  @@index([expiresAt])
 }
