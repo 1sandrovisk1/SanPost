@@ -1,10 +1,15 @@
 import axios from 'axios';
 import dns from 'node:dns';
 import dnsPromises from 'node:dns/promises';
+import http from 'node:http';
+import { Agent } from 'undici';
+import { AddressInfo } from 'node:net';
 import {
   getSsrfSafeAxios,
   getSsrfSafeDispatcher,
+  isBlockedLiteralHost,
   ssrfSafeDispatcher,
+  ssrfSafeFetch,
   ssrfSafeLookup,
 } from './ssrf.safe.dispatcher';
 import { isSafePublicHttpsUrl } from './webhook.url.validator';
@@ -172,5 +177,149 @@ describe('ssrf.safe.dispatcher', () => {
 
     expect(getSsrfSafeDispatcher()).toBeUndefined();
     expect(getSsrfSafeAxios()).toBe(axios);
+  });
+
+  // `net.connect` pula `options.lookup` quando o host ja e um IP literal, entao
+  // um guard que vive so no lookup nunca roda para `http://127.0.0.1/`,
+  // `http://[::1]/` ou um redirect para IP. A conferencia precisa acontecer
+  // tambem na abertura da conexao (undici `connect` e `createConnection` do
+  // http/https Agent do axios).
+  describe('host em IP literal (sem lookup)', () => {
+    let server: http.Server;
+    let hits = 0;
+    let baseUrl = '';
+
+    beforeAll(async () => {
+      server = http.createServer((_req, res) => {
+        hits += 1;
+        res.end('reached');
+      });
+      await new Promise<void>((resolve) =>
+        server.listen(0, '127.0.0.1', () => resolve())
+      );
+      baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
+    });
+
+    afterAll(async () => {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    });
+
+    it('fetch com o dispatcher pinado nao conecta em 127.0.0.1 literal', async () => {
+      const error = (await ssrfSafeFetch(baseUrl).catch((e) => e)) as Error & {
+        cause?: Error;
+      };
+
+      // o TypeError do undici vem do realm do Node (sem instanceof no sandbox)
+      expect(error?.message).toBe('fetch failed');
+      expect(error?.cause?.message).toBe('Blocked IP');
+      expect(hits).toBe(0);
+    });
+
+    it('fetch para [::1] literal e recusado antes de qualquer conexao', async () => {
+      // sem servidor na porta: um guard ausente daria ECONNREFUSED, nao
+      // "Blocked IP" (porta alta para nao cair na lista de "bad port" do fetch)
+      const error = (await ssrfSafeFetch('http://[::1]:65123/').catch(
+        (e) => e
+      )) as Error & { cause?: Error };
+
+      expect(error?.cause?.message).toBe('Blocked IP');
+    });
+
+    it('fetch com nome que resolve para IP privado segue bloqueado (lookup pinado no connector)', async () => {
+      dnsLookup.mockImplementation(
+        (_hostname, _options, callback: (...args: unknown[]) => void) =>
+          callback(null, '127.0.0.1', 4)
+      );
+      const port = (server.address() as AddressInfo).port;
+
+      const error = (await ssrfSafeFetch(`http://private.example:${port}/`).catch(
+        (e) => e
+      )) as Error & { cause?: Error };
+
+      expect(error?.cause?.message).toBe('Blocked IP');
+      expect(dnsLookup).toHaveBeenCalledWith(
+        'private.example',
+        expect.anything(),
+        expect.any(Function)
+      );
+      expect(hits).toBe(0);
+    });
+
+    it('fetch https para [::1] literal e recusado antes do TLS', async () => {
+      const error = (await ssrfSafeFetch('https://[::1]:65123/').catch(
+        (e) => e
+      )) as Error & { cause?: Error };
+
+      expect(error?.cause?.message).toBe('Blocked IP');
+    });
+
+    it('fetch aceita o proprio dispatcher pinado (forca o guard sob opt-out) e recusa outro', async () => {
+      const pinned = (await ssrfSafeFetch(baseUrl, {
+        dispatcher: ssrfSafeDispatcher,
+      }).catch((e) => e)) as Error & { cause?: Error };
+      expect(pinned?.cause?.message).toBe('Blocked IP');
+
+      const foreign = new Agent();
+      await expect(
+        ssrfSafeFetch(baseUrl, { dispatcher: foreign })
+      ).rejects.toThrow('pinned dispatcher');
+      await foreign.close();
+      expect(hits).toBe(0);
+    });
+
+    it('agente https pinado recusa IP literal no createConnection (ramo TLS)', async () => {
+      const httpsAgent = getSsrfSafeAxios().defaults.httpsAgent as unknown as {
+        createConnection: (
+          options: { host: string; port: number },
+          callback: (error: Error | null) => void
+        ) => unknown;
+      };
+
+      const error = await new Promise<Error | null>((resolve) =>
+        httpsAgent.createConnection(
+          { host: '127.0.0.1', port: 443 },
+          (err) => resolve(err)
+        )
+      );
+
+      expect(error?.message).toBe('Blocked IP');
+    });
+
+    it.each([
+      [{ socketPath: '/tmp/x.sock' }],
+      [{ httpVersion: 2 }],
+      [{ proxy: { host: '127.0.0.1', port: 8080 } }],
+      [{ httpAgent: new http.Agent() }],
+    ])('axios pinado recusa override de transporte %j', async (override) => {
+      await expect(
+        getSsrfSafeAxios().get(baseUrl, override as Record<string, unknown>)
+      ).rejects.toThrow('transport overrides');
+      expect(hits).toBe(0);
+    });
+
+    it('axios pinado nao conecta em 127.0.0.1 literal', async () => {
+      await expect(getSsrfSafeAxios().get(baseUrl)).rejects.toThrow(
+        'Blocked IP'
+      );
+      expect(hits).toBe(0);
+    });
+
+    it.each([
+      '127.0.0.1',
+      '[::1]',
+      '::1',
+      '::ffff:127.0.0.1',
+      '169.254.169.254',
+      '10.0.0.8',
+    ])('isBlockedLiteralHost bloqueia %s', (host) => {
+      expect(isBlockedLiteralHost(host)).toBe(true);
+    });
+
+    it.each(['1.1.1.1', '[2606:4700:4700::1111]', 'example.com', ''])(
+      'isBlockedLiteralHost deixa "%s" para o lookup pinado',
+      (host) => {
+        expect(isBlockedLiteralHost(host)).toBe(false);
+      }
+    );
   });
 });

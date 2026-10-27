@@ -3,6 +3,7 @@ import dns from 'node:dns/promises';
 import { validate } from 'class-validator';
 import {
   IsSafeWebhookUrlConstraint,
+  isBlockedIp,
   isSafePublicHttpsUrl,
 } from './webhook.url.validator';
 import { OnlyURL } from './webhooks.dto';
@@ -93,5 +94,18 @@ describe('webhook.url.validator', () => {
         constraints: [true],
       } as never)
     ).resolves.toBe(false);
+  });
+
+  describe('faixas adicionais (SIIT e Azure WireServer)', () => {
+    it('bloqueia IPv4 privado embutido em SIIT ::ffff:0:0:0/96', () => {
+      expect(isBlockedIp('::ffff:0:7f00:1')).toBe(true);
+      expect(isBlockedIp('::ffff:0:127.0.0.1')).toBe(true);
+      expect(isBlockedIp('::ffff:0:a9fe:a9fe')).toBe(true);
+    });
+
+    it('bloqueia o Azure WireServer 168.63.129.16 e mantem vizinhos publicos', () => {
+      expect(isBlockedIp('168.63.129.16')).toBe(true);
+      expect(isBlockedIp('168.63.129.17')).toBe(false);
+    });
   });
 });

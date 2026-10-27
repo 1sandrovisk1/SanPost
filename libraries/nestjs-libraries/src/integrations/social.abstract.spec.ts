@@ -77,18 +77,20 @@ describe('SocialAbstract SSRF', () => {
     );
   });
 
-  it('preserva dispatcher especifico fornecido pelo provider', async () => {
+  it('recusa dispatcher alheio fornecido pelo provider (o guard nao pode ser trocado)', async () => {
     const dispatcher = { dispatch: jest.fn() };
 
-    await provider.fetch('https://example.com/api', {
-      method: 'GET',
-      dispatcher,
-    } as RequestInit);
+    await expect(
+      provider.fetch('https://example.com/api', {
+        method: 'GET',
+        dispatcher,
+      } as RequestInit)
+    ).rejects.toThrow('pinned dispatcher');
 
-    expect(global.fetch).toHaveBeenCalledWith('https://example.com/api', {
-      method: 'GET',
-      dispatcher,
-    });
+    expect(global.fetch).not.toHaveBeenCalledWith(
+      'https://example.com/api',
+      expect.objectContaining({ dispatcher })
+    );
   });
 
   it('faz analytics com SSRF pinado sem retry nem BadBody', async () => {
