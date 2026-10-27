@@ -27,9 +27,9 @@ export function isHttpsUrl(value: unknown): boolean {
 }
 
 export function isBlockedIPv4(ip: string): boolean {
-  const [a, b, c] = ip.split('.').map(Number);
+  const [a, b, c, d] = ip.split('.').map(Number);
 
-  if ([a, b, c].some((n) => Number.isNaN(n))) return true;
+  if ([a, b, c, d].some((n) => Number.isNaN(n))) return true;
 
   return (
     a === 0 || // 0.0.0.0/8
@@ -45,6 +45,7 @@ export function isBlockedIPv4(ip: string): boolean {
     (a === 192 && b === 88 && c === 99) || // deprecated 6to4 relay anycast
     (a === 198 && b === 51 && c === 100) || // documentation TEST-NET-2
     (a === 203 && b === 0 && c === 113) || // documentation TEST-NET-3
+    (a === 168 && b === 63 && c === 129 && d === 16) || // Azure WireServer (metadata)
     a >= 224 // multicast/reserved
   );
 }
@@ -104,6 +105,11 @@ export function isBlockedIPv6(ip: string): boolean {
     .every((part) => part === 0);
   const isIpv4Mapped =
     parts.slice(0, 5).every((part) => part === 0) && parts[5] === 0xffff;
+  // SIIT ::ffff:0:a.b.c.d (RFC 2765) tambem embute um IPv4
+  const isIpv4Siit =
+    parts.slice(0, 4).every((part) => part === 0) &&
+    parts[4] === 0xffff &&
+    parts[5] === 0;
   const isWellKnownNat64 =
     first === 0x0064 &&
     parts[1] === 0xff9b &&
@@ -111,7 +117,7 @@ export function isBlockedIPv6(ip: string): boolean {
   const isLocalNat64 =
     first === 0x0064 && parts[1] === 0xff9b && parts[2] === 0x0001;
 
-  if (isIpv4Mapped) {
+  if (isIpv4Mapped || isIpv4Siit) {
     const mapped = `${parts[6] >> 8}.${parts[6] & 0xff}.${parts[7] >> 8}.${
       parts[7] & 0xff
     }`;
