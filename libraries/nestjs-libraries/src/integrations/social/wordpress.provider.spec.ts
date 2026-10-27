@@ -75,6 +75,7 @@ describe('WordpressProvider authenticate', () => {
       {
         headers: {
           Authorization: expect.stringMatching(/^Basic /),
+          'User-Agent': expect.stringMatching(/^RoboMultipost\//),
         },
       }
     );
@@ -213,7 +214,10 @@ describe('WordpressProvider post settings', () => {
     expect(fetch).toHaveBeenCalledWith(
       'https://example.com/wp-json/wp/v2/categories?per_page=100',
       expect.objectContaining({
-        headers: { Authorization: expect.stringMatching(/^Basic /) },
+        headers: {
+          Authorization: expect.stringMatching(/^Basic /),
+          'User-Agent': expect.stringMatching(/^RoboMultipost\//),
+        },
       })
     );
   });

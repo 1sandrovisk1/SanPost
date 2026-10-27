@@ -102,6 +102,8 @@ describe('AiWebSearchService', () => {
       } catch (e) {
         expect(e).toBeInstanceOf(HttpException);
         expect((e as HttpException).getStatus()).toBe(502);
+        // o Tavily ecoa a chave em 401/403: nada da mensagem crua ao cliente
+        expect(JSON.stringify((e as HttpException).getResponse())).not.toContain('tvly-secret');
       }
     });
   });
@@ -143,6 +145,31 @@ describe('AiWebSearchService', () => {
       await expect(
         service.extract('org-1', ['http://169.254.169.254/'])
       ).rejects.toThrow(HttpException);
+    });
+
+    it.each([
+      'http://[::1]/',
+      'http://[fe80::1]/',
+      'http://[::ffff:127.0.0.1]/',
+      'http://0x7f000001/',
+      'http://127.1/',
+      'http://intranet.localhost/',
+      'http://100.64.0.1/',
+      'http://localhost./',
+      'http://intranet/',
+      'http://printer.local/',
+      'http://db.internal/',
+    ])('deve recusar %s (mesma regra de IP do guard SSRF)', async (url) => {
+      await expect(service.extract('org-1', [url])).rejects.toThrow(HttpException);
+    });
+
+    it('nao confunde hostname publico que comeca com digitos com IP privado', async () => {
+      resolver.resolve.mockResolvedValue(credentialFor() as any);
+      extractMock.mockResolvedValue({ results: [], failedResults: [] });
+
+      await expect(
+        service.extract('org-1', ['https://10.example.com/artigo'])
+      ).resolves.toBeDefined();
     });
 
     it('deve recusar protocolos nao-http(s)', async () => {

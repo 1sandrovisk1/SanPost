@@ -1,5 +1,5 @@
 jest.mock('../../../integrations/integration.manager', () => ({
-  socialIntegrationList: [{ identifier: 'instagram', maxLength: () => 2200 }],
+  socialIntegrationList: [{ identifier: 'instagram', maxLength: () => 2200 }, { identifier: 'threads', maxLength: () => 500 }],
 }));
 jest.mock('file-type', () => ({ fileTypeFromBuffer: jest.fn() }));
 import { createMock } from '../../../test';
@@ -83,6 +83,12 @@ describe('posts para agentes', () => {
       key: 'is_trial_reel',
       value: 'true',
     });
+  });
+  it('edicao do Threads respeita bytes UTF8 incorporados da main', async () => {
+    const post = row(); post.integration.providerIdentifier = 'threads';
+    repo.detail.mockResolvedValueOnce({ rows: [post], version: 'v1' } as any);
+    await expect(service.update(scope, 'post', { expectedVersion: 'v1', configuration: { messages: [{ id: 'post', content: 'á'.repeat(251), media: [] }] } })).rejects.toThrow('POST_CONTENT_TOO_LONG_BYTES');
+    expect(repo.write).not.toHaveBeenCalled();
   });
   it('reagenda o mesmo id sem trocar mensagens, canal, grupo ou vinculo', async () => {
     const date = new Date(Date.now() + 172800000).toISOString();

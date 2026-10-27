@@ -7,7 +7,11 @@ import {
 } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
 import { makeSecureId } from '@gitroom/nestjs-libraries/services/make.secure.id';
 import FormData from 'form-data';
-import { SocialAbstract } from '@gitroom/nestjs-libraries/integrations/social.abstract';
+import {
+  BadBody,
+  RefreshToken,
+  SocialAbstract,
+} from '@gitroom/nestjs-libraries/integrations/social.abstract';
 import { DribbbleDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/dribbble.dto';
 import mime from 'mime-types';
 import { DiscordDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/discord.dto';
@@ -25,42 +29,19 @@ export class DribbbleProvider extends SocialAbstract implements SocialProvider {
   }
   dto = DribbbleDto;
 
+  // O Dribbble nao emite refresh token (authenticate devolve ''): token vazio
+  // leva o canal ao fluxo de "nao renovavel" (desconecta e pede reconexao),
+  // como Hashnode/Mastodon. A versao anterior era copia do fluxo do Pinterest
+  // sandbox e mandaria credenciais do Pinterest para outro host.
   async refreshToken(refreshToken: string): Promise<AuthTokenDetails> {
-    const { access_token, expires_in } = await (
-      await this.fetch('https://api-sandbox.pinterest.com/v5/oauth/token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Authorization: `Basic ${Buffer.from(
-            `${process.env.PINTEREST_CLIENT_ID}:${process.env.PINTEREST_CLIENT_SECRET}`
-          ).toString('base64')}`,
-        },
-        body: new URLSearchParams({
-          grant_type: 'refresh_token',
-          refresh_token: refreshToken,
-          scope: `${this.scopes.join(',')}`,
-          redirect_uri: `${process.env.FRONTEND_URL}/integrations/social/pinterest`,
-        }),
-      })
-    ).json();
-
-    const { id, profile_image, username } = await (
-      await this.fetch('https://api-sandbox.pinterest.com/v5/user_account', {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${access_token}`,
-        },
-      })
-    ).json();
-
     return {
-      id: id,
-      name: username,
-      accessToken: access_token,
-      refreshToken: refreshToken,
-      expiresIn: expires_in,
-      picture: profile_image || '',
-      username,
+      refreshToken: '',
+      expiresIn: 0,
+      accessToken: '',
+      id: '',
+      name: '',
+      picture: '',
+      username: '',
     };
   }
 
@@ -155,16 +136,42 @@ export class DribbbleProvider extends SocialAbstract implements SocialProvider {
     formData.append('title', postDetails[0].settings.title);
     formData.append('description', postDetails[0].message);
 
-    const data2 = await this.getSsrfSafeAxios().post(
-      'https://api.dribbble.com/v2/shots',
-      formData,
-      {
-        headers: {
-          ...formData.getHeaders(),
-          Authorization: `Bearer ${accessToken}`,
-        },
+    // 4xx do Dribbble (shot invalida, sem permissao) e rejeicao permanente:
+    // BadBody com a mensagem da API em vez de "Unknown Error" (upstream #2134).
+    let data2;
+    try {
+      data2 = await this.getSsrfSafeAxios().post(
+        'https://api.dribbble.com/v2/shots',
+        formData,
+        {
+          headers: {
+            ...formData.getHeaders(),
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      );
+    } catch (err: any) {
+      const status = err?.response?.status;
+      // 401 = token revogado: segue o fluxo de refresh/desconexao do fork
+      if (status === 401) {
+        throw new RefreshToken(
+          this.identifier,
+          JSON.stringify(err?.response?.data ?? {}),
+          '{}',
+          'Dribbble rejected the connected account, please reconnect the channel'
+        );
       }
-    );
+      if (status >= 400 && status < 500 && status !== 429) {
+        throw new BadBody(
+          this.identifier,
+          JSON.stringify(err?.response?.data ?? {}),
+          '{}',
+          err?.response?.data?.message ||
+            `Dribbble rejected the shot with status ${status}`
+        );
+      }
+      throw err;
+    }
 
     const location = data2.headers['location'];
     const newId = location.split('/').at(-1);

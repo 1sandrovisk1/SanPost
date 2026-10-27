@@ -56,9 +56,11 @@ entre métricas da conta e do post.
   conteúdo ausente continuam em seus caminhos existentes.
 - **Providers alternativos:** nenhuma classe Zernio foi alterada.
 
-No TikTok, a consulta de status usada exclusivamente para transformar um
-`publish_id` em ID público dentro de `postAnalytics` entra no helper de
-analytics. O polling e a publicação de mídia continuam inalterados.
+No TikTok, a consulta de status que transforma um `publish_id` em ID público
+vive em `resolveReleaseId` (chamado por `PostsService.resolveRelease` antes do
+`postAnalytics`, persistindo o id e a URL definitivos — lote de 25/10/2026) e
+usa o helper de analytics. O polling e a publicação de mídia continuam
+inalterados.
 
 ## Cobertura automatizada
 

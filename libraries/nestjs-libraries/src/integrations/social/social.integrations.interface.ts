@@ -41,6 +41,13 @@ export interface IAuthenticator {
     fromDate: number,
     integration?: Integration
   ): Promise<AnalyticsData[]>;
+  // Id publico + URL definitiva para persistir quando o releaseId guardado
+  // ainda e um publish id; undefined quando nao ha (ainda) o que resolver.
+  resolveReleaseId?(
+    accessToken: string,
+    releaseId: string,
+    integration: Integration
+  ): Promise<{ postId: string; releaseURL: string } | undefined>;
   changeNickname?(
     id: string,
     accessToken: string,

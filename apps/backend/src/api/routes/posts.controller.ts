@@ -13,6 +13,7 @@ import {
 import { PostsService } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.service';
 import { GetOrgFromRequest } from '@gitroom/nestjs-libraries/user/org.from.request';
 import { GetProfileFromRequest } from '@gitroom/nestjs-libraries/user/profile.from.request';
+import { UpdateReleaseIdDto } from '@gitroom/nestjs-libraries/dtos/posts/update.release.id.dto';
 import { Organization, Profile, User } from '@prisma/client';
 import { GetPostsDto } from '@gitroom/nestjs-libraries/dtos/posts/get.posts.dto';
 import { GetPostsListDto } from '@gitroom/nestjs-libraries/dtos/posts/get.posts.list.dto';
@@ -46,26 +47,38 @@ export class PostsController {
   @Get('/:id/statistics')
   async getStatistics(
     @GetOrgFromRequest() org: Organization,
+    @GetProfileFromRequest() profile: Profile | null,
     @Param('id') id: string
   ) {
-    return this._postsService.getStatistics(org.id, id);
+    return this._postsService.getStatistics(
+      org.id,
+      id,
+      getOrgRole(org) === 'USER' ? profile?.id ?? null : undefined
+    );
   }
 
   @Get('/:id/missing')
   async getMissingContent(
     @GetOrgFromRequest() org: Organization,
+    @GetProfileFromRequest() profile: Profile | null,
     @Param('id') id: string
   ) {
-    return this._postsService.getMissingContent(org.id, id);
+    return this._postsService.getMissingContent(org.id, id, false, profile?.id);
   }
 
   @Put('/:id/release-id')
   async updateReleaseId(
     @GetOrgFromRequest() org: Organization,
+    @GetProfileFromRequest() profile: Profile | null,
     @Param('id') id: string,
-    @Body('releaseId') releaseId: string
+    @Body() body: UpdateReleaseIdDto
   ) {
-    return this._postsService.updateReleaseId(org.id, id, releaseId);
+    return this._postsService.updateReleaseId(
+      org.id,
+      id,
+      body.releaseId,
+      profile?.id
+    );
   }
 
   @Post('/should-shortlink')
@@ -110,6 +123,7 @@ export class PostsController {
   async createReviewLink(
     @GetOrgFromRequest() org: Organization,
     @GetUserFromRequest() user: User,
+    @GetProfileFromRequest() profile: Profile | null,
     @Param('id') id: string,
     @Body()
     body: {
@@ -125,25 +139,37 @@ export class PostsController {
       expiresInDays: body?.expiresInDays,
       allowComment: body?.allowComment,
       allowApprove: body?.allowApprove,
+      requireProfileId:
+        getOrgRole(org) === 'USER' ? profile?.id ?? null : undefined,
     });
   }
 
   @Get('/:id/review-links')
   async listReviewLinks(
     @GetOrgFromRequest() org: Organization,
+    @GetProfileFromRequest() profile: Profile | null,
     @Param('id') id: string
   ) {
     return {
-      reviewLinks: await this._reviewLinksService.listForPost(id, org.id),
+      reviewLinks: await this._reviewLinksService.listForPost(
+        id,
+        org.id,
+        getOrgRole(org) === 'USER' ? profile?.id ?? null : undefined
+      ),
     };
   }
 
   @Delete('/:id/review-links/:linkId')
   async revokeReviewLink(
     @GetOrgFromRequest() org: Organization,
+    @GetProfileFromRequest() profile: Profile | null,
     @Param('linkId') linkId: string
   ) {
-    return this._reviewLinksService.revoke(linkId, org.id);
+    return this._reviewLinksService.revoke(
+      linkId,
+      org.id,
+      getOrgRole(org) === 'USER' ? profile?.id ?? null : undefined
+    );
   }
 
   @Get('/tags')
@@ -220,9 +246,14 @@ export class PostsController {
   @Get('/old')
   oldPosts(
     @GetOrgFromRequest() org: Organization,
+    @GetProfileFromRequest() profile: Profile | null,
     @Query('date') date: string
   ) {
-    return this._postsService.getOldPosts(org.id, date);
+    return this._postsService.getOldPosts(
+      org.id,
+      date,
+      getOrgRole(org) === 'USER' ? profile?.id ?? null : undefined
+    );
   }
 
   @Get('/group/:group/debug-export')
@@ -238,13 +269,21 @@ export class PostsController {
   }
 
   @Get('/group/:group')
-  getPostsByGroup(@GetOrgFromRequest() org: Organization, @Param('group') group: string) {
-    return this._postsService.getPostsByGroup(org.id, group);
+  getPostsByGroup(
+    @GetOrgFromRequest() org: Organization,
+    @GetProfileFromRequest() profile: Profile | null,
+    @Param('group') group: string
+  ) {
+    return this._postsService.getPostsByGroup(org.id, group, profile?.id);
   }
 
   @Get('/:id')
-  getPost(@GetOrgFromRequest() org: Organization, @Param('id') id: string) {
-    return this._postsService.getPost(org.id, id);
+  getPost(
+    @GetOrgFromRequest() org: Organization,
+    @GetProfileFromRequest() profile: Profile | null,
+    @Param('id') id: string
+  ) {
+    return this._postsService.getPost(org.id, id, false, profile?.id);
   }
 
   @Post('/')
@@ -254,7 +293,6 @@ export class PostsController {
     @GetProfileFromRequest() profile: Profile | null,
     @Body() rawBody: any
   ) {
-    console.log(JSON.stringify(rawBody, null, 2));
     const body = await this._postsService.mapTypeToPost(rawBody, org.id);
     return this._postsService.createPost(org.id, body, profile?.id);
   }

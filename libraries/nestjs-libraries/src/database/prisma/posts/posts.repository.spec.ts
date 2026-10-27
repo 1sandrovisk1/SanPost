@@ -21,8 +21,141 @@ describe('resultado de publicacao e alvo agendado', () => {
  });
  it('nao congela missing e inclui a correcao posterior na transacao',async()=>{
   await repo.updatePost('local','missing','https://example.com');expect(tx.scheduledAutomationTarget.updateMany).not.toHaveBeenCalled();
-  await repo.updateReleaseId('local','o','123_789');
+  expect(await repo.updateReleaseId('local','o','123_789')).toEqual({id:'local'});
   expect(tx.post.update).toHaveBeenLastCalledWith({where:{id:'local',organizationId:'o',releaseId:'missing'},data:{releaseId:'123_789'}});
   expect(tx.scheduledAutomationTarget.updateMany).toHaveBeenLastCalledWith(expect.objectContaining({data:{publishedReleaseId:'123_789'}}));
  });
+});
+
+// Porte do upstream #2186: persiste o id publico resolvido depois da publicacao.
+describe('PostsRepository.updateResolvedRelease', () => {
+  it('persiste id publico e URL definitiva do post, restrito a org e ao releaseId anterior', async () => {
+    const prismaMock = createPrismaRepositoryMock('post');
+    (prismaMock.model.post as any).update = jest.fn().mockResolvedValue({} as any);
+    const repo = new PostsRepository(
+      prismaMock as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any
+    );
+
+    await repo.updateResolvedRelease(
+      'post-1',
+      'org-1',
+      'v_pub_url~abc',
+      '7345678901234567891',
+      'https://www.tiktok.com/@p/video/7345678901234567891'
+    );
+
+    expect(prismaMock.model.post.update).toHaveBeenCalledWith({
+      where: { id: 'post-1', organizationId: 'org-1', releaseId: 'v_pub_url~abc' },
+      data: {
+        releaseId: '7345678901234567891',
+        releaseURL: 'https://www.tiktok.com/@p/video/7345678901234567891',
+      },
+    });
+  });
+});
+
+describe('PostsRepository.updateReleaseId', () => {
+  it('so grava quando o releaseId ainda e missing e devolve apenas o id', async () => {
+    const prismaMock = createPrismaRepositoryMock('post');
+    (prismaMock.model.post as any).update = jest.fn().mockResolvedValue({ id: 'post-1' } as any);
+    const repo = new PostsRepository(
+      prismaMock as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any
+    );
+
+    await repo.updateReleaseId('post-1', 'org-1', '123');
+
+    expect(prismaMock.model.post.update).toHaveBeenCalledWith({
+      where: { id: 'post-1', organizationId: 'org-1', releaseId: 'missing' },
+      data: { releaseId: '123' },
+      select: { id: true },
+    });
+  });
+});
+
+// group e controlado pelo cliente: a troca de grupo (soft delete do grupo
+// anterior) precisa ficar restrita a org, senao um grupo alheio e apagado.
+describe('PostsRepository.createOrUpdatePost (troca de grupo restrita a org)', () => {
+  it('busca e apaga o grupo anterior so dentro da org', async () => {
+    const prismaMock = createPrismaRepositoryMock('post');
+    (prismaMock.model.post as any).upsert = jest.fn().mockResolvedValue({ id: 'p1' } as any);
+    (prismaMock.model.post as any).findFirst = jest.fn().mockResolvedValue(null as any);
+    (prismaMock.model.post as any).updateMany = jest.fn().mockResolvedValue({ count: 0 } as any);
+    const tagsPostsMock = createPrismaRepositoryMock('tagsPosts');
+    (tagsPostsMock.model.tagsPosts as any).deleteMany = jest.fn().mockResolvedValue({ count: 0 } as any);
+    const repo = new PostsRepository(
+      prismaMock as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      tagsPostsMock as any,
+      {} as any
+    );
+
+    await repo.createOrUpdatePost(
+      'draft',
+      'org-1',
+      '2026-10-26T10:00:00',
+      {
+        group: 'g-alheio',
+        integration: { id: 'int-1' },
+        settings: {},
+        value: [{ id: 'p1', content: 'x', image: [] }],
+      } as any,
+      []
+    );
+
+    expect(prismaMock.model.post.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ group: 'g-alheio', organizationId: 'org-1' }),
+      })
+    );
+    expect(prismaMock.model.post.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ group: 'g-alheio', organizationId: 'org-1' }),
+      })
+    );
+  });
+});
+
+// GET /posts/old (seletor de post para URL) listava posts de todos os perfis
+// para um membro restrito.
+describe('PostsRepository.getOldPosts', () => {
+  const build = () => {
+    const prismaMock = createPrismaRepositoryMock('post');
+    (prismaMock.model.post as any).findMany = jest.fn().mockResolvedValue([]);
+    const repo = new PostsRepository(
+      prismaMock as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any
+    );
+    return { repo, findMany: prismaMock.model.post.findMany as jest.Mock };
+  };
+
+  it('filtra pelo perfil quando informado', async () => {
+    const { repo, findMany } = build();
+    await repo.getOldPosts('org-1', '2026-10-26T00:00:00Z', 'prof-2');
+    expect(findMany.mock.calls[0][0].where).toMatchObject({
+      organizationId: 'org-1',
+      profileId: 'prof-2',
+    });
+  });
+
+  it('sem perfil (admin) nao filtra por perfil', async () => {
+    const { repo, findMany } = build();
+    await repo.getOldPosts('org-1', '2026-10-26T00:00:00Z');
+    expect(findMany.mock.calls[0][0].where.profileId).toBeUndefined();
+  });
 });

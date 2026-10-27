@@ -1,12 +1,19 @@
 // @ts-ignore
 import twitter from 'twitter-text';
 
+// Zernio publica nas mesmas redes: zernio-twitter conta como x e
+// zernio-threads como threads.
+const platformOf = (integrationType: string): string => {
+  const base = integrationType.replace(/^zernio-/, '');
+  return base === 'twitter' ? 'x' : base;
+};
+
 export const textSlicer = (
   integrationType: string,
   end: number,
   text: string
 ): { start: number; end: number } => {
-  if (integrationType !== 'x') {
+  if (platformOf(integrationType) !== 'x') {
     return {
       start: 0,
       end,
@@ -37,3 +44,25 @@ export const textSlicer = (
 export const weightedLength = (text: string): number => {
   return twitter.parseTweet(text).weightedLength;
 };
+
+// Comprimento efetivo do texto para o limite de cada rede: X pesa pelo
+// twitter-text; Threads limita em bytes UTF-8 (acentos e emoji contam mais);
+// as demais contam caracteres.
+export const countLength = (integrationType: string, text: string): number => {
+  const platform = platformOf(integrationType);
+  if (platform === 'x') {
+    return weightedLength(text);
+  }
+
+  if (platform === 'threads') {
+    return new TextEncoder().encode(text).length;
+  }
+
+  return text.length;
+};
+
+// Unidade do limite, para mensagens de erro: Threads limita em bytes UTF-8.
+export const countLengthUnit = (
+  integrationType: string
+): 'bytes' | 'characters' =>
+  platformOf(integrationType) === 'threads' ? 'bytes' : 'characters';

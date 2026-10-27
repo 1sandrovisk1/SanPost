@@ -18,7 +18,8 @@ import {
 import { CreatePostDto } from '../../dtos/posts/create.post.dto';
 import { HttpException } from '@nestjs/common';
 import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validation';
-import { weightedLength } from '@gitroom/helpers/utils/count.length';
+import { countLength, countLengthUnit } from '@gitroom/helpers/utils/count.length';
+import { coerceJsonSettingValue, stringKeysOf } from './settings.value.coercion';
 import {
   isAllowedMediaPath,
   isRemoteMediaPath,
@@ -27,13 +28,6 @@ import { checkPublicHttpsUrl } from '../../dtos/validators/is-public-https-url.v
 
 const fail = (code: string): never => {
   throw new HttpException(code, 400);
-};
-const parseValue = (value: string): unknown => {
-  try {
-    return JSON.parse(value);
-  } catch {
-    return value;
-  }
 };
 export const schedulePostInputSchema = z
   .object({
@@ -132,6 +126,7 @@ export class IntegrationSchedulePostTool implements AgentToolInterface {
               (p) => p.identifier === integration.providerIdentifier
             );
             if (!provider) fail('UNSUPPORTED_PROVIDER');
+            const stringKeys = stringKeysOf(provider.dto);
             const settings: Record<string, unknown> = {
               __type: integration.providerIdentifier,
             };
@@ -145,7 +140,7 @@ export class IntegrationSchedulePostTool implements AgentToolInterface {
               )
                 fail('POST_SETTING_KEY_INVALID');
               keys.add(field.key);
-              settings[field.key] = parseValue(field.value);
+              settings[field.key] = coerceJsonSettingValue(stringKeys, field.key, field.value);
             }
             if (post.tags?.length) {
               const scope = await this.management.scope(
@@ -189,12 +184,9 @@ export class IntegrationSchedulePostTool implements AgentToolInterface {
                 message.content,
                 true
               );
-              const length =
-                provider.identifier === 'x'
-                  ? weightedLength(content)
-                  : content.length;
+              const length = countLength(provider.identifier, content);
               if (length > (provider.maxLength(post.isPremium) || 1000000))
-                fail('POST_CONTENT_TOO_LONG');
+                fail(countLengthUnit(provider.identifier) === 'bytes' ? 'POST_CONTENT_TOO_LONG_BYTES' : 'POST_CONTENT_TOO_LONG');
               return {
                 id: makeId(10),
                 content: message.content,

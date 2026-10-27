@@ -403,16 +403,24 @@ export class IntegrationService {
       // Org USER sempre opera com perfil resolvido; sem ele, negar em vez de
       // degradar para escopo org-wide. Admins e chaves de org passam.
       if (opts?.requireProfile) {
-        throw new Error('Profile context required for this operation');
+        throw new HttpException(
+          'Profile context required for this operation',
+          HttpStatus.FORBIDDEN
+        );
       }
       return;
     }
     const integration = await this._integrationRepository.getIntegrationById(orgId, integrationId);
+    // HttpException (nao Error): um Error vira 500 no filtro global e a API
+    // publica documenta 403/404 para chave de perfil fora do escopo.
     if (!integration) {
-      throw new Error('Integration not found');
+      throw new HttpException('Integration not found', HttpStatus.NOT_FOUND);
     }
     if (integration.profileId && integration.profileId !== profileId) {
-      throw new Error('Integration does not belong to this profile');
+      throw new HttpException(
+        'Integration does not belong to this profile',
+        HttpStatus.FORBIDDEN
+      );
     }
   }
 
@@ -477,10 +485,22 @@ export class IntegrationService {
       this._encryption,
       getIntegration.token
     );
-    const getIntegrationInformation = await provider.fetchPageInformation(
-      getIntegration.token,
-      data
-    );
+    // Erros do provider nesta etapa sao de acesso/permissao a Pagina ("no
+    // permission to manage this page", "Page not found") e precisam chegar a
+    // tela de conexao com a mensagem, nao como 500 "Internal server error".
+    const getIntegrationInformation = await provider
+      .fetchPageInformation(getIntegration.token, data)
+      .catch((err: unknown) => {
+        if (err instanceof HttpException) {
+          throw err;
+        }
+        throw new HttpException(
+          err instanceof Error && err.message
+            ? err.message
+            : 'Failed to fetch page information',
+          HttpStatus.BAD_REQUEST
+        );
+      });
 
     // Antes de salvar, verifica se o canal ja existe em outro perfil da mesma
     // org. Sem essa checagem, o updateIntegration faria upsert silencioso na
@@ -531,11 +551,14 @@ export class IntegrationService {
     const getIntegration = await this.getIntegrationById(org.id, integration);
 
     if (!getIntegration) {
-      throw new Error('Invalid integration');
+      throw new HttpException('Invalid integration', HttpStatus.NOT_FOUND);
     }
 
     if (profileId && getIntegration.profileId && getIntegration.profileId !== profileId) {
-      throw new Error('Integration does not belong to this profile');
+      throw new HttpException(
+        'Integration does not belong to this profile',
+        HttpStatus.FORBIDDEN
+      );
     }
 
     if (getIntegration.type !== 'social') {
@@ -698,6 +721,24 @@ export class IntegrationService {
       getPlugById.integration.token
     );
 
+    // Defesa em profundidade para linhas gravadas antes da validacao: so
+    // metodos marcados com @Plug do provider sao invocaveis por nome (mesma
+    // classe da CVE-2026-115931). `true` encerra o workflow do plug.
+    if (
+      !this.findRegisteredPlug(
+        getPlugById.integration.providerIdentifier,
+        getPlugById.plugFunction
+      )
+    ) {
+      const safeName = String(getPlugById.plugFunction)
+        .slice(0, 64)
+        .replace(/[^\w.-]/g, '?');
+      console.warn(
+        `[plugs] funcao nao registrada ignorada: ${getPlugById.integration.providerIdentifier}.${safeName}`
+      );
+      return true;
+    }
+
     const integration = this._integrationManager.getSocialIntegration(
       getPlugById.integration.providerIdentifier
     );
@@ -723,11 +764,41 @@ export class IntegrationService {
     return false;
   }
 
+  private findRegisteredPlug(providerIdentifier: string, methodName: string) {
+    return this._integrationManager
+      .getAllPlugs()
+      .find((p) => p.identifier === providerIdentifier)
+      ?.plugs.find((plug: { methodName: string }) => plug.methodName === methodName);
+  }
+
   async createOrUpdatePlug(
     orgId: string,
     integrationId: string,
     body: PlugDto
   ) {
+    // canal da propria org (o upsert era por integrationId cru) e func
+    // restrito aos @Plug do provider, com os campos que ele declara
+    const integration = await this._integrationRepository.getIntegrationById(
+      orgId,
+      integrationId
+    );
+    if (!integration) {
+      throw new HttpException('Integration not found', HttpStatus.NOT_FOUND);
+    }
+    const plug = this.findRegisteredPlug(
+      integration.providerIdentifier,
+      body.func
+    );
+    if (!plug) {
+      throw new HttpException('Plug not found', HttpStatus.BAD_REQUEST);
+    }
+    const declared = new Set(
+      (plug.fields || []).map((field: { name: string }) => field.name)
+    );
+    if ((body.fields || []).some((field) => !declared.has(field.name))) {
+      throw new HttpException('Unknown plug field', HttpStatus.BAD_REQUEST);
+    }
+
     const { activated } = await this._integrationRepository.createOrUpdatePlug(
       orgId,
       integrationId,
@@ -739,13 +810,31 @@ export class IntegrationService {
     };
   }
 
-  async changePlugActivation(orgId: string, plugId: string, status: boolean) {
-    const { id, integrationId, plugFunction } =
-      await this._integrationRepository.changePlugActivation(
-        orgId,
-        plugId,
-        status
-      );
+  async changePlugActivation(
+    orgId: string,
+    plugId: string,
+    status: boolean,
+    profileId?: string,
+    opts?: { requireProfile?: boolean }
+  ) {
+    // mesmo escopo das demais rotas de canal: o plug precisa ser da org e o
+    // canal dele, do perfil resolvido
+    const plug = await this._integrationRepository.getPlugForOrg(orgId, plugId);
+    if (!plug) {
+      throw new HttpException('Plug not found', HttpStatus.NOT_FOUND);
+    }
+    await this.validateIntegrationProfile(
+      orgId,
+      plug.integrationId,
+      profileId,
+      opts
+    );
+
+    const { id } = await this._integrationRepository.changePlugActivation(
+      orgId,
+      plugId,
+      status
+    );
 
     return { id };
   }

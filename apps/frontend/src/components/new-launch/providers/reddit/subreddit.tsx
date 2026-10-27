@@ -20,23 +20,24 @@ export const RenderOptions: FC<{
   value: 'self' | 'link' | 'media';
 }> = (props) => {
   const { options, onClick, value } = props;
+  const t = useT();
   const mapValues = useMemo(() => {
     return options?.map((p) => ({
       children: (
         <>
           {p === 'self'
-            ? 'Post'
+            ? t('reddit_post_type_self', 'Post')
             : p === 'link'
-            ? 'Link'
+            ? t('link', 'Link')
             : p === 'media'
-            ? 'Media'
+            ? t('media', 'Media')
             : ''}
         </>
       ),
       id: p,
       onClick: () => onClick(p),
     })) || [];
-  }, [options]);
+  }, [options, onClick, t]);
   return (
     <div className="flex">
       {mapValues.map((p) => (
@@ -90,6 +91,7 @@ export const Subreddit: FC<{
           ...restrictions,
           type: restrictions.allow[0],
           media: [],
+          url: '',
         },
       },
     });
@@ -190,6 +192,7 @@ export const Subreddit: FC<{
             value={value.subreddit}
             readOnly={true}
             label="Subreddit"
+            translationKey="label_subreddit"
             name="subreddit"
           />
           <div className="mb-[12px]">
@@ -204,6 +207,7 @@ export const Subreddit: FC<{
             value={value.title}
             disableForm={true}
             label="Title"
+            translationKey="label_title"
             name="title"
             onChange={setTitle}
           />
@@ -213,6 +217,7 @@ export const Subreddit: FC<{
             value={value?.flair?.id}
             disableForm={true}
             label="Flair"
+            translationKey="label_flair"
             name="flair"
           >
             <option value="">{t('select_flair', '--Select Flair--')}</option>
@@ -228,6 +233,7 @@ export const Subreddit: FC<{
               error={errors?.url?.message}
               value={value.url}
               label="URL"
+              translationKey="label_url"
               name="url"
               disableForm={true}
               onChange={setURL}
@@ -240,6 +246,7 @@ export const Subreddit: FC<{
             placeholder="/r/selfhosted"
             name="search"
             label="Search Subreddit"
+            translationKey="label_search_subreddit"
             readOnly={loading}
             value={searchValue}
             error={errors?.message}

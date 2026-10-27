@@ -41,17 +41,25 @@ describe('analytics usa o transporte seguro sem semantica de publicacao', () => 
     );
 
     await expect(provider.analytics('page-1', 'TOKEN', 7)).resolves.toEqual([]);
+    // id de feed (`{pageId}_{postId}`) -> /insights; id puro (video/reel) ->
+    // /video_insights. Os dois caminhos ficam no transporte seguro.
     await expect(
-      provider.postAnalytics('page-1', 'TOKEN', 'post-1', 7)
+      provider.postAnalytics('page-1', 'TOKEN', 'page-1_post-1', 7)
+    ).resolves.toEqual([]);
+    await expect(
+      provider.postAnalytics('page-1', 'TOKEN', 'video-1', 7)
     ).resolves.toEqual([]);
 
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(safeFetch).toHaveBeenCalledTimes(2);
+    expect(safeFetch).toHaveBeenCalledTimes(3);
     expect(String(safeFetch.mock.calls[0][0])).toContain(
       'graph.facebook.com/v25.0/page-1/insights'
     );
     expect(String(safeFetch.mock.calls[1][0])).toContain(
-      'graph.facebook.com/v25.0/post-1/insights'
+      'graph.facebook.com/v25.0/page-1_post-1/insights'
+    );
+    expect(String(safeFetch.mock.calls[2][0])).toContain(
+      'graph.facebook.com/v25.0/video-1/video_insights'
     );
   });
 
@@ -112,7 +120,7 @@ describe('analytics usa o transporte seguro sem semantica de publicacao', () => 
     const fetchSpy = jest.spyOn(provider, 'fetch');
     const safeFetch = analyticsSpy(provider)
       .mockResolvedValueOnce(response({ all: { daily_metrics: [] } }))
-      .mockResolvedValueOnce(response({ all: { lifetime_metrics: {} } }));
+      .mockResolvedValueOnce(response({ all: { summary_metrics: {} } }));
 
     await expect(provider.analytics('user-1', 'TOKEN', 365)).resolves.toEqual(
       expect.any(Array)
@@ -165,19 +173,28 @@ describe('analytics usa o transporte seguro sem semantica de publicacao', () => 
     expect(safeFetch).toHaveBeenCalledTimes(3);
   });
 
-  it('TikTok usa analyticsFetch ao resolver publish_id e ler o video', async () => {
+  it('TikTok resolve o publish_id via analyticsFetch e le o video pelo id publico', async () => {
     const provider = new TiktokProvider();
     const fetchSpy = jest.spyOn(provider, 'fetch');
+    // o id vai cru no texto: acima de 2^53 o JSON.parse arredondaria
+    const rawStatus =
+      '{"data":{"status":"PUBLISH_COMPLETE","publicaly_available_post_id":[7345678901234567891]}}';
     const safeFetch = analyticsSpy(provider)
-      .mockResolvedValueOnce(
-        response({
-          data: { publicaly_available_post_id: ['video-1'] },
-        })
-      )
+      .mockResolvedValueOnce({
+        status: 200,
+        ok: true,
+        text: async () => rawStatus,
+        json: async () => JSON.parse(rawStatus),
+      } as any)
       .mockResolvedValueOnce(response({ data: { videos: [] } }));
 
     await expect(
-      provider.postAnalytics('user-1', 'TOKEN', 'v_pub_url:publish-1', 7)
+      provider.resolveReleaseId('TOKEN', 'v_pub_url~publish-1', {
+        profile: 'perfil',
+      } as any)
+    ).resolves.toMatchObject({ postId: '7345678901234567891' });
+    await expect(
+      provider.postAnalytics('user-1', 'TOKEN', '7345678901234567891', 7)
     ).resolves.toEqual([]);
 
     expect(fetchSpy).not.toHaveBeenCalled();

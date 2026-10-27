@@ -1,5 +1,5 @@
 jest.mock('../../../integrations/integration.manager', () => ({
-  socialIntegrationList: [{ identifier: 'instagram', maxLength: () => 2200 }],
+  socialIntegrationList: [{ identifier: 'instagram', maxLength: () => 2200 }, { identifier: 'threads', maxLength: () => 500 }],
 }));
 jest.mock('file-type', () => ({ fileTypeFromBuffer: jest.fn() }));
 import { IntegrationSchedulePostTool } from '../integration.schedule.post';
@@ -32,6 +32,13 @@ describe('criacao MCP completa de posts', () => {
     },
   };
   beforeEach(() => jest.clearAllMocks());
+  it('criacao do Threads usa bytes UTF8 sem perder o contrato novo', async () => {
+    integration.getIntegrationById.mockResolvedValueOnce({ id: 'i', profileId: 'perfil', providerIdentifier: 'threads' });
+    const tool: any = new IntegrationSchedulePostTool(posts as any, integration as any, management as any).run();
+    const result = await tool.execute({ socialPost: [{ integrationId: 'i', isPremium: false, date: '2026-11-01T15:00:00Z', shortLink: false, type: 'schedule', settings: [], postsAndComments: [{ content: 'á'.repeat(251), attachments: [] }] }] }, options);
+    expect(result.errors).toContain('POST_CONTENT_TOO_LONG_BYTES');
+    expect(posts.createPost).not.toHaveBeenCalled();
+  });
   it('expoe tags intervalo alt thumbnail e delay sem perder o formato anterior', async () => {
     const tool: any = new IntegrationSchedulePostTool(
       posts as any,

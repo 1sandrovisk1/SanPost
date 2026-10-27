@@ -23,7 +23,8 @@ import { isAllowedMediaPath, isRemoteMediaPath } from './media.path.guard';
 import { checkPublicHttpsUrl } from '../../../dtos/validators/is-public-https-url.validator';
 import { socialIntegrationList } from '../../../integrations/integration.manager';
 import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validation';
-import { weightedLength } from '@gitroom/helpers/utils/count.length';
+import { countLength, countLengthUnit } from '@gitroom/helpers/utils/count.length';
+import { coerceJsonSettingValue, stringKeysOf } from '../../../chat/tools/settings.value.coercion';
 
 function parse<T>(schema: z.ZodType<T>, raw: unknown): T {
   const result = schema.safeParse(raw);
@@ -209,6 +210,9 @@ export class PostManagementService {
     const root = old.rows[0];
     const oldSettings = object(root.settings);
     const settings = { ...oldSettings };
+    const provider = socialIntegrationList.find(p => p.identifier === root.integration.providerIdentifier);
+    if (!provider) postError('UNSUPPORTED_PROVIDER');
+    const stringKeys = stringKeysOf(provider.dto);
     const seen = new Set<string>();
     for (const field of patch.settings || []) {
       if (
@@ -219,11 +223,7 @@ export class PostManagementService {
       )
         postError('POST_SETTING_KEY_INVALID');
       seen.add(field.key);
-      try {
-        settings[field.key] = JSON.parse(field.value);
-      } catch {
-        settings[field.key] = field.value;
-      }
+      settings[field.key] = coerceJsonSettingValue(stringKeys, field.key, field.value);
     }
     for (const key of patch.removeSettingKeys || []) {
       if (
@@ -272,10 +272,6 @@ export class PostManagementService {
     } as CreatePostDto;
     const validated = await this.posts.mapTypeToPost(raw, scope.organizationId);
     const value = validated.posts[0];
-    const provider = socialIntegrationList.find(
-      (p) => p.identifier === root.integration.providerIdentifier
-    );
-    if (!provider) postError('UNSUPPORTED_PROVIDER');
     let verified = false;
     try {
       verified =
@@ -288,10 +284,9 @@ export class PostManagementService {
     }
     for (const message of value.value) {
       const text = stripHtmlValidation('normal', message.content, true);
-      const length =
-        provider.identifier === 'x' ? weightedLength(text) : text.length;
+      const length = countLength(provider.identifier, text);
       if (length > (provider.maxLength(verified) || 1000000))
-        postError('POST_CONTENT_TOO_LONG');
+        postError(countLengthUnit(provider.identifier) === 'bytes' ? 'POST_CONTENT_TOO_LONG_BYTES' : 'POST_CONTENT_TOO_LONG');
     }
     return {
       ...(patch.date ? { date: patch.date } : {}),

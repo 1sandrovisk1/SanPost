@@ -289,12 +289,71 @@ describe('PinterestProvider analytics', () => {
   it('limita analytics do pin aos ultimos 89 dias', async () => {
     const fetchMock = jest
       .spyOn(provider as any, 'analyticsFetch')
-      .mockResolvedValue(makeResponse({ all: { lifetime_metrics: {} } }));
+      .mockResolvedValue(makeResponse({ all: { summary_metrics: {} } }));
 
     await provider.postAnalytics('user-1', 'access-token', 'pin-1', 365);
 
     expect(String(fetchMock.mock.calls[0][0])).toContain(
       'start_date=2026-06-05'
     );
+  });
+});
+
+// Lote de providers out/2026 — portes dos PRs upstream #1851, #2179 e #2263.
+describe('PinterestProvider (lote out/2026)', () => {
+  let provider: PinterestProvider;
+
+  beforeEach(() => {
+    provider = new PinterestProvider();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('erro temporario do Pinterest vira retentativa', () => {
+    const result = provider.handleErrors('{{"code":1,"message":"Something went wrong on our end. Please try again."}}');
+    expect(result).toEqual({
+      type: 'retry',
+      value: expect.stringMatching(/temporary error/),
+    });
+  });
+
+  it('conta sem acesso ao board vira bad-body com orientacao', () => {
+    const result = provider.handleErrors('{{"code":403,"message":"You are not permitted to access that resource"}}');
+    expect(result).toEqual({
+      type: 'bad-body',
+      value: expect.stringMatching(/not permitted to post to this board/),
+    });
+  });
+
+  it('analytics do pin le summary_metrics (metricas de periodo), nao lifetime_metrics', async () => {
+    jest.spyOn(provider as any, 'analyticsFetch').mockResolvedValue(
+      makeResponse({
+        all: {
+          summary_metrics: { IMPRESSION: 10, PIN_CLICK: 2, OUTBOUND_CLICK: 1, SAVE: 3 },
+          lifetime_metrics: { TOTAL_COMMENTS: 9 },
+        },
+      })
+    );
+
+    const result = await provider.postAnalytics('user-1', 'access-token', 'pin-1', 30);
+
+    expect(result).toEqual([
+      { label: 'Impressions', percentageChange: 0, data: [{ total: '10', date: expect.any(String) }] },
+      { label: 'Pin Clicks', percentageChange: 0, data: [{ total: '2', date: expect.any(String) }] },
+      { label: 'Outbound Clicks', percentageChange: 0, data: [{ total: '1', date: expect.any(String) }] },
+      { label: 'Saves', percentageChange: 0, data: [{ total: '3', date: expect.any(String) }] },
+    ]);
+  });
+
+  it('sem summary_metrics devolve lista vazia (lifetime_metrics so traz comentarios/reacoes)', async () => {
+    jest.spyOn(provider as any, 'analyticsFetch').mockResolvedValue(
+      makeResponse({ all: { lifetime_metrics: { IMPRESSION: 10 } } })
+    );
+
+    await expect(
+      provider.postAnalytics('user-1', 'access-token', 'pin-1', 30)
+    ).resolves.toEqual([]);
   });
 });

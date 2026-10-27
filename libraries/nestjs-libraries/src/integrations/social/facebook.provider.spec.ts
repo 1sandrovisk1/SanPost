@@ -222,15 +222,17 @@ describe('FacebookProvider', () => {
       );
       global.fetch = fetchMock as any;
 
+      // id de feed tem o formato `{pageId}_{postId}`; id puro e video/reel e
+      // vai para video_insights (ver describe "lote out/2026")
       const result = await provider.postAnalytics(
         'integration-1',
         'TOK',
-        'post-1',
+        'page-1_post-1',
         7
       );
 
       const url = String(fetchMock.mock.calls[0][0]);
-      expect(url).toContain('graph.facebook.com/v25.0/post-1/insights');
+      expect(url).toContain('graph.facebook.com/v25.0/page-1_post-1/insights');
       expect(url).toContain('post_total_media_view_unique');
       expect(url).not.toContain('post_impressions_unique');
       expect(result[0]).toMatchObject({
@@ -464,6 +466,160 @@ describe('FacebookProvider', () => {
       expect(photoStoriesCalls).toHaveLength(2);
       // retorna o ultimo post_id publicado
       expect(res[0].postId).toBe('2');
+    });
+  });
+});
+
+// Lote de providers out/2026 — portes dos PRs upstream #1669, #1881, #1892,
+// #2098, #2115, #2127, #2144, #2155, #2167 e #2265.
+describe('FacebookProvider (lote out/2026)', () => {
+  let provider: FacebookProvider;
+  let originalFetch: typeof fetch;
+
+  beforeEach(() => {
+    provider = new FacebookProvider();
+    originalFetch = global.fetch;
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    jest.resetAllMocks();
+  });
+
+  describe('handleErrors', () => {
+    it.each([
+      ['{"error":{"code":190,"error_subcode":459}}', 'refresh-token', /security check/],
+      ['{"error":{"code":190,"error_subcode":492}}', 'bad-body', /no longer has a role/],
+      ['permission must be granted before impersonating', 'refresh-token', /reconnect the channel/],
+      ['{"error":{"code":100,"error_subcode":33,"message":"Object does not exist"}}', 'bad-body', /no longer exists/],
+      ['Sorry, something went wrong', 'retry', /temporarily unavailable/],
+      ['Unpublished posts must be posted to a page as the page itself', 'refresh-token', /not authorized to publish as this page/],
+      ['(#200) Requires pages_manage_posts', 'bad-body', /missing permissions/],
+      ['{"error":{"code":368,"error_subcode":1390008}}', 'retry', /posting too fast/],
+      // precedencia: o bloco novo vence os genericos "Error validating access token" e indexOf('490')
+      ['{"error":{"message":"Error validating access token: You cannot access the app till you log in to www.facebook.com and follow the instructions given.","code":190,"error_subcode":459,"fbtrace_id":"A490x"}}', 'refresh-token', /security check/],
+      ['{"error":{"message":"Error validating access token: The user is not a Page admin.","code":190,"error_subcode":492,"fbtrace_id":"A490x"}}', 'bad-body', /no longer has a role/],
+      ['{"error":{"message":"(#100) Object does not exist","code":100,"error_subcode":33,"fbtrace_id":"AbC490"}}', 'bad-body', /no longer exists/],
+      // catch-alls por ultimo: o subcode especifico vence o (#200) generico
+      ['{"error":{"message":"(#200) Publishing posts requires Page Publishing Authorization","code":200,"error_subcode":1404078}}', 'refresh-token', /Page publishing authorization required/],
+    ])('mapeia %s como %s', (body, type, message) => {
+      const result = provider.handleErrors(body, 400);
+      expect(result?.type).toBe(type);
+      expect(result?.value).toMatch(message);
+    });
+  });
+
+  describe('analytics', () => {
+    it('lanca quando o Graph devolve error (nao cacheia resultado vazio)', async () => {
+      global.fetch = jest.fn().mockResolvedValue(
+        makeRes({ error: { message: '(#100) Invalid metric' } })
+      ) as any;
+
+      await expect(provider.analytics('page-1', 'TOK', 7)).rejects.toThrow(
+        /Invalid metric/
+      );
+    });
+  });
+
+  describe('postAnalytics', () => {
+    it('id sem "_" (video/reel) consulta video_insights sem total_video_impressions', async () => {
+      const fetchMock = jest.fn().mockResolvedValue(
+        makeRes({
+          data: [
+            { name: 'total_video_views', values: [{ value: 12 }] },
+            { name: 'fb_reels_total_plays', values: [{ value: 30 }] },
+            { name: 'post_video_likes_by_reaction_type', values: [{ value: { like: 2, love: 1 } }] },
+            { name: 'post_video_social_actions', values: [{ value: { comment: 4, share: 1 } }] },
+          ],
+        })
+      );
+      global.fetch = fetchMock as any;
+
+      const result = await provider.postAnalytics('int-1', 'TOK', '123456789', 7);
+
+      const url = String(fetchMock.mock.calls[0][0]);
+      expect(url).toContain('/123456789/video_insights?metric=');
+      expect(url).not.toContain('total_video_impressions');
+      expect(url).toContain('fb_reels_total_plays');
+      expect(result.map((r) => [r.label, r.data[0].total])).toEqual([
+        ['Views', '12'],
+        ['Plays', '30'],
+        ['Reactions', '3'],
+        ['Engagement', '5'],
+      ]);
+    });
+
+    it('id com "_" (feed) continua em /insights', async () => {
+      const fetchMock = jest.fn().mockResolvedValue(makeRes({ data: [] }));
+      global.fetch = fetchMock as any;
+
+      await provider.postAnalytics('int-1', 'TOK', 'page_post', 7);
+
+      expect(String(fetchMock.mock.calls[0][0])).toContain('/page_post/insights?');
+    });
+
+    it('video_insights inexistente (story) devolve vazio em silencio', async () => {
+      global.fetch = jest.fn().mockResolvedValue(
+        makeRes({ error: { message: '(#100) Tried accessing nonexisting field (video_insights)' } }, 400)
+      ) as any;
+
+      await expect(provider.postAnalytics('int-1', 'TOK', '999', 7)).resolves.toEqual([]);
+    });
+  });
+
+  describe('fetchPageInformation', () => {
+    it('pagina listada sem page token (sem papel no negocio) gera erro explicito', async () => {
+      global.fetch = jest.fn().mockImplementation((url: string) => {
+        if (url.includes('/me/accounts'))
+          return makeRes({ data: [{ id: 'page-1', name: 'Pagina', username: 'p' }] });
+        if (url.includes('/me/businesses')) return makeRes({ data: [] });
+        return makeRes({});
+      }) as any;
+
+      await expect(
+        provider.fetchPageInformation('TOK', { page: 'page-1' })
+      ).rejects.toThrow(/no permission to manage this page/);
+    });
+  });
+
+  describe('fetchPageInformation (token encontrado via Business Manager)', () => {
+    it('pagina sem token em /me/accounts mas com token em owned_pages resolve normalmente', async () => {
+      global.fetch = jest.fn().mockImplementation((url: string) => {
+        if (url.includes('/me/accounts'))
+          return makeRes({ data: [{ id: 'page-1', name: 'Pagina', username: 'p' }] });
+        if (url.includes('/me/businesses')) return makeRes({ data: [{ id: 'biz-1' }] });
+        if (url.includes('/biz-1/owned_pages'))
+          return makeRes({
+            data: [{ id: 'page-1', name: 'Pagina', username: 'p', access_token: 'PAGE-TOKEN' }],
+          });
+        return makeRes({ data: [] });
+      }) as any;
+
+      await expect(
+        provider.fetchPageInformation('TOK', { page: 'page-1' })
+      ).resolves.toMatchObject({ id: 'page-1', access_token: 'PAGE-TOKEN' });
+    });
+  });
+
+  describe('post (video com titulo)', () => {
+    it('envia title no upload de video quando informado nas settings', async () => {
+      const fetchMock = jest.fn().mockImplementation((url: string) => {
+        if (url.includes('/videos')) return makeRes({ id: 'vid-1', permalink_url: 'x' });
+        return makeRes({});
+      });
+      global.fetch = fetchMock as any;
+
+      await provider.post(
+        'page-1',
+        'TOK',
+        buildPost({
+          media: [{ path: 'https://cdn/v.mp4' }],
+          settings: { title: 'Meu vídeo' },
+        })
+      );
+
+      const call = fetchMock.mock.calls.find((c: any[]) => String(c[0]).includes('/videos'))!;
+      expect(JSON.parse(call[1].body)).toMatchObject({ title: 'Meu vídeo' });
     });
   });
 });

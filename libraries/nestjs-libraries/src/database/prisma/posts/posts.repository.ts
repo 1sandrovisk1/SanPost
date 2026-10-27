@@ -106,7 +106,7 @@ export class PostsRepository {
     });
   }
 
-  getOldPosts(orgId: string, date: string) {
+  getOldPosts(orgId: string, date: string, profileId?: string | null) {
     return this._post.model.post.findMany({
       where: {
         integration: {
@@ -115,6 +115,8 @@ export class PostsRepository {
           disabled: false,
         },
         organizationId: orgId,
+        // membro USER: so posts do proprio perfil (undefined = admin)
+        ...(profileId !== undefined ? { profileId } : {}),
         publishDate: {
           lte: dayjs(date).toDate(),
         },
@@ -441,11 +443,36 @@ export class PostsRepository {
     });
   }
 
+  // Troca o publish id guardado pelo id publico definitivo (e a URL) quando a
+  // plataforma o expoe depois da publicacao (ver PostsService.resolveRelease).
+  // `previousReleaseId` no where: uma resolucao antiga nao sobrescreve uma
+  // republicacao concorrente (que troca o releaseId); sem match, o Prisma
+  // lanca P2025 e o chamador descarta a resolucao.
+  updateResolvedRelease(
+    id: string,
+    orgId: string,
+    previousReleaseId: string,
+    releaseId: string,
+    releaseURL: string
+  ) {
+    return this._post.model.post.update({
+      where: {
+        id,
+        organizationId: orgId,
+        releaseId: previousReleaseId,
+      },
+      data: {
+        releaseId,
+        releaseURL,
+      },
+    });
+  }
+
   updateReleaseId(id: string, orgId: string, releaseId: string) {
     if (this.transaction) return this.transaction.model.$transaction(async tx => {
       const post = await tx.post.update({ where: { id, organizationId: orgId, releaseId: 'missing' }, data: { releaseId: String(releaseId) } });
       if (releaseId && releaseId !== 'missing') await tx.scheduledAutomationTarget.updateMany({ where: { postId: id, integrationId: post.integrationId, publishedReleaseId: null, flow: { organizationId: post.organizationId, profileId: post.profileId } }, data: { publishedReleaseId: String(releaseId) } });
-      return post;
+      return { id: post.id };
     });
     return this._post.model.post.update({
       where: {
@@ -456,6 +483,8 @@ export class PostsRepository {
       data: {
         releaseId: String(releaseId),
       },
+      // a resposta vai para a API publica/dashboard: nunca a linha inteira
+      select: { id: true },
     });
   }
 
@@ -676,11 +705,14 @@ export class PostsRepository {
       }
     }
 
+    // group vem do cliente: sem organizationId aqui, um usuario de outra org
+    // (ou perfil) que soubesse o id do grupo apagava o grupo alheio
     const previousPost = body.group
       ? (
           await this._post.model.post.findFirst({
             where: {
               group: body.group,
+              organizationId: orgId,
               deletedAt: null,
               parentPostId: null,
             },
@@ -695,6 +727,7 @@ export class PostsRepository {
       await this._post.model.post.updateMany({
         where: {
           group: body.group,
+          organizationId: orgId,
           deletedAt: null,
         },
         data: {

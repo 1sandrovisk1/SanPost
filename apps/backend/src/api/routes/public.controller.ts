@@ -85,9 +85,18 @@ export class PublicController {
 
   @Get(`/posts/:id`)
   async getPreview(@Param('id') id: string) {
+    // pagina sem auth: so campos de exibicao — nunca error (excecao crua do
+    // provider), group (alvo de troca de grupo), organizationId, profileId,
+    // settings ou childrenPost (mesma classe da CVE-2026-107761)
     return (await this._postsService.getPostsRecursively(id, true)).map(
-      ({ childrenPost, ...p }) => ({
-        ...p,
+      (p) => ({
+        id: p.id,
+        content: p.content,
+        image: p.image,
+        publishDate: p.publishDate,
+        state: p.state,
+        delay: p.delay,
+        releaseURL: p.releaseURL,
         ...(p.integration
           ? {
               integration: {

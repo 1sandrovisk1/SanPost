@@ -1,4 +1,16 @@
+jest.mock('@gitroom/nestjs-libraries/dtos/webhooks/webhook.url.validator', () => ({
+  ...jest.requireActual(
+    '@gitroom/nestjs-libraries/dtos/webhooks/webhook.url.validator'
+  ),
+  isSafePublicHttpsUrl: jest.fn(async () => true),
+}));
+
 import { AiImageService } from './ai-image.service';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { isSafePublicHttpsUrl } from '@gitroom/nestjs-libraries/dtos/webhooks/webhook.url.validator';
+import { ssrfSafeDispatcher } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
 import { AiProviderResolverService } from './ai-provider-resolver.service';
 import { createMock } from '@gitroom/nestjs-libraries/test';
 import { MockProxy } from 'jest-mock-extended';
@@ -355,6 +367,140 @@ describe('AiImageService', () => {
 
       expect(result.base64).toBe('EDITED');
       expect(result.provider).toBe('openai');
+    });
+
+    it('OpenAI I2I baixa a referencia pelo dispatcher pinado', async () => {
+      resolver.resolve.mockResolvedValue(
+        credentialFor({ provider: 'openai', model: 'gpt-image-2' }) as any
+      );
+      const fetchSpy = jest.fn(async (url: string) =>
+        url === 'https://api.openai.com/v1/images/edits'
+          ? new Response(JSON.stringify({ data: [{ b64_json: 'OK' }] }), { status: 200 })
+          : new Response(new Uint8Array([137, 80, 78, 71]), {
+              status: 200,
+              headers: { 'Content-Type': 'image/png' },
+            })
+      );
+      globalThis.fetch = fetchSpy as any;
+
+      await service.generate('org-1', 'x', undefined, {
+        mode: 'I2I',
+        referenceImageUrl: 'https://example.com/ref.png',
+      });
+
+      expect((fetchSpy.mock.calls[0] as any)[1].dispatcher).toBe(ssrfSafeDispatcher);
+    });
+
+    it('OpenAI I2I recusa referencia que nao e URL https publica (400, sem download)', async () => {
+      resolver.resolve.mockResolvedValue(
+        credentialFor({ provider: 'openai', model: 'gpt-image-2' }) as any
+      );
+      (isSafePublicHttpsUrl as jest.Mock).mockResolvedValueOnce(false);
+      const fetchSpy = jest.fn();
+      globalThis.fetch = fetchSpy as any;
+
+      await expect(
+        service.generate('org-1', 'x', undefined, {
+          mode: 'I2I',
+          referenceImageUrl: 'https://169.254.169.254/latest/meta-data',
+        })
+      ).rejects.toMatchObject({ status: 400 });
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it('OpenAI I2I recusa referencia acima de 25 MB sem ecoar a URL', async () => {
+      resolver.resolve.mockResolvedValue(
+        credentialFor({ provider: 'openai', model: 'gpt-image-2' }) as any
+      );
+      globalThis.fetch = jest.fn(async () =>
+        new Response(new Uint8Array(1), {
+          status: 200,
+          headers: { 'content-length': String(30 * 1024 * 1024) },
+        })
+      ) as any;
+
+      const error = await service
+        .generate('org-1', 'x', undefined, {
+          mode: 'I2I',
+          referenceImageUrl: 'https://example.com/huge.png?token=SECRET',
+        })
+        .catch((e) => e);
+
+      expect(error).toMatchObject({ status: 400 });
+      expect(JSON.stringify(error.getResponse())).not.toMatch(/SECRET|example\.com/);
+    });
+
+    describe('referencia hospedada no proprio storage local', () => {
+      const env = { ...process.env };
+      let uploadDir: string;
+
+      beforeEach(() => {
+        uploadDir = mkdtempSync(join(tmpdir(), 'ref-'));
+        mkdirSync(join(uploadDir, '2026/10/27'), { recursive: true });
+        writeFileSync(join(uploadDir, '2026/10/27/ref.png'), Buffer.from([137, 80, 78, 71]));
+        process.env.UPLOAD_DIRECTORY = uploadDir;
+        process.env.FRONTEND_URL = 'http://localhost:4200';
+        delete process.env.STORAGE_PROVIDER;
+        resolver.resolve.mockResolvedValue(
+          credentialFor({ provider: 'openai', model: 'gpt-image-2' }) as any
+        );
+      });
+
+      afterEach(() => {
+        rmSync(uploadDir, { recursive: true, force: true });
+        process.env = { ...env };
+      });
+
+      it('le do disco sem rede (instancia em http/LAN continua funcionando)', async () => {
+        const fetchSpy = jest.fn(async () =>
+          new Response(JSON.stringify({ data: [{ b64_json: 'OK' }] }), { status: 200 })
+        );
+        globalThis.fetch = fetchSpy as any;
+
+        await service.generate('org-1', 'x', undefined, {
+          mode: 'I2I',
+          referenceImageUrl: 'http://localhost:4200/uploads/2026/10/27/ref.png',
+        });
+
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+        expect((fetchSpy.mock.calls[0] as any)[0]).toBe('https://api.openai.com/v1/images/edits');
+        const image = ((fetchSpy.mock.calls[0] as any)[1].body as FormData).get('image') as File;
+        expect(image.type).toBe('image/png');
+        expect(image.name).toBe('ref.png');
+      });
+
+      it('caminho fora do diretorio de uploads nao e lido do disco', async () => {
+        const fetchSpy = jest.fn();
+        globalThis.fetch = fetchSpy as any;
+
+        await expect(
+          service.generate('org-1', 'x', undefined, {
+            mode: 'I2I',
+            referenceImageUrl: 'http://localhost:4200/uploads/..%2F..%2Fetc/passwd',
+          })
+        ).rejects.toMatchObject({ status: 400 });
+        expect(fetchSpy).not.toHaveBeenCalled();
+      });
+    });
+
+    it('nome do arquivo enviado a OpenAI nao leva a query da URL', async () => {
+      resolver.resolve.mockResolvedValue(
+        credentialFor({ provider: 'openai', model: 'gpt-image-2' }) as any
+      );
+      const fetchSpy = jest.fn(async (url: string) =>
+        url === 'https://api.openai.com/v1/images/edits'
+          ? new Response(JSON.stringify({ data: [{ b64_json: 'OK' }] }), { status: 200 })
+          : new Response(new Uint8Array([1]), { status: 200, headers: { 'Content-Type': 'image/png' } })
+      );
+      globalThis.fetch = fetchSpy as any;
+
+      await service.generate('org-1', 'x', undefined, {
+        mode: 'I2I',
+        referenceImageUrl: 'https://cdn.example.com/a/ref.png?token=SECRET',
+      });
+
+      const image = ((fetchSpy.mock.calls[1] as any)[1].body as FormData).get('image') as File;
+      expect(image.name).toBe('ref.png');
     });
 
     it('OpenAI I2I deve lancar 502 quando download da reference falha', async () => {

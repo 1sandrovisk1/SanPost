@@ -22,6 +22,17 @@ export default withProvider({
   SettingsComponent: SlackComponent,
   CustomPreviewComponent: undefined,
   dto: SlackDto,
-  checkValidity: undefined,
+  // Midia vai como image blocks (png/jpg/gif); um mp4 faz o chat.postMessage
+  // rejeitar a mensagem inteira (upstream #2118) — validado no compositor.
+  checkValidity: async (items, _settings, _additionalSettings, t) => {
+    const fallback = 'No video support for Slack, only images';
+    const hasVideo = items?.some((post) =>
+      post?.some((item) => (item?.path?.indexOf?.('mp4') ?? -1) > -1)
+    );
+    if (hasVideo) {
+      return t?.('slack_no_video_support', fallback) ?? fallback;
+    }
+    return true;
+  },
   maximumCharacters: 400000,
 });

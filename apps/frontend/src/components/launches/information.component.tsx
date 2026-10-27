@@ -1,6 +1,6 @@
 'use client';
 
-import React, { FC, Fragment, useMemo } from 'react';
+import React, { FC, Fragment, useCallback, useMemo } from 'react';
 import { useLaunchStore } from '@gitroom/frontend/components/new-launch/store';
 import { useShallow } from 'zustand/react/shallow';
 import clsx from 'clsx';
@@ -8,6 +8,7 @@ import SafeImage from '@gitroom/react/helpers/safe.image';
 import { getPlatformIconPath } from '@gitroom/frontend/components/launches/helpers/platform-icon.helper';
 import { capitalize } from 'lodash';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
+import { countLength } from '@gitroom/helpers/utils/count.length';
 
 const Valid: FC = () => {
   return (
@@ -60,15 +61,35 @@ export const InformationComponent: FC<{
   totalChars: number;
   totalAllowedChars: number;
   isPicture: boolean;
-}> = ({ totalChars, totalAllowedChars, chars, isPicture }) => {
+  // Texto sem HTML: quando informado, cada rede conta do seu jeito (X pesa
+  // pelo twitter-text, Threads em bytes UTF-8). Sem ele, vale `totalChars`.
+  text?: string;
+}> = ({ totalChars, totalAllowedChars, chars, isPicture, text }) => {
   const t = useT();
-  const { isGlobal, selectedIntegrations, internal } = useLaunchStore(
+  const { isGlobal, current, selectedIntegrations, internal } = useLaunchStore(
     useShallow((state) => ({
       isGlobal: state.current === 'global',
+      current: state.current,
       selectedIntegrations: state.selectedIntegrations,
       internal: state.internal,
     }))
   );
+
+  const countFor = useCallback(
+    (identifier?: string) =>
+      text === undefined ? totalChars : countLength(identifier || '', text),
+    [text, totalChars]
+  );
+
+  const currentChars = useMemo(() => {
+    if (isGlobal) {
+      return totalChars;
+    }
+    const currentIntegration = selectedIntegrations.find(
+      (p) => p.integration.id === current
+    );
+    return countFor(currentIntegration?.integration.identifier);
+  }, [isGlobal, selectedIntegrations, current, countFor, totalChars]);
 
   const isInternal = useMemo(() => {
     if (!isGlobal) {
@@ -88,11 +109,11 @@ export const InformationComponent: FC<{
       return false;
     }
 
-    if (totalChars > totalAllowedChars && !isGlobal) {
+    if (currentChars > totalAllowedChars && !isGlobal) {
       return false;
     }
 
-    if (totalChars <= totalAllowedChars && !isGlobal) {
+    if (currentChars <= totalAllowedChars && !isGlobal) {
       return true;
     }
 
@@ -102,14 +123,27 @@ export const InformationComponent: FC<{
           return false;
         }
 
-        return totalChars > (chars?.[p.integration.id] || 0);
+        return (
+          countFor(p.integration.identifier) >
+          (chars?.[p.integration.id] || 0)
+        );
       })
     ) {
       return false;
     }
 
     return true;
-  }, [totalAllowedChars, totalChars, isInternal, isPicture, chars]);
+  }, [
+    totalAllowedChars,
+    totalChars,
+    currentChars,
+    countFor,
+    isInternal,
+    isPicture,
+    chars,
+    selectedIntegrations,
+    isGlobal,
+  ]);
 
   const globalDisplayLimit = useMemo(() => {
     if (!isGlobal || !selectedIntegrations.length) {
@@ -120,11 +154,11 @@ export const InformationComponent: FC<{
     const limits = selectedIntegrations
       .map((p, index) => ({
         limit: chars?.[p.integration.id] || 0,
+        count: countFor(p.integration.identifier),
         isInternal: isInternal[index],
       }))
       .filter((item) => !item.isInternal && item.limit > 0)
-      .map((item) => item.limit)
-      .sort((a, b) => a - b);
+      .sort((a, b) => a.limit - b.limit);
 
     if (!limits.length) {
       return null;
@@ -132,9 +166,9 @@ export const InformationComponent: FC<{
 
     // Find the smallest limit that hasn't been exceeded yet
     // If all are exceeded, show the smallest one
-    const validLimit = limits.find((limit) => totalChars <= limit);
+    const validLimit = limits.find((item) => item.count <= item.limit);
     return validLimit ?? limits[0];
-  }, [isGlobal, selectedIntegrations, chars, isInternal, totalChars]);
+  }, [isGlobal, selectedIntegrations, chars, isInternal, countFor]);
 
   return (
     <div
@@ -147,12 +181,12 @@ export const InformationComponent: FC<{
 
       {!isGlobal && (
         <div className={clsx("text-[10px] font-[600] flex justify-center items-center", !isValid && 'text-white')}>
-          {totalChars}/{totalAllowedChars}
+          {currentChars}/{totalAllowedChars}
         </div>
       )}
       {isGlobal && globalDisplayLimit !== null && (
         <div className={clsx("text-[10px] font-[600] flex justify-center items-center", !isValid && 'text-white')}>
-          {totalChars}/{globalDisplayLimit}
+          {globalDisplayLimit.count}/{globalDisplayLimit.limit}
         </div>
       )}
       {((isGlobal && selectedIntegrations.length) || !isValid) && (
@@ -205,7 +239,8 @@ export const InformationComponent: FC<{
                       'whitespace-nowrap',
                       isInternal?.[index]
                         ? ''
-                        : totalChars > (chars?.[p.integration.id] || 0)
+                        : countFor(p.integration.identifier) >
+                          (chars?.[p.integration.id] || 0)
                         ? 'text-[#FF3F3F]'
                         : ''
                     )}
@@ -218,14 +253,17 @@ export const InformationComponent: FC<{
                       'whitespace-nowrap',
                       isInternal?.[index]
                         ? ''
-                        : totalChars > (chars?.[p.integration.id] || 0)
+                        : countFor(p.integration.identifier) >
+                          (chars?.[p.integration.id] || 0)
                         ? 'text-[#FF3F3F]'
                         : ''
                     )}
                   >
                     {isInternal?.[index]
                       ? t('internal_edit', 'Internal Edit')
-                      : `${totalChars}/${chars?.[p.integration.id] || 0}`}
+                      : `${countFor(p.integration.identifier)}/${
+                          chars?.[p.integration.id] || 0
+                        }`}
                   </div>
                 </Fragment>
               ))}

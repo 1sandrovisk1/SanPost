@@ -6,7 +6,9 @@ import {
   Param,
   Post,
   Delete,
+  Logger,
 } from '@nestjs/common';
+import { summarizeError } from '@gitroom/nestjs-libraries/services/error.summary';
 import { ApiTags } from '@nestjs/swagger';
 import { ThirdPartyManager } from '@gitroom/nestjs-libraries/3rdparties/thirdparty.manager';
 import { isThirdPartyFunctionCallable } from '@gitroom/nestjs-libraries/3rdparties/thirdparty.interface';
@@ -209,7 +211,10 @@ export class ThirdPartyController {
         id: save.id,
       };
     } catch (e) {
-      console.log(e);
+      Logger.warn(
+        `third-party integration save failed: ${summarizeError(e)}`,
+        'ThirdPartyController'
+      );
       throw new HttpException('Integration Already Exists', 400);
     }
   }

@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import {
   AuthTokenDetails,
   PostDetails,
@@ -6,7 +7,10 @@ import {
 } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
 import { makeSecureId } from '@gitroom/nestjs-libraries/services/make.secure.id';
 import dayjs from 'dayjs';
-import { SocialAbstract } from '@gitroom/nestjs-libraries/integrations/social.abstract';
+import {
+  BadBody,
+  SocialAbstract,
+} from '@gitroom/nestjs-libraries/integrations/social.abstract';
 import { getPublicKey, Relay, finalizeEvent, SimplePool } from 'nostr-tools';
 
 import WebSocket from 'ws';
@@ -137,11 +141,7 @@ export class NostrProvider extends SocialAbstract implements SocialProvider {
     try {
       const body = JSON.parse(Buffer.from(params.code, 'base64').toString());
 
-      const pubkey = getPublicKey(
-        Uint8Array.from(
-          body.password.match(/.{1,2}/g).map((byte: any) => parseInt(byte, 16))
-        )
-      );
+      const pubkey = getPublicKey(this.secretKey(body.password));
 
       const user = await this.findRelayInformation(pubkey);
 
@@ -155,7 +155,11 @@ export class NostrProvider extends SocialAbstract implements SocialProvider {
         username: user.name || 'nousername',
       };
     } catch (e) {
-      console.log(e);
+      // so o nome: a mensagem de JSON.parse ecoa trecho da entrada (a chave)
+      Logger.warn(
+        `authenticate failed: ${(e as Error)?.name || 'Error'}`,
+        'NostrProvider'
+      );
       return 'Invalid credentials';
     }
   }
@@ -165,6 +169,24 @@ export class NostrProvider extends SocialAbstract implements SocialProvider {
     return mediaContent
       ? `${post.message}\n\n${mediaContent}`
       : post.message;
+  }
+
+  // A chave privada e guardada em hex; finalizeEvent exige os bytes
+  // (upstream #2141: a string era passada direto e a assinatura falhava).
+  private secretKey(password: string): Uint8Array {
+    // parseInt tolerante faria "nsec1..." virar 32 bytes de lixo e a conexao
+    // "dar certo" com uma pubkey falsa
+    if (!/^[0-9a-f]{64}$/i.test(password || '')) {
+      throw new BadBody(
+        this.identifier,
+        '{}',
+        '{}',
+        'Invalid Nostr secret key: expected 64 hexadecimal characters'
+      );
+    }
+    return Uint8Array.from(
+      (password.match(/.{1,2}/g) || []).map((byte: string) => parseInt(byte, 16))
+    );
   }
 
   async post(
@@ -182,7 +204,7 @@ export class NostrProvider extends SocialAbstract implements SocialProvider {
         tags: [],
         created_at: Math.floor(Date.now() / 1000),
       },
-      password
+      this.secretKey(password)
     );
 
     const eventId = await this.publish(id, textEvent);
@@ -219,7 +241,7 @@ export class NostrProvider extends SocialAbstract implements SocialProvider {
         ],
         created_at: Math.floor(Date.now() / 1000),
       },
-      password
+      this.secretKey(password)
     );
 
     const eventId = await this.publish(id, textEvent);

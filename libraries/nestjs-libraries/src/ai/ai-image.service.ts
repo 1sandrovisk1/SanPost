@@ -1,6 +1,25 @@
 import { HttpException, Injectable, Logger } from '@nestjs/common';
 import { AiProviderResolverService } from './ai-provider-resolver.service';
 import { ImageOptions } from './ai-credential.schemas';
+import {
+  fetchPublicUrl,
+  PublicUrlFetchError,
+} from '@gitroom/nestjs-libraries/upload/public-url.fetch';
+import {
+  extractUploadPathSegments,
+  resolveSafeUploadFile,
+} from '@gitroom/nestjs-libraries/upload/safe.upload.path';
+import { readFile, stat } from 'fs/promises';
+import { basename, extname } from 'path';
+
+const MAX_REFERENCE_IMAGE_BYTES = 25 * 1024 * 1024;
+const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+};
 
 const OPENAI_IMAGE_GEN_URL = 'https://api.openai.com/v1/images/generations';
 const OPENAI_IMAGE_EDIT_URL = 'https://api.openai.com/v1/images/edits';
@@ -232,6 +251,90 @@ export class AiImageService {
     return b64;
   }
 
+  // Midia do proprio storage local (`FRONTEND_URL/uploads/...`) e lida do
+  // disco com o confinamento de `resolveSafeUploadFile`: instancias em http ou
+  // em rede privada (dev, LAN) continuam usando a biblioteca de midia. Qualquer
+  // outra URL passa por `fetchPublicUrl`.
+  private async loadReferenceImage(
+    url: string
+  ): Promise<{ buffer: Buffer; contentType: string }> {
+    const localFile = this.ownUploadFile(url);
+    if (localFile) {
+      if ((await stat(localFile)).size > MAX_REFERENCE_IMAGE_BYTES) {
+        throw new PublicUrlFetchError('too-large', 'Reference image too large');
+      }
+      return {
+        buffer: await readFile(localFile),
+        contentType:
+          IMAGE_MIME_BY_EXTENSION[extname(localFile).toLowerCase()] ??
+          'application/octet-stream',
+      };
+    }
+
+    return fetchPublicUrl(url, { maxBytes: MAX_REFERENCE_IMAGE_BYTES });
+  }
+
+  private ownUploadFile(url: string): string | null {
+    const frontendUrl = process.env.FRONTEND_URL;
+    const uploadDirectory = process.env.UPLOAD_DIRECTORY;
+    if (
+      (process.env.STORAGE_PROVIDER || 'local') !== 'local' ||
+      !frontendUrl ||
+      !uploadDirectory
+    ) {
+      return null;
+    }
+
+    try {
+      if (new URL(url).origin !== new URL(frontendUrl).origin) {
+        return null;
+      }
+    } catch {
+      return null;
+    }
+
+    const segments = extractUploadPathSegments(url);
+    if (!segments.length) {
+      return null;
+    }
+    const file = resolveSafeUploadFile(uploadDirectory, segments);
+    return file && IMAGE_MIME_BY_EXTENSION[extname(basename(file)).toLowerCase()]
+      ? file
+      : null;
+  }
+
+  private referenceImageError(err: unknown, url: string): HttpException {
+    const reason = err instanceof PublicUrlFetchError ? err.reason : 'network';
+    const status =
+      err instanceof PublicUrlFetchError && err.status ? ` status=${err.status}` : '';
+    let host = 'invalid-url';
+    try {
+      host = new URL(url).host;
+    } catch {
+      // mantem invalid-url
+    }
+    this._logger.warn(
+      `Falha ao baixar reference image (host=${host} reason=${reason}${status})`
+    );
+
+    if (reason === 'unsafe') {
+      return new HttpException(
+        'A imagem de referencia precisa ser uma URL HTTPS publica.',
+        400
+      );
+    }
+    if (reason === 'too-large') {
+      return new HttpException(
+        'A imagem de referencia excede o limite de 25 MB.',
+        400
+      );
+    }
+    return new HttpException(
+      'Nao foi possivel baixar a imagem de referencia.',
+      502
+    );
+  }
+
   /**
    * I2I via OpenAI `/v1/images/edits`. Baixa a imagem de referencia,
    * monta multipart/form-data com `image`, `prompt`, `size`, `model`
@@ -248,31 +351,18 @@ export class AiImageService {
   ): Promise<string> {
     // 1. Baixa a imagem de referencia. /v1/images/edits exige PNG/WebP;
     //    o usuario e responsavel por fornecer URL com formato compativel.
-    let refRes: Response;
+    //    A URL vem do usuario: HTTPS publica, dispatcher pinado e limite de
+    //    bytes (`fetchPublicUrl`); o erro devolvido nao ecoa URL nem status.
+    let reference: { buffer: Buffer; contentType: string };
     try {
-      refRes = await fetch(referenceImageUrl);
+      reference = await this.loadReferenceImage(referenceImageUrl);
     } catch (err) {
-      this._logger.error(
-        `Falha de rede ao baixar reference image (${referenceImageUrl}): ${(err as Error).message}`
-      );
-      throw new HttpException(
-        `Nao foi possivel baixar a imagem de referencia (rede): ${(err as Error).message}`,
-        502
-      );
+      throw this.referenceImageError(err, referenceImageUrl);
     }
-    if (!refRes.ok) {
-      this._logger.warn(
-        `Falha ao baixar reference image (${referenceImageUrl}): HTTP ${refRes.status}`
-      );
-      throw new HttpException(
-        `Nao foi possivel baixar a imagem de referencia (HTTP ${refRes.status}).`,
-        502
-      );
-    }
-    const buffer = Buffer.from(await refRes.arrayBuffer());
-    const contentType =
-      refRes.headers.get('content-type') ?? 'application/octet-stream';
-    const filename = referenceImageUrl.split('/').pop() ?? 'reference.png';
+    const { buffer, contentType } = reference;
+    // so o nome do arquivo: a query (ex.: token de URL assinada) nao vai a OpenAI
+    const filename =
+      referenceImageUrl.split(/[?#]/)[0].split('/').pop() || 'reference.png';
 
     // 2. Monta o FormData. NOTA: /v1/images/edits NAO aceita o parametro
     //    `quality` (so /generations aceita) — enviar retorna 400

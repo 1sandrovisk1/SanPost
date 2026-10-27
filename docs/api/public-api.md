@@ -12,7 +12,7 @@ Header **`Authorization`** com a chave de API (valor **cru, sem `Bearer`**). Peg
 Authorization: SUA_CHAVE_DE_API
 ```
 
-`401` chave ausente/inválida · `403` chave de perfil tentando outro perfil.
+`401` chave ausente/inválida · `403` chave de perfil tentando outro perfil (canal de outro perfil nas rotas por id também responde 403; canal inexistente, 404).
 
 ## Swagger interativo
 
@@ -26,6 +26,7 @@ Authorization: SUA_CHAVE_DE_API
 |---|---|---|
 | `GET` | `/public/v1/profiles` | Listar perfis (id, name, isDefault) |
 | `GET` | `/public/v1/integrations` | Listar canais conectados (use `id` como `integrationId`) |
+| `GET` | `/public/v1/social/:integration` | URL de OAuth para conectar um canal; com chave de perfil, o canal conectado nasce no perfil da chave (canais sem perfil criados antes continuam sem perfil; reconectar um deles por chave de perfil em provider de duas etapas pode responder 409) |
 | `GET` | `/public/v1/find-slot/:id` | Próximo horário livre para agendar |
 | `POST` | `/public/v1/upload` | Upload de arquivo (multipart, campo `file`) |
 | `POST` | `/public/v1/upload-from-url` | Upload de mídia a partir de uma URL |
@@ -36,6 +37,11 @@ Authorization: SUA_CHAVE_DE_API
 | `GET` | `/public/v1/analytics/post/:postId` | Analytics de um post |
 | `POST` | `/public/v1/generate-video` | Gerar vídeo (IA) |
 | `GET` | `/public/v1/notifications` | Listar notificações |
+| `DELETE` | `/public/v1/integrations/:id` | Excluir um canal e seus posts (chave de perfil: só canais do próprio perfil) |
+| `GET` | `/public/v1/integration-settings/:id` | Configurações/validação de um canal (idem) |
+| `POST` | `/public/v1/integration-trigger/:id` | Executar ferramenta nativa de um canal (idem) |
+| `GET` | `/public/v1/posts/:id/missing` | Conteúdo faltante de um post (chave de perfil: só posts do próprio perfil; fora dele, lista vazia) |
+| `PUT` | `/public/v1/posts/:id/release-id` | Atualizar o id externo de um post — corpo `{ "releaseId": "<id>" }`, string de 1 a 512 caracteres com um único id de plataforma (`^[A-Za-z0-9._~:/-]+$`); 404 para post de outro perfil |
 
 > Automações: `POST/GET/PUT/DELETE /public/v1/flows` — ver [`public-flows-api.md`](public-flows-api.md).
 
@@ -81,9 +87,16 @@ ou envie `republish: true` quando a nova publicação for intencional. Texto com
 
 **`value[].image[]` (MediaDto):** `{ id, path }` — `path` é a URL da mídia (de `POST /upload`).
 
+**Pinterest (`settings.board`):** o **id numérico** do board (use a lista de boards do canal), nunca o nome — valor não numérico responde **400** com a orientação. Em `zernio-pinterest` o campo continua obrigatório como string, sem exigir id numérico; hoje o Zernio ignora o valor e publica no primeiro board da conta.
+
 **`settings` por canal:** além de `__type`, aceita opções do provider. No Instagram:
 - `settings.post_type` — `"post"` (feed/Reels) ou `"story"`.
-- `settings.cover` — **capa do Reels**: um `MediaDto` `{ id, path }` (mídia de `POST /upload`). O `path` (URL pública) é enviado como `cover_url` à Meta. Só vale para **Reels** (um único vídeo `.mp4`, não story); em foto/carrossel/story é ignorado. Exige `id` **e** `path` válidos — senão a API responde **400**.
+- `settings.cover` — **capa do Reels**: um `MediaDto` `{ id, path }` (mídia de `POST /upload`). O `path` (URL pública) é enviado como `cover_url` à Meta. Só vale para **Reels** (um único vídeo `.mp4`, não story); em foto/carrossel/story é ignorado. Exige `id` **e** `path` válidos — senão a API responde **400**. Sem `settings.cover`, a **thumbnail da própria mídia** (`image[].thumbnail`, quando existir na biblioteca) é usada como `cover_url`.
+- `settings.collaborators` — lista `[{ label }]` de contas a marcar como colaboradoras; o `@` inicial é removido. Em carrossel os colaboradores vão no container, não nos itens.
+
+No Facebook:
+- `settings.post_type` — `"post"` (feed/Reel) ou `"story"`.
+- `settings.title` — título opcional para **posts de vídeo** (não story); ignorado em foto/texto.
 
 ### Exemplo — publicar agora com imagem
 ```json
