@@ -21,7 +21,11 @@ const include = {
       profileId: true,
     },
   },
-  tags: { select: { tag: { select: { id: true, name: true, color: true } } } },
+  // tag excluida (soft delete) nao aparece no post (upstream #1827)
+  tags: {
+    where: { tag: { deletedAt: null as null } },
+    select: { tag: { select: { id: true, name: true, color: true } } },
+  },
 } satisfies Prisma.PostInclude;
 export type ManagedPostRow = Prisma.PostGetPayload<{ include: typeof include }>;
 export type ManagedPostSnapshot = { rows: ManagedPostRow[]; version: string };

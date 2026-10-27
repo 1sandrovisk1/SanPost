@@ -229,6 +229,8 @@ export class PostsRepository {
         intervalInDays: true,
         group: true,
         tags: {
+          // tag apagada (soft delete) nao aparece mais no post (upstream #1827)
+          where: { tag: { deletedAt: null } },
           select: {
             tag: true,
           },
@@ -330,6 +332,8 @@ export class PostsRepository {
           state: true,
           group: true,
           tags: {
+            // tag apagada (soft delete) nao aparece mais no post (upstream #1827)
+            where: { tag: { deletedAt: null } },
             select: {
               tag: true,
             },
@@ -393,6 +397,8 @@ export class PostsRepository {
       include: {
         integration: true,
         tags: {
+          // tag apagada (soft delete) nao aparece mais no post (upstream #1827)
+          where: { tag: { deletedAt: null } },
           select: {
             tag: true,
           },
@@ -421,6 +427,8 @@ export class PostsRepository {
           ? {
               integration: true,
               tags: {
+                // tag apagada (soft delete) nao aparece mais no post (upstream #1827)
+                where: { tag: { deletedAt: null } },
                 select: {
                   tag: true,
                 },
@@ -959,8 +967,8 @@ export class PostsRepository {
     });
   }
 
-  deleteTag(id: string, orgId: string, profileId?: string) {
-    return this._tags.model.tags.update({
+  async deleteTag(id: string, orgId: string, profileId?: string) {
+    const tag = await this._tags.model.tags.update({
       where: {
         id,
         orgId,
@@ -970,6 +978,15 @@ export class PostsRepository {
         deletedAt: new Date(),
       },
     });
+
+    // vinculos de uma tag apagada nao servem mais (upstream #1827)
+    await this._tagsPosts.model.tagsPosts.deleteMany({
+      where: {
+        tagId: tag.id,
+      },
+    });
+
+    return tag;
   }
 
   createComment(

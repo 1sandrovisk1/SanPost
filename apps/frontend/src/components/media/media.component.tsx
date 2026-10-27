@@ -172,29 +172,37 @@ export const Pagination: FC<{
     </ul>
   );
 };
+// Abre a biblioteca como modal de verdade (upstream #2083): antes era um div
+// solto no layout. Os chamadores (foto do bot, foto do perfil) esperam UM
+// item — a MediaBox devolve a lista.
 export const ShowMediaBoxModal: FC = () => {
-  const [showModal, setShowModal] = useState(false);
-  const [callBack, setCallBack] =
-    useState<(params: { id: string; path: string }[]) => void | undefined>();
-  const closeModal = useCallback(() => {
-    setShowModal(false);
-    setCallBack(undefined);
-  }, []);
+  const modals = useModals();
+  const t = useT();
   useEffect(() => {
-    showModalEmitter.on('show-modal', (cCallback) => {
-      setShowModal(true);
-      setCallBack(() => cCallback);
-    });
-    return () => {
-      showModalEmitter.removeAllListeners('show-modal');
+    const open = (cCallback: (params: { id: string; path: string }) => void) => {
+      modals.openModal({
+        title: t('media_library', 'Media Library'),
+        askClose: false,
+        closeOnEscape: true,
+        fullScreen: true,
+        size: 'calc(100% - 80px)',
+        height: 'calc(100% - 80px)',
+        children: (close) => (
+          <MediaBox
+            setMedia={(media: { id: string; path: string }[]) =>
+              cCallback(media[0])
+            }
+            closeModal={close}
+          />
+        ),
+      });
     };
-  }, []);
-  if (!showModal) return null;
-  return (
-    <div className="text-textColor">
-      <MediaBox setMedia={callBack!} closeModal={closeModal} />
-    </div>
-  );
+    showModalEmitter.on('show-modal', open);
+    return () => {
+      showModalEmitter.off('show-modal', open);
+    };
+  }, [modals, t]);
+  return null;
 };
 export const showMediaBox = (
   callback: (params: { id: string; path: string }) => void
@@ -734,7 +742,9 @@ export const MediaBox: FC<{
                         onClick={deleteImage(media)}
                       />
                     )}
-                    <div className="absolute bottom-[10px] end-[10px] z-[100]">{media.originalName}</div>
+                    <div className="absolute bottom-[10px] start-[10px] end-[10px] z-[100] truncate text-end rounded-[4px] px-[6px] bg-black/60 text-white">
+                      {media.originalName}
+                    </div>
                     <div className="w-full h-full rounded-[6px] overflow-hidden relative">
                       <div className="absolute z-[20] left-[50%] top-[50%] -translate-x-[50%] -translate-y-[50%]">
                         <div

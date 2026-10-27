@@ -1,3 +1,4 @@
+import { summarizeError } from '@gitroom/nestjs-libraries/services/error.summary';
 import {
   forwardRef,
   HttpException,
@@ -382,12 +383,10 @@ export class IntegrationService {
         );
       } catch (err) {
         // Erro inesperado (ex.: provider desconhecido, decrypt falhou) nao pode
-        // derrubar o refresh dos demais canais. Loga SOMENTE name+message, nunca
-        // o objeto cru (pode carregar corpo de requisicao com refresh_token).
+        // derrubar o refresh dos demais canais. Resumo redigido, nunca o objeto
+        // cru (pode carregar corpo de requisicao com refresh_token).
         console.error(
-          `[refresh-tokens] integration=${integration.id} org=${integration.organizationId} falhou: ${
-            (err as Error)?.name || 'Error'
-          }: ${(err as Error)?.message || 'sem detalhe'}`
+          `[refresh-tokens] integration=${integration.id} org=${integration.organizationId} falhou: ${summarizeError(err)}`
         );
       }
     }
@@ -594,8 +593,13 @@ export class IntegrationService {
       }
     }
 
+    // dias ausentes ou invalidos em chamadas da API publica: mesmo padrao do
+    // app (upstream 96b78476)
+    const requestedDays = Number(date);
+    const days =
+      Number.isFinite(requestedDays) && requestedDays > 0 ? requestedDays : 7;
     const getIntegrationData = await ioRedis.get(
-      `integration:analytics-v2:${org.id}:${integration}:${date}`
+      `integration:analytics-v2:${org.id}:${integration}:${days}`
     );
     if (getIntegrationData) {
       return JSON.parse(getIntegrationData);
@@ -612,11 +616,11 @@ export class IntegrationService {
         const loadAnalytics = await integrationProvider.analytics(
           getIntegration.internalId,
           getIntegration.token,
-          +date,
+          days,
           getIntegration
         );
         await ioRedis.set(
-          `integration:analytics-v2:${org.id}:${integration}:${date}`,
+          `integration:analytics-v2:${org.id}:${integration}:${days}`,
           JSON.stringify(loadAnalytics),
           'EX',
           !process.env.NODE_ENV || process.env.NODE_ENV === 'development'
@@ -625,8 +629,9 @@ export class IntegrationService {
         );
         return loadAnalytics;
       } catch (e) {
-        if (e instanceof RefreshToken) {
-          return this.checkAnalytics(org, integration, date, true);
+        // uma nova tentativa so: sem isto a recursao nao terminava
+        if (e instanceof RefreshToken && !forceRefresh) {
+          return this.checkAnalytics(org, integration, date, true, profileId);
         }
       }
     }

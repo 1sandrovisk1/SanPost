@@ -128,6 +128,8 @@
   "loading": "Loading...",
   "post_publish_error": "An error occurred while publishing this post",
   "upload_failed": "The upload failed, please try again",
+  "some_files_failed_to_upload": "Some files failed to upload, please try again",
+  "upload_size_limit_exceeded": "Upload size limit exceeded. Maximum 1 GB per upload session.",
   "mention_no_autocomplete": "We don't have autocomplete for this social media",
   "no_results_found": "No results found",
   "pick_time": "Pick time",

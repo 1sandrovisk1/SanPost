@@ -210,6 +210,9 @@ export interface SocialProvider
   // Necessario para providers cujo access token expira em horas (YouTube/GMB),
   // onde perder o refresh_token real do OAuth quebra a renovacao automatica.
   keepReconnectAuthTokens?: boolean;
+  // Motivo legivel para uma falha de refresh conhecida (ex.: politica do
+  // Google Workspace); vira o refreshError do canal. undefined = motivo padrao.
+  refreshErrorMessage?(err: any): string | undefined;
   // Revoga programaticamente o token antigo antes da reconexao. Forca o
   // provider a exibir tela de consent e emitir refresh_token novo, mesmo
   // quando a conta ja autorizou o app antes (Google pula consent silencioso).

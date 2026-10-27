@@ -649,6 +649,58 @@ amarrar o grant ao perfil de quem aprova ou restringir a aprovação a ADMIN).
 Mudança aceita conscientemente: o `mention` do LinkedIn via `this.fetch` faz a
 busca do dashboard seguir o fluxo de refresh em 401 (como o upstream).
 
+### Lote REVIEW (27/10/2026)
+
+Portados à mão (arquivos divergentes): #2083 (foto do bot em modal), #2149,
+#2163, #2145 e #2171 (uploads: cancela só os pendentes, mantém o lote, não
+limpa o Uppy ao terminar outro envio), #2146 (grupo excluído no calendário),
+#2178 (modal sem canal carregado), #2301 (colar texto puro e nome legível
+no tile de mídia), #1827
+(tags), #2207 (find-slot com horários padrão e limite de 365 dias), #1884 e
+#2298 (refresh token na reconexão; a reconexão Meta própria do fork não passa
+por esses caminhos), #2254 (cookies `org` 1 h e `showorg` 1 ano), Sentry
+(#2082, #2100, #2102, #2122, #2142, #2147, #2162, #2165, #2280, #2284 — sem os
+helpers `setSentryUserContext`/`setSentryUser`, que mandariam e-mail/id ao
+Sentry) e os commits diretos `96b78476` (uma única nova tentativa após
+`RefreshToken`, 401 do YouTube vira `RefreshToken`, `invalid_rapt` com
+orientação para Workspace via `refreshErrorMessage?`, `invalid_grant` do login
+Google → 400, analytics com 7 dias por padrão; LinkedIn Page com
+`keepReconnectAuthTokens`), `d883bfa1` (autopost: `AutopostActivity`
+registrada no worker — a atividade `autoPost` não existia no orquestrador —
+e `workflowIdConflictPolicy: 'USE_EXISTING'`), `4e55a959` (concorrência por
+provider), `c9138d35` (SSO `app.agent-media.ai`) e `7229c338` (só o
+`@@index([organizationId])` em `UserOrganization`; o restante do commit é da
+origem do Canva, que o fork não tem). `Invalid state` no callback OAuth
+público vira 400 com mensagem (upstream `96b78476`).
+Já cobertos: #2161 (save com falha) e #1678 (notificação única de refresh).
+Não aplicável: #2255 (o fork não tem `/posts/valid`), `dcb5b09e` (o fork não
+tem o normalizador de vídeo) e `7113c6ce` (billing do Facebook no cloud).
+Adiados: `852ac517` (`GET /public/v1/me`, entra no lote P2); UI do upstream
+(`1251b5a0`, `c6bfe135`, `9fedac40`, `e756fa57`, `5ac6e10f`, `7b29d401`,
+`003a77eb`, `47175b5a`, `31eda494`, `f1a24b5f`) → épico responsivo; `3f848ccb`
+(tirar `--accept-data-loss` do `prisma db push` do boot) é decisão de política
+de deploy; Farcaster #2078/#2080 em PR próprio.
+
+Revisões: `code-reviewer` (MUST FIX: spec da nova tentativa única e do período
+padrão em `checkAnalytics`, que também passa a manter o `profileId` na
+repetição; os 3 `eslint-disable` do `initialize.sentry.next.basic.ts` já
+existiam. SHOULD FIX aplicados: filtro de tag excluída também na
+`post-management.repository` (API/MCP), spec dos limites de concorrência,
+`refreshError` limpo na troca de página, listener nomeado no modal da mídia e
+chave `upload_size_limit_exceeded` em pt/en); `security-auditor` (2 HIGH
+corrigidos — motivo da falha de renovação persistido e logado sem redação, e a
+propagação `oneTimeToken` do LinkedIn sem `organizationId`, que também apagava o
+refresh token das linhas irmãs —; MEDIUM aplicados: leitura da linha nova em
+`updateIntegration` escopada pela org e `summarizeError` no log do analytics do
+YouTube e do cron de renovação). MEDIUM pré-existentes registrados como
+follow-up: `consoleLoggingIntegration` + `enableLogs` mandam todo `console.*`
+do backend ao Sentry Logs sem `beforeSendLog` com `redactSecrets`; login Google
+com `redirect_uri` vindo do cliente e `state: 'login'` constante (CSRF de
+login, se o frontend não valida); `@Body() body: any` no
+`POST /public/provider/:id/connect` (sem auth) repassado ao
+`fetchPageInformation` (o `state` é o único portão); `deleteTag` não atômico
+(integridade, não segurança).
+
 ## Apêndice — classificação 1 por 1 (171 PRs + 74 commits diretos)
 
 Legenda: **P0** segurança (nesta branch) · **ADOPT** cherry-pick/porte leve ·

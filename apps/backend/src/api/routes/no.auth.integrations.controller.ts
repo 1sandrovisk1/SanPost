@@ -68,7 +68,11 @@ export class NoAuthIntegrationsController {
       ? 'none'
       : await ioRedis.get(`login:${body.state}`);
     if (!getCodeVerifier) {
-      throw new Error('Invalid state');
+      // o state vale 1 h e e apagado depois de usado (ex.: recarregar a pagina)
+      throw new HttpException(
+        'This connection link expired or was already used, please connect the channel again',
+        400
+      );
     }
 
     const organization = await ioRedis.get(`organization:${body.state}`);
@@ -359,7 +363,11 @@ export class NoAuthIntegrationsController {
   @Post('/public/provider/:id/connect')
   async saveProviderPage(@Param('id') id: string, @Body() body: any) {
     if (!body.state) {
-      throw new Error('Invalid state');
+      // o state vale 1 h e e apagado depois de usado (ex.: recarregar a pagina)
+      throw new HttpException(
+        'This connection link expired or was already used, please connect the channel again',
+        400
+      );
     }
 
     const organization = await ioRedis.get(`organization:${body.state}`);

@@ -128,6 +128,8 @@
   "loading": "Carregando...",
   "post_publish_error": "Ocorreu um erro ao publicar este post",
   "upload_failed": "O envio falhou, tente de novo",
+  "some_files_failed_to_upload": "Alguns arquivos não foram enviados, tente de novo",
+  "upload_size_limit_exceeded": "Limite de envio excedido. Máximo de 1 GB por envio.",
   "mention_no_autocomplete": "Esta rede social não tem sugestões de menção",
   "no_results_found": "Nenhum resultado encontrado",
   "pick_time": "Escolher horário",

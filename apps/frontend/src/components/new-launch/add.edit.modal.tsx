@@ -9,6 +9,9 @@ import { Integrations } from '@gitroom/frontend/components/launches/calendar.con
 import { useShallow } from 'zustand/react/shallow';
 import { useExistingData } from '@gitroom/frontend/components/launches/helpers/use.existing.data';
 import { newDayjs } from '@gitroom/frontend/components/layout/set.timezone';
+import { useModals } from '@gitroom/frontend/components/layout/new-modal';
+import { useToaster } from '@gitroom/react/toaster/toaster';
+import { useT } from '@gitroom/react/translation/get.transation.service.client';
 
 export interface AddEditModalProps {
   dummy?: boolean;
@@ -60,6 +63,9 @@ export const AddEditModal: FC<AddEditModalProps> = (props) => {
 };
 
 export const AddEditModalInner: FC<AddEditModalProps> = (props) => {
+  const modal = useModals();
+  const toaster = useToaster();
+  const t = useT();
   const existingData = useExistingData();
   const { addOrRemoveSelectedIntegration, selectedIntegrations, integrations } =
     useLaunchStore(
@@ -88,9 +94,20 @@ export const AddEditModalInner: FC<AddEditModalProps> = (props) => {
       const integration = integrations.find(
         (i) => i.id === existingData.integration
       );
-      if (integration) {
-        addOrRemoveSelectedIntegration(integration, existingData.settings);
+      // canal do post nao carregado: antes o modal ficava em branco (render
+      // null para sempre); avisa e fecha (upstream #2178)
+      if (!integration) {
+        toaster.show(
+          t(
+            'we_are_experiencing_some_difficulty_try_to_refresh_the_page',
+            'We are experiencing some difficulty, try to refresh the page'
+          ),
+          'warning'
+        );
+        modal.closeAll();
+        return;
       }
+      addOrRemoveSelectedIntegration(integration, existingData.settings);
     }
 
     if (props?.selectedChannels?.length) {

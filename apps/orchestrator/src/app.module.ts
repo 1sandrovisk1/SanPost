@@ -4,7 +4,7 @@ import { Module } from '@nestjs/common';
 import { PostActivity } from '@gitroom/orchestrator/activities/post.activity';
 import { getTemporalModule } from '@gitroom/nestjs-libraries/temporal/temporal.module';
 import { DatabaseModule } from '@gitroom/nestjs-libraries/database/prisma/database.module';
-import { AutopostService } from '@gitroom/nestjs-libraries/database/prisma/autopost/autopost.service';
+import { AutopostActivity } from '@gitroom/orchestrator/activities/autopost.activity';
 import { EmailActivity } from '@gitroom/orchestrator/activities/email.activity';
 import { IntegrationsActivity } from '@gitroom/orchestrator/activities/integrations.activity';
 import { HealthController } from '@gitroom/orchestrator/health.controller';
@@ -13,7 +13,9 @@ import { RepostActivity } from '@gitroom/orchestrator/activities/repost.activity
 
 const activities = [
   PostActivity,
-  AutopostService,
+  // a atividade (nao o service) e o que o autoPostWorkflow chama: com o
+  // service aqui o `autoPost` nao era registrado no worker (upstream d883bfa1)
+  AutopostActivity,
   EmailActivity,
   IntegrationsActivity,
   FlowActivity,

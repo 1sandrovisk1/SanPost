@@ -116,6 +116,13 @@ const usePostActions = (onMutate?: () => void) => {
       };
 
       const data = await (await fetch(`/posts/group/${post.group}`)).json();
+      // grupo apagado (ou de outro perfil): o backend responde 404 e antes o
+      // modal quebrava em data.posts[0] (upstream #2146)
+      if (!data?.posts?.length) {
+        toaster.show(t('post_not_found', 'Post not found'), 'warning');
+        mutate();
+        return;
+      }
       const date = !isDuplicate
         ? null
         : (await (await fetch('/posts/find-slot')).json()).date;
@@ -172,7 +179,7 @@ const usePostActions = (onMutate?: () => void) => {
         title: ``,
       });
     },
-    [integrations, fetch, modal, mutate]
+    [integrations, fetch, modal, mutate, toaster, t]
   );
 
   const copyDebugJson = useCallback(

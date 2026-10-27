@@ -127,6 +127,79 @@ describe('IntegrationRepository (B1 Etapa 2 - criptografia na escrita)', () => {
       expect(arg.data.refreshToken).toBe(`${TOKEN_ENC_PREFIX}CIPHER(REFRESH)`);
       expect(arg.data.tokenEncrypted).toBe(true);
     });
+
+    it('oneTimeToken so propaga o token para linhas irmas da mesma org', async () => {
+      prismaMock.model.integration.findFirst.mockResolvedValue({
+        rootInternalId: 'root-1',
+      } as any);
+      const updateManyMock = jest.fn().mockResolvedValue({ count: 1 });
+      (prismaMock.model.integration as any).updateMany = updateManyMock;
+
+      await repo.createOrUpdateIntegration(
+        undefined,
+        true,
+        'org-1',
+        'nome',
+        undefined,
+        'social',
+        'internal-1_child',
+        'linkedin',
+        'PLAINTOKEN',
+        '',
+        3600,
+        'user'
+      );
+
+      const arg = updateManyMock.mock.calls[0][0] as any;
+      expect(arg.where).toMatchObject({ organizationId: 'org-1', rootInternalId: 'root-1' });
+      // login sem refresh token nao apaga o das linhas irmas (upstream #1884)
+      expect('refreshToken' in arg.data).toBe(false);
+    });
+  });
+
+  describe('createOrUpdateIntegration - refresh token vazio (upstream #1884)', () => {
+    it('reconexao sem refresh token nao apaga o refresh token salvo', async () => {
+      await create('PLAINTOKEN', '');
+      const arg = upsertArg();
+      expect('refreshToken' in arg.update).toBe(false);
+    });
+  });
+
+  describe('updateIntegration - pagina reescolhida (upstream #2298)', () => {
+    it('a linha que continua assume identidade, refresh token e validade do login novo', async () => {
+      const tokenExpiration = new Date('2026-12-01T00:00:00Z');
+      prismaMock.model.integration.findUnique.mockResolvedValueOnce({
+        id: 'old-row',
+      } as any);
+      prismaMock.model.integration.findFirst.mockResolvedValueOnce({
+        rootInternalId: 'root-novo',
+        refreshToken: `${TOKEN_ENC_PREFIX}CIPHER(REFRESH-NOVO)`,
+        tokenExpiration,
+      } as any);
+      prismaMock.model.integration.update.mockResolvedValue({ id: 'old-row' } as any);
+      const postsUpdateMany = jest.fn().mockResolvedValue({ count: 0 });
+      (repo as any)._posts = { model: { post: { updateMany: postsUpdateMany } } };
+
+      await repo.updateIntegration('new-row', {
+        organizationId: 'org-1',
+        internalId: 'page-1',
+        token: 'PAGE',
+      } as any);
+
+      // a linha nova so e lida dentro da org da requisicao
+      expect(prismaMock.model.integration.findFirst.mock.calls[0][0]).toEqual({
+        where: { id: 'new-row', organizationId: 'org-1' },
+        select: { rootInternalId: true, refreshToken: true, tokenExpiration: true },
+      });
+      const last = prismaMock.model.integration.update.mock.calls.at(-1)![0] as any;
+      expect(last.where).toEqual({ id: 'old-row' });
+      expect(last.data).toMatchObject({
+        rootInternalId: 'root-novo',
+        refreshToken: `${TOKEN_ENC_PREFIX}CIPHER(REFRESH-NOVO)`,
+        tokenExpiration,
+        refreshNeeded: false,
+      });
+    });
   });
 
   describe('updateIntegration', () => {

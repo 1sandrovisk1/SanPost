@@ -185,6 +185,21 @@ export class IntegrationRepository {
       },
     });
 
+    // A pagina foi escolhida por um login novo: a linha que continua viva
+    // assume a identidade, o refresh token e a validade desse login — senao a
+    // proxima renovacao roda como o login antigo e nao acha a pagina
+    // (upstream #2298). Lido antes de a linha nova ser marcada como apagada.
+    const fresh = existing
+      ? await this._integration.model.integration.findFirst({
+          where: { id, organizationId: params.organizationId! },
+          select: {
+            rootInternalId: true,
+            refreshToken: true,
+            tokenExpiration: true,
+          },
+        })
+      : null;
+
     if (existing) {
       await this._posts.model.post.updateMany({
         where: {
@@ -235,6 +250,16 @@ export class IntegrationRepository {
       data: {
         ...params,
         ...encryptedTokenFields,
+        ...(fresh?.rootInternalId
+          ? { rootInternalId: fresh.rootInternalId }
+          : {}),
+        ...(fresh?.refreshToken ? { refreshToken: fresh.refreshToken } : {}),
+        ...(fresh?.tokenExpiration
+          ? { tokenExpiration: fresh.tokenExpiration }
+          : {}),
+        ...(existing
+          ? { refreshNeeded: false, refreshError: null, refreshErrorAt: null }
+          : {}),
         disabled: false,
         deletedAt: null,
       },
@@ -371,7 +396,9 @@ export class IntegrationRepository {
         profile: username,
         providerIdentifier: provider,
         token: encToken,
-        refreshToken: encRefreshToken,
+        // reconexao sem refresh token (ex.: reConnect de pagina) nunca apaga o
+        // refresh token salvo (upstream #1884)
+        ...(refreshToken ? { refreshToken: encRefreshToken } : {}),
         tokenEncrypted,
         ...(expiresIn
           ? { tokenExpiration: new Date(Date.now() + expiresIn * 1000) }
@@ -396,16 +423,20 @@ export class IntegrationRepository {
           })
         )?.rootInternalId || internalId.split('_').pop()!;
 
+      // so a org que conectou: outra org com a mesma conta pode usar outro
+      // app OAuth (credenciais por workspace) e o token desta nao renova la;
+      // e um login sem refresh token nao apaga o salvo (upstream #1884)
       await this._integration.model.integration.updateMany({
         where: {
           id: {
             not: upsert.id,
           },
+          organizationId: org,
           rootInternalId: rootId,
         },
         data: {
           token: encToken,
-          refreshToken: encRefreshToken,
+          ...(refreshToken ? { refreshToken: encRefreshToken } : {}),
           tokenEncrypted,
           refreshNeeded: false,
           refreshError: null,

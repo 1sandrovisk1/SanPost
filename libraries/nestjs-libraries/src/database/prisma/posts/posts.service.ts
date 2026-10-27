@@ -169,7 +169,8 @@ export class PostsService {
       this._logger.warn(
         `getMissingContent failed (post=${postId}): ${summarizeError(e)}`
       );
-      if (e instanceof RefreshToken) {
+      // uma nova tentativa so: RefreshToken depois do refresh recursava sempre
+      if (e instanceof RefreshToken && !forceRefresh) {
         return this.getMissingContent(orgId, postId, true, profileId);
       }
     }
@@ -355,7 +356,9 @@ export class PostsService {
       this._logger.warn(
         `checkPostAnalytics failed (post=${postId}): ${summarizeError(e)}`
       );
-      if (e instanceof RefreshToken) {
+      // uma nova tentativa so (upstream 96b78476): sem isto a recursao chamava
+      // o refresh do provider para sempre
+      if (e instanceof RefreshToken && !forceRefresh) {
         return this.checkPostAnalytics(orgId, postId, date, true, profileId);
       }
     }
@@ -1328,11 +1331,14 @@ export class PostsService {
       orgId,
       integrationId
     );
+    // sem canal ativo nao ha horarios: usa os horarios padrao do canal novo
+    // em vez de recursar para sempre (upstream #2207)
     return this.findFreeDateTimeRecursive(
       orgId,
-      findTimes,
+      findTimes.length ? findTimes : [120, 400, 700],
       dayjs.utc().startOf('day'),
-      profileId
+      profileId,
+      0
     );
   }
 
@@ -1349,8 +1355,17 @@ export class PostsService {
     orgId: string,
     times: number[],
     date: dayjs.Dayjs,
-    profileId?: string
+    profileId: string | undefined,
+    daysChecked: number
   ): Promise<string> {
+    // para depois de um ano: a busca nunca pode ficar sem fim
+    if (daysChecked > 365) {
+      return date
+        .clone()
+        .add(times[0] || 0, 'minutes')
+        .format('YYYY-MM-DDTHH:mm:00');
+    }
+
     const list = await this._postRepository.getPostsCountsByDates(
       orgId,
       times,
@@ -1359,7 +1374,13 @@ export class PostsService {
     );
 
     if (!list.length) {
-      return this.findFreeDateTimeRecursive(orgId, times, date.add(1, 'day'), profileId);
+      return this.findFreeDateTimeRecursive(
+        orgId,
+        times,
+        date.add(1, 'day'),
+        profileId,
+        daysChecked + 1
+      );
     }
 
     const num = list.reduce<null | number>((prev, curr) => {

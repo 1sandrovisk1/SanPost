@@ -113,3 +113,12 @@ describe('LinkedinPageProvider', () => {
     );
   });
 });
+
+// reConnect da pagina nao devolve refresh token: sem keepReconnectAuthTokens o
+// connect gravava o id interno do canal no lugar do refresh token e a proxima
+// renovacao desconectava a pagina (upstream #1884, no padrao do fork).
+describe('LinkedinPageProvider reconexao', () => {
+  it('mantem refresh token e validade do login ao reconectar', () => {
+    expect(new LinkedinPageProvider().keepReconnectAuthTokens).toBe(true);
+  });
+});

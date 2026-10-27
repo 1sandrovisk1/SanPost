@@ -11,7 +11,7 @@ import dayjs from 'dayjs';
 import { Integration } from '@prisma/client';
 
 export class MastodonProvider extends SocialAbstract implements SocialProvider {
-  override maxConcurrentJob = 5; // Mastodon instances typically have generous limits
+  override maxConcurrentJob = 10; // Mastodon limits are per user, not per app (upstream 4e55a959)
   identifier = 'mastodon';
   name = 'Mastodon';
   isBetweenSteps = false;

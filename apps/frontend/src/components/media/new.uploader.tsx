@@ -194,12 +194,19 @@ export function useUppyUploader(props: {
       });
     });
     uppy2.on('error', () => {
+      // um arquivo falhando nao derruba o lote (upstream #2163): o 'complete'
+      // relata as falhas junto com o resto
+      if (Object.keys(uppy2.getState().currentUploads || {}).length) {
+        return;
+      }
       // o corpo do erro do backend nao e mostrado cru ao usuario
       toast.show(
         t('upload_failed', 'The upload failed, please try again'),
         'warning'
       );
-      uppy2.clear();
+      // cancela o que ainda esta subindo (upstream #2149): clear() nao para
+      // uploads em andamento e o Uppy reclama do estado depois
+      uppy2.cancelAll();
       setLocked(false);
       props.onEnd();
       fileOrderIndex = 0;
@@ -209,7 +216,16 @@ export function useUppyUploader(props: {
     });
     uppy2.on('complete', async (result) => {
       console.log(result);
-      for (const file of [...result.successful]) {
+      if (result.failed?.length) {
+        toast.show(
+          t(
+            'some_files_failed_to_upload',
+            'Some files failed to upload, please try again'
+          ),
+          'warning'
+        );
+      }
+      for (const file of [...result.successful, ...(result.failed || [])]) {
         uppy2.removeFile(file.id);
       }
 
@@ -275,10 +291,16 @@ export function useUppyUploader(props: {
       onUploadSuccess(sortedSuccessful.map((p) => p.response.body.saved));
     });
     uppy2.on('upload-success', (file, response) => {
+      // arquivo removido antes do sucesso chegar: nada a atualizar (#2145)
+      // @ts-ignore
+      const current = uppy2.getState().files[file.id];
+      if (!current) {
+        return;
+      }
       // @ts-ignore
       uppy2.setFileState(file.id, {
         // @ts-ignore
-        progress: uppy2.getState().files[file.id].progress,
+        progress: current.progress,
         // @ts-ignore
         uploadURL: response.body.Location,
         response: response,

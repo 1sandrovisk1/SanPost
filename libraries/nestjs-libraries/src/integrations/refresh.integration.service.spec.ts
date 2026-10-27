@@ -85,6 +85,24 @@ describe('RefreshIntegrationService', () => {
       expect(integrationService.disconnectChannel).not.toHaveBeenCalled();
     });
 
+    it('usa a mensagem do provider como motivo quando ele sabe explicar a falha', async () => {
+      const provider = {
+        identifier: 'youtube',
+        refreshToken: jest.fn().mockRejectedValue({ response: { data: { error_subtype: 'invalid_rapt' } } }),
+        refreshErrorMessage: jest.fn().mockReturnValue('Politica do Google Workspace'),
+        reConnect: undefined as undefined,
+        oneTimeToken: false,
+      };
+      const { service, integrationService } = buildService({ provider });
+
+      await expect(service.refresh(integration)).resolves.toBe(false);
+      expect(integrationService.disconnectChannel).toHaveBeenCalledWith(
+        'org-1',
+        integration,
+        'Politica do Google Workspace'
+      );
+    });
+
     it('marca desconectado UMA unica vez quando o refresh retorna false', async () => {
       const { service, provider, integrationService } = buildService({});
       provider.refreshToken.mockResolvedValue(false);
@@ -196,6 +214,28 @@ describe('RefreshIntegrationService', () => {
         integration,
         expect.stringContaining('invalid_grant')
       );
+      errorSpy.mockRestore();
+    });
+
+    it('redige segredo que o provider interpola na mensagem antes de logar e persistir', async () => {
+      const { service, provider, integrationService } = buildService({});
+      provider.refreshToken.mockRejectedValue(
+        new Error(
+          'refresh failed: https://api.vk.com/token?client_secret=SEGREDO&refresh_token=RT123 ' +
+            'x'.repeat(600)
+        )
+      );
+      const errorSpy = jest
+        .spyOn(console, 'error')
+        .mockImplementation(() => undefined);
+
+      await service.refresh(integration);
+
+      const reason = integrationService.disconnectChannel.mock.calls[0][2] as string;
+      expect(reason).not.toContain('SEGREDO');
+      expect(reason).not.toContain('RT123');
+      expect(reason.length).toBeLessThanOrEqual(300);
+      expect(String(errorSpy.mock.calls[0][0])).not.toContain('SEGREDO');
       errorSpy.mockRestore();
     });
   });

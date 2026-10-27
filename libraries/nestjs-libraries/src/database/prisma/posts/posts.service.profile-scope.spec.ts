@@ -19,7 +19,7 @@ jest.mock('@gitroom/nestjs-libraries/redis/redis.service', () => ({
 }));
 
 import { HttpException, Logger } from '@nestjs/common';
-import { BadBody } from '@gitroom/nestjs-libraries/integrations/social.abstract';
+import { BadBody, RefreshToken } from '@gitroom/nestjs-libraries/integrations/social.abstract';
 import { PostsService } from './posts.service';
 
 const makePost = (overrides: Record<string, unknown> = {}) => ({
@@ -315,5 +315,37 @@ describe('PostsService.deletePost (retorno)', () => {
 
   it('grupo inexistente continua devolvendo { error: true }', async () => {
     await expect(buildDelete(null).deletePost('org-1', 'g-x')).resolves.toEqual({ error: true });
+  });
+});
+
+// upstream 96b78476: RefreshToken depois de um refresh bem-sucedido recursava
+// para sempre (cada volta chamava o refresh do provider de novo).
+describe('PostsService - uma unica nova tentativa apos RefreshToken', () => {
+  it('checkPostAnalytics tenta de novo uma vez e desiste', async () => {
+    const provider = {
+      postAnalytics: jest
+        .fn()
+        .mockRejectedValue(new RefreshToken('youtube', '{}', '{}', 'expired')),
+    };
+    const { service, refreshIntegrationService } = build(
+      makePost({ releaseId: 'vid-1', integration: { ...makePost().integration, providerIdentifier: 'youtube' } }),
+      provider
+    );
+    refreshIntegrationService.refresh.mockResolvedValue({ accessToken: 'novo' });
+    jest.spyOn(service as any, 'resolveRelease').mockResolvedValue({ releaseId: 'vid-1' });
+
+    await expect(service.checkPostAnalytics('org-1', 'post-1', 7, false, 'prof-2')).resolves.toEqual([]);
+    expect(provider.postAnalytics).toHaveBeenCalledTimes(2);
+  });
+
+  it('getMissingContent tenta de novo uma vez e desiste', async () => {
+    const provider = {
+      missing: jest.fn().mockRejectedValue(new RefreshToken('tiktok', '{}', '{}', 'expired')),
+    };
+    const { service, refreshIntegrationService } = build(makePost(), provider);
+    refreshIntegrationService.refresh.mockResolvedValue({ accessToken: 'novo' });
+
+    await expect(service.getMissingContent('org-1', 'post-1', false, 'prof-2')).resolves.toEqual([]);
+    expect(provider.missing).toHaveBeenCalledTimes(2);
   });
 });

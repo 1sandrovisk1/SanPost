@@ -27,6 +27,9 @@ export class LinkedinPageProvider
   override name = 'LinkedIn Page';
   override isBetweenSteps = true;
   override refreshWait = true;
+  // reConnect nao devolve refresh token: sem isto o connect gravava o id
+  // interno no lugar e a renovacao seguinte desconectava a pagina (#1884)
+  keepReconnectAuthTokens = true;
   override maxConcurrentJob = 2; // LinkedIn Page has professional posting limits
   override scopes = [
     'openid',

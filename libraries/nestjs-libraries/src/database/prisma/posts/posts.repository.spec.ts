@@ -236,3 +236,32 @@ describe('PostsRepository.getPosts (erro curado)', () => {
     expect(JSON.stringify(list)).not.toContain('SECRET');
   });
 });
+
+// Porte do upstream #1827: tag apagada (soft delete) some dos posts e perde os
+// vinculos.
+describe('PostsRepository - tags apagadas', () => {
+  it('getPosts so traz tags nao apagadas', async () => {
+    const prismaMock = createPrismaRepositoryMock('post');
+    (prismaMock.model.post as any).findMany = jest.fn().mockResolvedValue([]);
+    const repo = new PostsRepository(prismaMock as any, {} as any, {} as any, {} as any, {} as any, {} as any);
+    await repo.getPosts('org-1', { startDate: '2026-10-26T00:00:00Z', endDate: '2026-11-02T00:00:00Z' } as any);
+    const select = (prismaMock.model.post.findMany as jest.Mock).mock.calls[0][0].select;
+    expect(select.tags).toMatchObject({ where: { tag: { deletedAt: null } } });
+  });
+
+  it('deleteTag remove os vinculos da tag com os posts', async () => {
+    const tags = { update: jest.fn().mockResolvedValue({ id: 'tag-1' }) };
+    const tagsPosts = { deleteMany: jest.fn().mockResolvedValue({ count: 2 }) };
+    const repo = new PostsRepository(
+      {} as any,
+      {} as any,
+      {} as any,
+      { model: { tags } } as any,
+      { model: { tagsPosts } } as any,
+      {} as any
+    );
+    await expect(repo.deleteTag('tag-1', 'org-1', 'prof-1')).resolves.toEqual({ id: 'tag-1' });
+    expect(tags.update.mock.calls[0][0].where).toEqual({ id: 'tag-1', orgId: 'org-1', profileId: 'prof-1' });
+    expect(tagsPosts.deleteMany).toHaveBeenCalledWith({ where: { tagId: 'tag-1' } });
+  });
+});

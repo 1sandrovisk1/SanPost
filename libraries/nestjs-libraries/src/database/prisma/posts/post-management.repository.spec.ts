@@ -39,4 +39,12 @@ describe('repositorio de posts gerenciados', () => {
       })
     );
   });
+  it('nao traz tags excluidas nos posts listados', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    Object.assign(db, { post: { findMany } });
+    await repo.list(scope, { limit: 3 });
+    expect(findMany.mock.calls[0][0].include.tags.where).toEqual({
+      tag: { deletedAt: null },
+    });
+  });
 });
