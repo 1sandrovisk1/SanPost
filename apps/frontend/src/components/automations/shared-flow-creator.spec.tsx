@@ -345,7 +345,9 @@ describe('criador compartilhado', () => {
     );
     expect(screen.getByText('shared_error_invalid_message')).toBeTruthy();
     expect(state.fetchApi).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByLabelText('shared_add_public_reply'));
+    fireEvent.click(
+      screen.getByRole('switch', { name: 'shared_add_public_reply' })
+    );
     fireEvent.click(
       screen.getByRole('button', {
         name: /^(save_flow|automation_save_draft|wizard_update)$/,
@@ -877,4 +879,46 @@ it('Facebook passa a publicacao selecionada para a previa e a navegacao ilustrat
   );
   expect(screen.queryByText('preview_no_post')).toBeNull();
   expect(state.fetchApi).not.toHaveBeenCalled();
+});
+
+it('preserva botoes proprios no rapido, na previa e ao salvar', async () => {
+  const variants = [
+    { message: 'A', buttonText: 'Link A', buttonUrl: 'https://example.com/a' },
+    { message: 'B', buttonText: 'Link B', buttonUrl: 'https://example.com/b' },
+  ];
+  state.flow = {
+    id: 'flow',
+    name: 'Pares',
+    status: 'PAUSED',
+    revision: 3,
+    definition: simpleDefinition({ message: '', dmVariants: variants }),
+    channels: [
+      {
+        integrationId: 'fb',
+        platform: 'facebook',
+        postMode: 'all',
+        postIds: [],
+      },
+    ],
+  };
+  render(<SharedFlowCreator id="flow" />);
+  expect(screen.queryByText('canvas')).toBeNull();
+  fireEvent.focus(screen.getByLabelText('automation_private_variant 2'));
+  const preview = within(screen.getByRole('complementary'));
+  expect(preview.getByText('B')).toBeTruthy();
+  expect(preview.getByText(/Link B/)).toBeTruthy();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Link A · https://example.com/a' })
+  );
+  fireEvent.click(within(screen.getByRole('dialog')).getByText('remove'));
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: /^(save_flow|automation_save_draft|wizard_update)$/,
+    })
+  );
+  await waitFor(() => expect(state.fetchApi).toHaveBeenCalled());
+  const body = JSON.parse(state.fetchApi.mock.calls[0][1].body);
+  expect(JSON.parse(body.definition.nodes[1].data)).toEqual({
+    variants: [{ message: 'A' }, variants[1]],
+  });
 });

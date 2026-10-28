@@ -1,4 +1,5 @@
 {
+  "automation_instagram_aliases_scope_hint": "Os IDs de Dark Posts vinculados continuam ativos. Gerencie-os em Publicações específicas.",
   "meta_system_user_token_label": "Token Usuário do Sistema",
   "meta_system_user_token_hint": "A validade deste token não está registrada aqui. Ele pode ter prazo ou não ter vencimento programado; permissões revogadas ainda podem interromper o acesso.",
   "meta_system_user_token_placeholder": "Cole o System User Access Token aqui (começa com EAA...)",

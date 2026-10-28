@@ -220,6 +220,18 @@ export function SharedFlowCanvas({
                   messenger={messenger}
                   disabled={disabled}
                   messages={cfg.messages || [cfg.message || '']}
+                  variants={cfg.variants}
+                  buttonText={cfg.buttonText}
+                  buttonUrl={cfg.buttonUrl}
+                  onVariantsChange={(variants) =>
+                    update({
+                      variants,
+                      message: undefined,
+                      messages: undefined,
+                      buttonText: undefined,
+                      buttonUrl: undefined,
+                    })
+                  }
                   maxLength={cfg.buttonText ? 640 : 2000}
                   onChange={(messages) =>
                     update(
@@ -229,27 +241,6 @@ export function SharedFlowCanvas({
                     )
                   }
                 />
-              )}
-              {node.type === 'SEND_DM' && (
-                <>
-                  <label>
-                    {t('shared_button_text', 'Texto do botão (opcional)')}
-                    <input
-                      className={input}
-                      maxLength={20}
-                      value={cfg.buttonText || ''}
-                      onChange={(e) => update({ buttonText: e.target.value })}
-                    />
-                  </label>
-                  <label>
-                    {t('shared_button_url', 'Link HTTPS do botão')}
-                    <input
-                      className={input}
-                      value={cfg.buttonUrl || ''}
-                      onChange={(e) => update({ buttonUrl: e.target.value })}
-                    />
-                  </label>
-                </>
               )}
               {node.type === 'DELAY' && (
                 <>

@@ -17,9 +17,16 @@ export const SendDmNode: FC<NodeProps> = memo(({ data, selected }) => {
         })()
       : data?.config || {};
   const message =
-    config.messages?.[0] || config.message || config.template || '';
-  const buttonText: string = config.buttonText || '';
-  const buttonUrl: string = config.buttonUrl || '';
+    config.variants?.[0]?.message ||
+    config.messages?.[0] ||
+    config.message ||
+    config.template ||
+    '';
+  const buttonText: string =
+    (config.variants ? config.variants[0]?.buttonText : config.buttonText) ||
+    '';
+  const buttonUrl: string =
+    (config.variants ? config.variants[0]?.buttonUrl : config.buttonUrl) || '';
   const hasButton = !!buttonText && !!buttonUrl;
 
   return (

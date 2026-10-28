@@ -1,5 +1,7 @@
 import {
   stablePrivateMessage,
+  stablePrivateVariant,
+  validatePrivateButtonVariants,
   validatePrivateMessageVariants,
 } from './private-message-variants';
 describe('alternativa privada estavel', () => {
@@ -31,4 +33,39 @@ it('valida todas as alternativas incluindo espacos e nao apenas a escolhida', ()
       'INVALID_MESSAGE'
     );
   expect(() => validatePrivateMessageVariants(['a', 'b'])).not.toThrow();
+});
+
+it('escolhe o objeto completo com estabilidade e valida limites por objeto', () => {
+  const variants = [
+    { message: 'A', buttonText: 'A', buttonUrl: 'https://example.com/a' },
+    { message: 'B' },
+  ];
+  expect(stablePrivateVariant(variants, 'seed')).toEqual(
+    stablePrivateVariant(variants, 'seed')
+  );
+  expect(variants).toContainEqual(stablePrivateVariant(variants, 'seed'));
+  expect(() =>
+    validatePrivateButtonVariants([
+      { message: 'x'.repeat(2000) },
+      {
+        message: 'x'.repeat(600),
+        buttonText: 'Link',
+        buttonUrl: 'https://example.com',
+      },
+    ])
+  ).not.toThrow();
+  for (const values of [
+    [],
+    [{ message: ' ' }],
+    [{ message: 'a', buttonText: 'Link' }],
+    [{ message: 'a', buttonText: 'Link', buttonUrl: 'http://example.com' }],
+    [
+      {
+        message: 'a',
+        buttonText: 'Link',
+        buttonUrl: 'https://u:p@example.com',
+      },
+    ],
+  ])
+    expect(() => validatePrivateButtonVariants(values)).toThrow();
 });

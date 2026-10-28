@@ -608,3 +608,18 @@ it('usa expansao na linha do escopo apenas quando selecionado', () => {
     screen.queryByRole('button', { name: 'automation_select_publications' })
   ).toBeNull();
 });
+it('mantem IDs aditivos Instagram dentro do card tambem com agendamento selecionado', () => {
+  render(
+    <AutomationPublicationSelector
+      integrationId="ig"
+      mode="scheduled"
+      scheduledPostId="local"
+      postIds={[]}
+      posts={[]}
+      onChange={vi.fn()}
+      specificContent={<span>Aliases IG</span>}
+      showSpecificContentWhenScheduled
+    />
+  );
+  expect(screen.getByText('Aliases IG')).toBeTruthy();
+});

@@ -212,6 +212,19 @@ export const automationConfigurationShape = {
   replyMessage: text(2200).optional(),
   replyMessages: z.array(text(2200)).max(10).optional(),
   dmMessage: text(2000).optional(),
+  dmVariants: z
+    .array(
+      z
+        .object({
+          message: text(2000).min(1),
+          buttonText: text(20).min(1).optional(),
+          buttonUrl: text(2000).optional(),
+        })
+        .strict()
+    )
+    .min(1)
+    .max(10)
+    .optional(),
   dmMessages: z
     .array(
       text(2000)

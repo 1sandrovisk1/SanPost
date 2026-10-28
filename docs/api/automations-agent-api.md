@@ -85,6 +85,7 @@ Story do Facebook não é um gatilho com origem comprovada. Não o apresentar co
 | `replyMessage` | string, 2200 | Uma resposta pública |
 | `replyMessages` | até 10 strings não vazias, 2200 cada | Variações públicas; não enviar junto de `replyMessage` |
 | `dmMessage` | string, 2000 | Mensagem privada/final |
+| `dmVariants` | objeto[], 1–10 | Texto e botão/link próprios por alternativa; uma escolhida por execução |
 | `dmMessages` | string[], 1–10 | Alternativas de uma única mensagem privada; 640 por alternativa com botão |
 | `dmButtonText` | string, IG 80/FB 20 | Texto do botão; enviar com URL e mensagem |
 | `dmButtonUrl` | HTTPS público, IG 2048/FB 2000 | URL do botão; redes privadas, credenciais na URL e protocolo inseguro são recusados |
@@ -174,7 +175,7 @@ Cada nó tem `id`, `type`, `data` (**string JSON**), `positionX`, `positionY` e 
 | TRIGGER | triggerType, keywords, matchMode; priority só Messenger. V1 também mode, postIds, storyIds, scheduledPostId e campos Instagram do gate/reações |
 | CONDITION | keywords, matchMode |
 | REPLY_COMMENT | message, messages |
-| SEND_DM | message ou messages, buttonText, buttonUrl |
+| SEND_DM | message ou messages com buttonText/buttonUrl comuns; ou variants com texto e CTA próprios (representações exclusivas) |
 | DELAY | duration inteiro 0–86400, unit seconds/minutes/hours |
 
 `sourceHandle="match"`/`"no_match"` só em condição. Um gatilho, sem ciclos, nós conectados e ações compatíveis com o canal. V1: até 100 nós/200 arestas/128 KiB; V2: 30 nós/60 arestas/64 KiB. Limites de mensagem e URLs continuam aplicáveis. Campos fora da lista são recusados.
@@ -293,3 +294,22 @@ V2 sorteia na ingestão de comentário ou mensagem do Messenger e persiste a aç
 Tokens V1 continuam `{commenter_name}`, `{commenter_id}`, `{comment_text}`, `{media_id}`. V2 usa `{{comment_name}}`, `{{comment_text}}`, `{{comment_id}}`, `{{media_id}}`; Messenger só oferece texto e ID da mensagem recebida, pois não consulta nome/publicação. A interpolação V2 aplica-se ao texto, não ao botão.
 
 Variar textos não garante evitar bloqueios. Botão de URL abre o site e não cria uma continuação da conversa. Envio após interação depende do evento e da janela aplicável; não existe permissão para mensagens ilimitadas.
+
+
+### Texto e botão próprios por alternativa
+
+Use `dmVariants: [{message, buttonText?, buttonUrl?}]` para variar também o botão. Cada objeto é indivisível: somente uma alternativa, com seu texto e CTA, é entregue. No canvas V1/V2 use `SEND_DM.variants`. O rápido, o construtor, REST e MCP preservam essa representação ao reabrir/editar.
+
+Texto não vazio, até 2.000 caracteres sem botão ou 640 com botão; título até 20 e URL HTTPS pública até 2.000, sem credenciais. Título e URL são opcionais juntos. A alternativa sem botão não herda o de outra. Limites são correlacionados: 2.000 sem botão e 600 com botão podem coexistir. A composição entre vários SEND_DM conserva o último botão configurado e valida o comprimento resultante, inclusive após interpolação do texto. Título/URL não interpolam variáveis.
+
+```json
+{"expectedRevision": 3, "configuration": {"dmVariants": [
+  {"message": "Aqui está o conteúdo!", "buttonText": "Ver conteúdo", "buttonUrl": "https://example.com/conteudo"},
+  {"message": "Preparei o link para você.", "buttonText": "Acessar agora", "buttonUrl": "https://example.com/conteudo"},
+  {"message": "Obrigado pelo interesse!"}
+]}}
+```
+
+Não combinar `dmVariants` com `dmMessage`, `dmMessages` ou botão comum. Ao editar parcialmente, omitir os campos preserva a representação atual; informar `dmVariants` substitui singular/lista/botão comum, e informar singular/lista substitui os objetos. Alterar somente o botão comum de uma regra com `dmVariants` é recusado: envie a lista de objetos atualizada. O singular e `dmMessages` anteriores permanecem compatíveis.
+
+V2 congela texto e botão juntos em `snapshot.actions` na ingestão, também no Messenger. V1 usa `patched('private-message-button-variants-v1')`, sem mudar o ramo anterior; escolha estável por execução/nó e snapshot do par no gate. Retry/clique não escolhem outra alternativa. Não é uma sequência de mensagens nem uma garantia contra bloqueios.

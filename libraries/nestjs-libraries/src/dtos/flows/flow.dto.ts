@@ -119,6 +119,28 @@ export class FlowEdgeDto {
   sourceHandle?: string;
 }
 
+export class PrivateMessageVariantDto {
+  @ApiProperty({ maxLength: 2000 })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(2000)
+  message: string;
+
+  @ApiPropertyOptional({ maxLength: 20 })
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(20)
+  buttonText?: string;
+
+  @ApiPropertyOptional({ maxLength: 2000 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  @IsPublicHttpsUrl()
+  buttonUrl?: string;
+}
+
 export class QuickCreateFlowDto {
   @ApiPropertyOptional({
     description:
@@ -325,6 +347,21 @@ export class QuickCreateFlowDto {
   @MinLength(1, { each: true })
   @MaxLength(2000, { each: true })
   dmMessages?: string[];
+
+  @ApiPropertyOptional({
+    type: [PrivateMessageVariantDto],
+    minItems: 1,
+    maxItems: 10,
+    description:
+      'Alternativas de uma única mensagem privada, cada uma com texto e botão próprios. Não combinar com dmMessage, dmMessages ou botão comum.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(10)
+  @ValidateNested({ each: true })
+  @Type(() => PrivateMessageVariantDto)
+  dmVariants?: PrivateMessageVariantDto[];
 
   @ApiPropertyOptional({
     maxLength: 80,

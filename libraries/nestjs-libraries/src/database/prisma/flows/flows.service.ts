@@ -1,4 +1,7 @@
-import { validatePrivateMessageVariants } from './private-message-variants';
+import {
+  assertPrivateVariantRepresentation,
+  validatePrivateMessageVariants,
+} from './private-message-variants';
 import type { DeferredNextCandidate } from '../../../dtos/flows/scheduled-post.dto';
 import {
   Injectable,
@@ -505,6 +508,19 @@ export class FlowsService {
     return this._flowsRepository.deleteFlow(orgId, id, profileId);
   }
 
+  private assertPrivateConfig(config: {
+    variants?: unknown;
+    message?: unknown;
+    messages?: unknown;
+    buttonText?: unknown;
+    buttonUrl?: unknown;
+  }) {
+    try {
+      assertPrivateVariantRepresentation(config);
+    } catch (error) {
+      throw new BadRequestException((error as Error).message);
+    }
+  }
   private assertPrivateVariants(messages: unknown) {
     try {
       validatePrivateMessageVariants(messages);
@@ -526,6 +542,8 @@ export class FlowsService {
       } catch {
         continue;
       }
+      if (config && typeof config === 'object')
+        this.assertPrivateConfig(config);
       if (config && typeof config === 'object' && config.messages !== undefined)
         this.assertPrivateVariants(config.messages);
       if (
@@ -624,6 +642,8 @@ export class FlowsService {
       );
       for (const node of flow.nodes.filter((n) => n.type === 'SEND_DM')) {
         const privateConfig = JSON.parse(node.data || '{}');
+        if (privateConfig && typeof privateConfig === 'object')
+          this.assertPrivateConfig(privateConfig);
         if (
           privateConfig &&
           typeof privateConfig === 'object' &&
@@ -789,6 +809,13 @@ export class FlowsService {
     body: QuickCreateFlowDto,
     profileId?: string
   ) {
+    this.assertPrivateConfig({
+      variants: body.dmVariants,
+      message: body.dmMessage,
+      messages: body.dmMessages,
+      buttonText: body.dmButtonText,
+      buttonUrl: body.dmButtonUrl,
+    });
     if (body.dmMessage && body.dmMessages)
       throw new BadRequestException('AMBIGUOUS_PRIVATE_REPLY');
     if (body.dmMessages !== undefined)
@@ -871,10 +898,13 @@ export class FlowsService {
       }
     }
 
-    if (body.dmMessage || body.dmMessages?.length) {
-      const dmData: Record<string, any> = body.dmMessages?.length
-        ? { messages: body.dmMessages }
-        : { message: body.dmMessage };
+    if (body.dmVariants?.length || body.dmMessage || body.dmMessages?.length) {
+      const dmData: Record<string, any> =
+        body.dmVariants !== undefined
+          ? { variants: body.dmVariants }
+          : body.dmMessages?.length
+          ? { messages: body.dmMessages }
+          : { message: body.dmMessage };
       if (body.dmButtonText) dmData.buttonText = body.dmButtonText;
       if (body.dmButtonUrl) dmData.buttonUrl = body.dmButtonUrl;
       nodes.push({
@@ -939,6 +969,13 @@ export class FlowsService {
     body: QuickCreateFlowDto,
     profileId?: string
   ) {
+    this.assertPrivateConfig({
+      variants: body.dmVariants,
+      message: body.dmMessage,
+      messages: body.dmMessages,
+      buttonText: body.dmButtonText,
+      buttonUrl: body.dmButtonUrl,
+    });
     if (body.dmMessage && body.dmMessages)
       throw new BadRequestException('AMBIGUOUS_PRIVATE_REPLY');
     if (body.dmMessages !== undefined)
@@ -1023,10 +1060,13 @@ export class FlowsService {
     }
 
     // Send DM node
-    if (body.dmMessage || body.dmMessages?.length) {
-      const dmData: Record<string, any> = body.dmMessages?.length
-        ? { messages: body.dmMessages }
-        : { message: body.dmMessage };
+    if (body.dmVariants?.length || body.dmMessage || body.dmMessages?.length) {
+      const dmData: Record<string, any> =
+        body.dmVariants !== undefined
+          ? { variants: body.dmVariants }
+          : body.dmMessages?.length
+          ? { messages: body.dmMessages }
+          : { message: body.dmMessage };
       if (body.dmButtonText) dmData.buttonText = body.dmButtonText;
       if (body.dmButtonUrl) dmData.buttonUrl = body.dmButtonUrl;
       nodes.push({

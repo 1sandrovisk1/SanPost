@@ -39,7 +39,10 @@ import { useIntegrationStories } from '@gitroom/frontend/components/automations/
 import { useRouter } from 'next/navigation';
 import { useToaster } from '@gitroom/react/toaster/toaster';
 import { WizardPhonePreview } from '@gitroom/frontend/components/automations/wizard-phone-preview.component';
-import { AddLinkModal } from '@gitroom/frontend/components/automations/add-link-modal.component';
+import {
+  validatePrivateButtonVariants,
+  type PrivateMessageVariant,
+} from '@gitroom/nestjs-libraries/database/prisma/flows/private-message-variants';
 
 interface Props {
   flowId?: string;
@@ -102,10 +105,12 @@ export const StoryWizardComponent: FC<Props> = ({
   );
   const [dmMessage, setDmMessage] = useState('');
   const [dmMessages, setDmMessages] = useState<string[]>(['']);
+  const [dmVariants, setDmVariants] = useState<
+    PrivateMessageVariant[] | undefined
+  >();
   const [dmPreviewIndex, setDmPreviewIndex] = useState(0);
   const [dmButtonText, setDmButtonText] = useState('');
   const [dmButtonUrl, setDmButtonUrl] = useState('');
-  const [showAddLink, setShowAddLink] = useState(false);
   const [saving, setSaving] = useState(false);
   const [pendingAction, setPendingAction] =
     useState<EditorPendingAction>('save');
@@ -137,6 +142,7 @@ export const StoryWizardComponent: FC<Props> = ({
     followGateMessage,
     dmMessage,
     dmMessages,
+    dmVariants,
     dmButtonText,
     dmButtonUrl,
   });
@@ -228,8 +234,14 @@ export const StoryWizardComponent: FC<Props> = ({
         ? triggerCfg.followGateMessage
         : FOLLOW_GATE_DEFAULT_PT
     );
-    setDmMessage(dmCfg.messages?.[0] || dmCfg.message || '');
-    setDmMessages(dmCfg.messages || [dmCfg.message || '']);
+    setDmVariants(dmCfg.variants);
+    setDmMessage(
+      dmCfg.variants?.[0]?.message || dmCfg.messages?.[0] || dmCfg.message || ''
+    );
+    setDmMessages(
+      dmCfg.variants?.map((v: PrivateMessageVariant) => v.message) ||
+        dmCfg.messages || [dmCfg.message || '']
+    );
     setDmButtonText(dmCfg.buttonText || '');
     setDmButtonUrl(dmCfg.buttonUrl || '');
   }, [initialFlow, flowId, resetBaseline, dirty]);
@@ -270,6 +282,15 @@ export const StoryWizardComponent: FC<Props> = ({
   const removeKeyword = (k: string) =>
     setKeywords(keywords.filter((x) => x !== k));
 
+  const invalidDmVariants = (() => {
+    if (!dmVariants) return false;
+    try {
+      validatePrivateButtonVariants(dmVariants);
+      return false;
+    } catch {
+      return true;
+    }
+  })();
   const formProblems = [
     ...(!name.trim() ? [t('automation_name_required')] : []),
     ...(!integrationId ? [t('automation_account_required')] : []),
@@ -282,7 +303,8 @@ export const StoryWizardComponent: FC<Props> = ({
     ...(keywordMode === 'specific' && !keywords.length
       ? [t('automation_keywords_required')]
       : []),
-    ...(!dmMessage.trim() ||
+    ...(invalidDmVariants ||
+    !dmMessage.trim() ||
     dmMessages.some((m) => !m.trim() || m.length > (dmButtonText ? 640 : 2000))
       ? [t('automation_response_required')]
       : []),
@@ -323,9 +345,10 @@ export const StoryWizardComponent: FC<Props> = ({
           body.keywords = keywords;
         }
         if (dmMessage.trim()) {
-          if (dmMessages.length > 1) body.dmMessages = dmMessages;
+          if (dmVariants) body.dmVariants = dmVariants;
+          else if (dmMessages.length > 1) body.dmMessages = dmMessages;
           else body.dmMessage = dmMessage.trim();
-          if (dmButtonText.trim() && dmButtonUrl.trim()) {
+          if (!dmVariants && dmButtonText.trim() && dmButtonUrl.trim()) {
             body.dmButtonText = dmButtonText.trim();
             body.dmButtonUrl = dmButtonUrl.trim();
           }
@@ -378,6 +401,7 @@ export const StoryWizardComponent: FC<Props> = ({
       followGateMessage,
       dmMessage,
       dmMessages,
+      dmVariants,
       dmButtonText,
       dmButtonUrl,
       fetchApi,
@@ -791,6 +815,16 @@ export const StoryWizardComponent: FC<Props> = ({
               <PrivateMessageVariations
                 maxLength={dmButtonText ? 640 : 2000}
                 messages={dmMessages}
+                variants={dmVariants}
+                buttonText={dmButtonText}
+                buttonUrl={dmButtonUrl}
+                onVariantsChange={(variants) => {
+                  setDmVariants(variants);
+                  setDmMessages(variants.map((v) => v.message));
+                  setDmMessage(variants[0]?.message || '');
+                  setDmButtonText('');
+                  setDmButtonUrl('');
+                }}
                 onChange={(messages) => {
                   setDmMessages(messages);
                   setDmMessage(messages[0]);
@@ -801,19 +835,6 @@ export const StoryWizardComponent: FC<Props> = ({
                   setJourneyStage('delivery');
                 }}
               />
-              <button
-                type="button"
-                onClick={() => {
-                  setActivePreviewTab('dm');
-                  setJourneyStage('delivery');
-                  setShowAddLink(true);
-                }}
-                className="self-start rounded-[4px] border border-dashed border-fifth text-[12px] text-textColor px-[14px] py-[8px] hover:bg-boxHover"
-              >
-                {dmButtonText && dmButtonUrl
-                  ? `${dmButtonText} · ${dmButtonUrl}`
-                  : `+ ${t('story_add_link', 'Adicionar um link')}`}
-              </button>
             </div>
 
             {/* Extras */}
@@ -906,8 +927,18 @@ export const StoryWizardComponent: FC<Props> = ({
               dmMessage={
                 dmMessages[Math.min(dmPreviewIndex, dmMessages.length - 1)]
               }
-              dmButtonText={dmButtonText}
-              dmButtonUrl={dmButtonUrl}
+              dmButtonText={
+                dmVariants
+                  ? dmVariants[Math.min(dmPreviewIndex, dmVariants.length - 1)]
+                      ?.buttonText || ''
+                  : dmButtonText
+              }
+              dmButtonUrl={
+                dmVariants
+                  ? dmVariants[Math.min(dmPreviewIndex, dmVariants.length - 1)]
+                      ?.buttonUrl || ''
+                  : dmButtonUrl
+              }
               commenterName="usuario"
               integrationPicture={(selectedIntegration as any)?.picture}
               integrationName={(selectedIntegration as any)?.name}
@@ -916,17 +947,6 @@ export const StoryWizardComponent: FC<Props> = ({
             />
           </AutomationPhoneFrame>
         </AutomationPreviewPanel>
-
-        <AddLinkModal
-          open={showAddLink}
-          initialText={dmButtonText}
-          initialUrl={dmButtonUrl}
-          onClose={() => setShowAddLink(false)}
-          onSave={(text, url) => {
-            setDmButtonText(text);
-            setDmButtonUrl(url);
-          }}
-        />
       </AutomationEditorLayout>
     </AutomationWorkspace>
   );

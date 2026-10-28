@@ -23,6 +23,7 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 
 
 ### Corrigido
+- **Agrupamento e variações no editor de automações:** IDs de Dark Posts Instagram dentro de Publicações específicas, sem remover vínculos ao alternar escopo; campos de resposta pública no mesmo box cinza do toggle. Alternativas privadas podem ter texto e botão próprios, com prévia, limites e paridade rápido/construtor/API/MCP. V1 preserva replays e congela o par no gate; V2 congela a alternativa na ingestão, sem novo sorteio em retry.
 
 - **Seleção combinada de posts e anúncios:** localização por ID/link passa para dentro de Publicações específicas; badges distinguem Dark Post confirmado e recuperação por ID. Alternar modos e voltar durante a edição preserva seleção e miniaturas, sem gravar IDs inativos nem misturar agendamento com posts normais.
 

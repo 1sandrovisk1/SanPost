@@ -46,6 +46,8 @@ export function AutomationPublicationSelector({
   loadingMore = false,
   onPreviewChange,
   specificContent,
+  showSpecificContentWhenScheduled = false,
+  scopeNote,
 }: PublicationChoice & {
   integrationId: string;
   platform?: 'instagram' | 'facebook';
@@ -59,6 +61,8 @@ export function AutomationPublicationSelector({
   loadingMore?: boolean;
   onPreviewChange?: (posts: PublicationPreview[]) => void;
   specificContent?: ReactNode;
+  showSpecificContentWhenScheduled?: boolean;
+  scopeNote?: ReactNode;
 }) {
   const t = useT();
   const { resolvedLanguage } = useTranslationSettings();
@@ -352,7 +356,8 @@ export function AutomationPublicationSelector({
                 {t('shared_posts_limit')}
               </p>
             )}
-            {mode === 'specific' && specificContent}
+            {(mode === 'specific' || showSpecificContentWhenScheduled) &&
+              specificContent}
           </div>
         )}
       </div>
@@ -371,6 +376,9 @@ export function AutomationPublicationSelector({
               : 'wizard_all_posts'
           )
         )}
+        {mode === 'all' && scopeNote && (
+          <p className="mt-2 text-xs text-newTextColor/70">{scopeNote}</p>
+        )}
       </div>
       <div
         className={`rounded-lg border p-3 ${
@@ -380,6 +388,9 @@ export function AutomationPublicationSelector({
         }`}
       >
         {radio('next_publication', t('wizard_next_publication'))}
+        {mode === 'next_publication' && scopeNote && (
+          <p className="mt-2 text-xs text-newTextColor/70">{scopeNote}</p>
+        )}
         {mode === 'next_publication' && (
           <p className="text-[11px] text-newTextColor/60 mt-2 ml-6">
             {t('automation_next_unreserved_hint')}

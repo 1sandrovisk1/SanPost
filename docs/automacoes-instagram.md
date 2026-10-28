@@ -428,3 +428,10 @@ Os scopes sao selecionados no momento da geracao do token — revise o checklist
 ## Histórico no ambiente da automação
 
 Consulte [histórico e detalhes de execuções](operations/historico-execucoes-automacoes.md). A tabela e o drawer são comuns às redes, mas os registros V1 não comprovam aceite da DM por etapa nem preservam o texto histórico enviado. A interface mantém essa distinção e não reconstrói mensagens a partir da configuração atual.
+
+
+### Organização dos Dark Posts e variações privadas
+
+Os IDs de Dark Posts ficam dentro de **Publicações específicas**. Alternar o escopo não adiciona nem remove aliases persistidos: a semântica aditiva existente é preservada, e uma nota em qualquer/próxima publicação indica quando existem IDs vinculados ativos.
+
+Ao ligar **Responder ao comentário na publicação**, as variações aparecem dentro do mesmo box cinza. Cada variação de mensagem privada pode ter seu próprio texto e botão/link; editar ou remover o botão de uma delas conserva as demais. A prévia acompanha a alternativa editada. A execução escolhe uma alternativa completa; não envia a lista em sequência. Rápido e construtor visual usam o mesmo contrato, também no Facebook e Messenger. Consulte `docs/api/automations-agent-api.md` para o formato de agentes.

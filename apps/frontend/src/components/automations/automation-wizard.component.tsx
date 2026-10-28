@@ -41,7 +41,10 @@ import { useIntegrationPosts } from '@gitroom/frontend/components/automations/ho
 import { useRouter } from 'next/navigation';
 import { useToaster } from '@gitroom/react/toaster/toaster';
 import { WizardPhonePreview } from '@gitroom/frontend/components/automations/wizard-phone-preview.component';
-import { AddLinkModal } from '@gitroom/frontend/components/automations/add-link-modal.component';
+import {
+  validatePrivateButtonVariants,
+  type PrivateMessageVariant,
+} from '@gitroom/nestjs-libraries/database/prisma/flows/private-message-variants';
 import { AdAliasesField } from '@gitroom/frontend/components/automations/ad-aliases-field.component';
 
 const OPENING_DM_DEFAULT_PT =
@@ -108,10 +111,12 @@ export const AutomationWizardComponent: FC<Props> = ({
   const [replyMessages, setReplyMessages] = useState<string[]>(['']);
   const [dmMessage, setDmMessage] = useState('');
   const [dmMessages, setDmMessages] = useState<string[]>(['']);
+  const [dmVariants, setDmVariants] = useState<
+    PrivateMessageVariant[] | undefined
+  >();
   const [dmPreviewIndex, setDmPreviewIndex] = useState(0);
   const [dmButtonText, setDmButtonText] = useState('');
   const [dmButtonUrl, setDmButtonUrl] = useState('');
-  const [showAddLink, setShowAddLink] = useState(false);
   const [requireFollow, setRequireFollow] = useState(false);
   const [followGateMessage, setFollowGateMessage] = useState(
     t('automation_follow_comment_default')
@@ -171,6 +176,7 @@ export const AutomationWizardComponent: FC<Props> = ({
     replyMessages,
     dmMessage,
     dmMessages,
+    dmVariants,
     dmButtonText,
     dmButtonUrl,
     requireFollow,
@@ -247,8 +253,14 @@ export const AutomationWizardComponent: FC<Props> = ({
       : [];
     setEnableReply(msgs.length > 0);
     setReplyMessages(msgs.length ? msgs : ['']);
-    setDmMessage(dmCfg.messages?.[0] || dmCfg.message || '');
-    setDmMessages(dmCfg.messages || [dmCfg.message || '']);
+    setDmVariants(dmCfg.variants);
+    setDmMessage(
+      dmCfg.variants?.[0]?.message || dmCfg.messages?.[0] || dmCfg.message || ''
+    );
+    setDmMessages(
+      dmCfg.variants?.map((v: PrivateMessageVariant) => v.message) ||
+        dmCfg.messages || [dmCfg.message || '']
+    );
     setDmButtonText(dmCfg.buttonText || '');
     setDmButtonUrl(dmCfg.buttonUrl || '');
     setRequireFollow(!!triggerCfg.requireFollow);
@@ -347,6 +359,15 @@ export const AutomationWizardComponent: FC<Props> = ({
     publicationPreviews.find((p) => p.id === previewPublicationId) ||
     publicationPreviews[0];
 
+  const invalidDmVariants = (() => {
+    if (!dmVariants) return false;
+    try {
+      validatePrivateButtonVariants(dmVariants);
+      return false;
+    } catch {
+      return true;
+    }
+  })();
   const formProblems = [
     ...(!name.trim() ? [t('automation_name_required')] : []),
     ...(!integrationId ? [t('automation_account_required')] : []),
@@ -366,7 +387,8 @@ export const AutomationWizardComponent: FC<Props> = ({
     !dmMessage.trim()
       ? [t('automation_response_required')]
       : []),
-    ...(dmMessages.some((m) => m.length > (dmButtonText ? 640 : 2000)) ||
+    ...(invalidDmVariants ||
+    dmMessages.some((m) => m.length > (dmButtonText ? 640 : 2000)) ||
     (dmMessages.length > 1 && dmMessages.some((m) => !m.trim()))
       ? [t('automation_response_required')]
       : []),
@@ -425,9 +447,10 @@ export const AutomationWizardComponent: FC<Props> = ({
           if (msgs.length) body.replyMessages = msgs;
         }
         if (dmMessage.trim()) {
-          if (dmMessages.length > 1) body.dmMessages = dmMessages;
+          if (dmVariants) body.dmVariants = dmVariants;
+          else if (dmMessages.length > 1) body.dmMessages = dmMessages;
           else body.dmMessage = dmMessage.trim();
-          if (dmButtonText.trim() && dmButtonUrl.trim()) {
+          if (!dmVariants && dmButtonText.trim() && dmButtonUrl.trim()) {
             body.dmButtonText = dmButtonText.trim();
             body.dmButtonUrl = dmButtonUrl.trim();
           }
@@ -508,6 +531,7 @@ export const AutomationWizardComponent: FC<Props> = ({
       replyMessages,
       dmMessage,
       dmMessages,
+      dmVariants,
       dmButtonText,
       dmButtonUrl,
       requireFollow,
@@ -679,6 +703,54 @@ export const AutomationWizardComponent: FC<Props> = ({
                   </h2>
 
                   <AutomationPublicationSelector
+                    showSpecificContentWhenScheduled
+                    scopeNote={
+                      aliases?.length
+                        ? t('automation_instagram_aliases_scope_hint')
+                        : undefined
+                    }
+                    specificContent={
+                      <>
+                        {/* Aliases de dark posts (anuncios) — aditivo a qualquer modo */}
+                        <details className="mt-4 rounded-lg border border-newTableBorder p-3 text-sm">
+                          <summary className="cursor-pointer font-medium">
+                            {t('trigger_ad_ids_label')}
+                          </summary>
+                          <div className="pt-3 space-y-3">
+                            {!effectiveFlowId && (
+                              <>
+                                <p className="text-xs text-newTextColor/60">
+                                  {t('automation_prepare_draft_hint')}
+                                </p>
+                                <button
+                                  type="button"
+                                  disabled={
+                                    preparingDraft ||
+                                    saving ||
+                                    !name.trim() ||
+                                    !connection.ready
+                                  }
+                                  onClick={prepareDraft}
+                                  className="rounded-lg border border-newTableBorder px-3 py-2 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-btnPrimary"
+                                >
+                                  {t(
+                                    preparingDraft
+                                      ? 'automation_preparing_draft'
+                                      : 'automation_prepare_draft'
+                                  )}
+                                </button>
+                              </>
+                            )}
+                            {effectiveFlowId && (
+                              <AdAliasesField
+                                flowId={effectiveFlowId}
+                                integrationId={integrationId || null}
+                              />
+                            )}
+                          </div>
+                        </details>
+                      </>
+                    }
                     onPreviewChange={setPublicationPreviews}
                     key={integrationId}
                     integrationId={integrationId}
@@ -704,45 +776,6 @@ export const AutomationWizardComponent: FC<Props> = ({
                       setActivePreviewTab('post');
                     }}
                   />
-
-                  {/* Aliases de dark posts (anuncios) — aditivo a qualquer modo */}
-                  <details className="mt-4 rounded-lg border border-newTableBorder p-3 text-sm">
-                    <summary className="cursor-pointer font-medium">
-                      {t('trigger_ad_ids_label')}
-                    </summary>
-                    <div className="pt-3 space-y-3">
-                      {!effectiveFlowId && (
-                        <>
-                          <p className="text-xs text-newTextColor/60">
-                            {t('automation_prepare_draft_hint')}
-                          </p>
-                          <button
-                            type="button"
-                            disabled={
-                              preparingDraft ||
-                              saving ||
-                              !name.trim() ||
-                              !connection.ready
-                            }
-                            onClick={prepareDraft}
-                            className="rounded-lg border border-newTableBorder px-3 py-2 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-btnPrimary"
-                          >
-                            {t(
-                              preparingDraft
-                                ? 'automation_preparing_draft'
-                                : 'automation_prepare_draft'
-                            )}
-                          </button>
-                        </>
-                      )}
-                      {effectiveFlowId && (
-                        <AdAliasesField
-                          flowId={effectiveFlowId}
-                          integrationId={integrationId || null}
-                        />
-                      )}
-                    </div>
-                  </details>
                 </div>
 
                 {/* Section: E esse comentário possui (ManyChat style) */}
@@ -777,10 +810,7 @@ export const AutomationWizardComponent: FC<Props> = ({
                         setActivePreviewTab('comments');
                       }}
                       label={t('shared_add_public_reply')}
-                    />
-                  </div>
-                  {enableReply && (
-                    <div className="mt-3">
+                    >
                       <SharedReplyVariations
                         messages={replyMessages}
                         onChange={setReplyMessages}
@@ -790,8 +820,8 @@ export const AutomationWizardComponent: FC<Props> = ({
                           setActivePreviewTab('comments');
                         }}
                       />
-                    </div>
-                  )}
+                    </AutomationPublicReplyToggle>
+                  </div>
 
                   <div className="mt-5 mb-3 flex items-center justify-between text-xs text-newTextColor/70">
                     <span>
@@ -814,6 +844,16 @@ export const AutomationWizardComponent: FC<Props> = ({
                   <PrivateMessageVariations
                     maxLength={dmButtonText ? 640 : 2000}
                     messages={dmMessages}
+                    variants={dmVariants}
+                    buttonText={dmButtonText}
+                    buttonUrl={dmButtonUrl}
+                    onVariantsChange={(variants) => {
+                      setDmVariants(variants);
+                      setDmMessages(variants.map((v) => v.message));
+                      setDmMessage(variants[0]?.message || '');
+                      setDmButtonText('');
+                      setDmButtonUrl('');
+                    }}
                     onChange={(messages) => {
                       setDmMessages(messages);
                       setDmMessage(messages[0]);
@@ -829,19 +869,6 @@ export const AutomationWizardComponent: FC<Props> = ({
                       {t('shared_link_hint')}
                     </AutomationContextHelp>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActivePreviewTab('dm');
-                      setJourneyStage('delivery');
-                      setShowAddLink(true);
-                    }}
-                    className="mt-[10px] rounded-[4px] border border-dashed border-fifth text-[12px] text-textColor px-[14px] py-[8px] hover:bg-boxHover"
-                  >
-                    {dmButtonText && dmButtonUrl
-                      ? `${dmButtonText} · ${dmButtonUrl}`
-                      : `+ ${t('story_add_link', 'Adicionar um link')}`}
-                  </button>
                 </section>
 
                 {/* Extras — follow gate */}
@@ -973,8 +1000,18 @@ export const AutomationWizardComponent: FC<Props> = ({
                 dmMessages[Math.min(dmPreviewIndex, dmMessages.length - 1)] ||
                 undefined
               }
-              dmButtonText={dmButtonText || undefined}
-              dmButtonUrl={dmButtonUrl || undefined}
+              dmButtonText={
+                dmVariants
+                  ? dmVariants[Math.min(dmPreviewIndex, dmVariants.length - 1)]
+                      ?.buttonText
+                  : dmButtonText || undefined
+              }
+              dmButtonUrl={
+                dmVariants
+                  ? dmVariants[Math.min(dmPreviewIndex, dmVariants.length - 1)]
+                      ?.buttonUrl
+                  : dmButtonUrl || undefined
+              }
               integrationPicture={(selectedIntegration as any)?.picture}
               integrationName={
                 (selectedIntegration as any)?.name ||
@@ -989,17 +1026,6 @@ export const AutomationWizardComponent: FC<Props> = ({
             />
           </AutomationPhoneFrame>
         </AutomationPreviewPanel>
-
-        <AddLinkModal
-          open={showAddLink}
-          initialText={dmButtonText}
-          initialUrl={dmButtonUrl}
-          onClose={() => setShowAddLink(false)}
-          onSave={(text, url) => {
-            setDmButtonText(text);
-            setDmButtonUrl(url);
-          }}
-        />
       </AutomationEditorLayout>
     </AutomationWorkspace>
   );

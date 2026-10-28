@@ -55,3 +55,40 @@ describe('aplicacao local do inspetor', () => {
     expect(state.fetch).not.toHaveBeenCalled();
   });
 });
+vi.mock('./ad-aliases-field.component', () => ({
+  AdAliasesField: () => <span>IDs vinculados</span>,
+}));
+vi.mock('./hooks/use-unmatched-comments', () => ({
+  useAliases: () => ({ data: [{ id: 'alias' }] }),
+}));
+vi.mock('./shared-publication-selector.component', () => ({
+  AutomationPublicationSelector: ({
+    specificContent,
+    scopeNote,
+    mode,
+  }: any) => (
+    <section aria-label="Selecionar publicacoes">
+      {mode === 'specific' ? specificContent : scopeNote}
+    </section>
+  ),
+}));
+it('agrupa aliases em especificas tambem no inspetor do construtor', () => {
+  render(
+    <NodeConfigPanel
+      node={{
+        id: 't',
+        type: 'trigger',
+        data: { config: '{"mode":"specific"}' },
+      }}
+      flowId="f"
+      integrationId="ig"
+      onUpdate={vi.fn()}
+      onClose={vi.fn()}
+    />
+  );
+  expect(
+    screen
+      .getByRole('region', { name: 'Selecionar publicacoes' })
+      .contains(screen.getByText('IDs vinculados'))
+  ).toBe(true);
+});

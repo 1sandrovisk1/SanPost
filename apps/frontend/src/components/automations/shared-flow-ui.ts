@@ -1,3 +1,4 @@
+import { assertPrivateVariantRepresentation } from '@gitroom/nestjs-libraries/database/prisma/flows/private-message-variants';
 import {
   normalizeDefinition,
   type CommentDefinition,
@@ -36,9 +37,12 @@ export function validateSharedDraft(
     const invalid = definition.nodes.find((node) => {
       try {
         const cfg = JSON.parse(node.data);
+        if (node.type === 'SEND_DM') assertPrivateVariantRepresentation(cfg);
         return (
           ['SEND_DM', 'REPLY_COMMENT'].includes(node.type) &&
-          ((!cfg.message?.trim() && !cfg.messages?.length) ||
+          ((!cfg.message?.trim() &&
+            !cfg.messages?.length &&
+            !cfg.variants?.length) ||
             (cfg.messages !== undefined &&
               (!Array.isArray(cfg.messages) ||
                 !cfg.messages.length ||

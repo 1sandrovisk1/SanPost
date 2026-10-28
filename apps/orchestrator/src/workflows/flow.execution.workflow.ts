@@ -1,4 +1,7 @@
-import { stablePrivateMessage } from '@gitroom/nestjs-libraries/database/prisma/flows/private-message-variants';
+import {
+  stablePrivateMessage,
+  stablePrivateVariant,
+} from '@gitroom/nestjs-libraries/database/prisma/flows/private-message-variants';
 import { proxyActivities, sleep, patched } from '@temporalio/workflow';
 import type { FlowActivity } from '@gitroom/orchestrator/activities/flow.activity';
 
@@ -22,6 +25,23 @@ const {
     initialInterval: '10 seconds',
   },
 });
+
+function privateSelection(config: any, seed: string) {
+  if (
+    config.variants?.length &&
+    patched('private-message-button-variants-v1')
+  ) {
+    return { ...stablePrivateVariant(config.variants, seed), versioned: true };
+  }
+  const enabled =
+    !!config.messages?.length && patched('private-message-variants-v1');
+  return {
+    message: stablePrivateMessage(config, seed, enabled),
+    buttonText: config.buttonText,
+    buttonUrl: config.buttonUrl,
+    versioned: enabled,
+  };
+}
 
 const FOLLOW_GATE_DEFAULT =
   'Olá! Esse conteúdo é exclusivo para seguidores. Me segue aqui e responde o story de novo para eu te enviar 💙';
@@ -259,19 +279,14 @@ async function traverseNode(
           // conteudo da DM final apos confirmacao do follow.
           const dmNode = nodes.find((n: any) => n.type === 'SEND_DM');
           const dmCfg = dmNode ? safeParseJson(dmNode.data) : {};
-          const finalDmMessage = interpolateVariables(
-            stablePrivateMessage(
-              dmCfg,
-              `${input.executionId}:${dmNode?.id}`,
-              !!dmCfg.messages?.length && patched('private-message-variants-v1')
-            ),
-            input
+          const selected = privateSelection(
+            dmCfg,
+            `${input.executionId}:${dmNode?.id}`
           );
-
+          const finalDmMessage = interpolateVariables(selected.message, input);
           if (
-            dmCfg.messages?.length &&
-            patched('private-message-variants-v1') &&
-            finalDmMessage.length > (dmCfg.buttonText ? 640 : 2000)
+            selected.versioned &&
+            finalDmMessage.length > (selected.buttonText ? 640 : 2000)
           )
             throw new Error('MESSAGE_TOO_LONG');
 
@@ -288,8 +303,8 @@ async function traverseNode(
             kind: 'initial',
             maxAttempts: triggerConfig.maxGateAttempts ?? 3,
             snapshotFinalDm: finalDmMessage || undefined,
-            snapshotFinalBtnText: dmCfg.buttonText || undefined,
-            snapshotFinalBtnUrl: dmCfg.buttonUrl || undefined,
+            snapshotFinalBtnText: selected.buttonText || undefined,
+            snapshotFinalBtnUrl: selected.buttonUrl || undefined,
             snapshotGateDm: triggerConfig.followGateMessage || undefined,
             snapshotAlreadyBtnText:
               triggerConfig.alreadyFollowedButtonText || undefined,
@@ -430,29 +445,24 @@ async function traverseNode(
 
       case 'SEND_DM': {
         const config = safeParseJson(node.data);
-        const variantsEnabled =
-          !!config.messages?.length && patched('private-message-variants-v1');
-        ctx.privateVariants ||= variantsEnabled;
-        const message = interpolateVariables(
-          stablePrivateMessage(
-            config,
-            `${input.executionId}:${node.id}`,
-            variantsEnabled
-          ),
-          input
+        const selected = privateSelection(
+          config,
+          `${input.executionId}:${node.id}`
         );
+        ctx.privateVariants ||= selected.versioned;
+        const message = interpolateVariables(selected.message, input);
         if (
-          variantsEnabled &&
-          message.length > (config.buttonText ? 640 : 2000)
+          selected.versioned &&
+          message.length > (selected.buttonText ? 640 : 2000)
         )
           throw new Error('MESSAGE_TOO_LONG');
         if (message) {
           // Collect message — all DMs are sent as a single private reply at the end.
           ctx.dmMessages.push(message);
         }
-        if (config.buttonText && config.buttonUrl) {
-          ctx.dmButtonText = config.buttonText;
-          ctx.dmButtonUrl = config.buttonUrl;
+        if (selected.buttonText && selected.buttonUrl) {
+          ctx.dmButtonText = selected.buttonText;
+          ctx.dmButtonUrl = selected.buttonUrl;
         }
         break;
       }

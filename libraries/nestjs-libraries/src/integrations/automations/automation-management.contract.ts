@@ -1,3 +1,4 @@
+import { assertPrivateVariantRepresentation } from '../../database/prisma/flows/private-message-variants';
 import { HttpException } from '@nestjs/common';
 import { z } from 'zod';
 import {
@@ -138,12 +139,25 @@ export function validateAutomationConfiguration(
     failAutomation('EMPTY_VARIATION_OR_KEYWORD');
   if (c.replyMessage && c.replyMessages?.length)
     failAutomation('AMBIGUOUS_PUBLIC_REPLY');
+  try {
+    assertPrivateVariantRepresentation({
+      variants: c.dmVariants,
+      message: c.dmMessage,
+      messages: c.dmMessages,
+      buttonText: c.dmButtonText,
+      buttonUrl: c.dmButtonUrl,
+    });
+  } catch (error) {
+    failAutomation((error as Error).message);
+  }
   if (c.dmMessages?.some((m) => !m.trim()))
     failAutomation('EMPTY_VARIATION_OR_KEYWORD');
   if (c.dmMessage && c.dmMessages?.length)
     failAutomation('AMBIGUOUS_PRIVATE_REPLY');
   const privateTexts =
-    c.dmMessages || (c.dmMessage?.trim() ? [c.dmMessage] : []);
+    c.dmVariants?.map((v) => v.message) ||
+    c.dmMessages ||
+    (c.dmMessage?.trim() ? [c.dmMessage] : []);
   if (
     c.dmMessages &&
     c.dmButtonText &&
@@ -260,11 +274,19 @@ export function legacyConfiguration(
     const data = parseObject(dm.data);
     if (
       Object.keys(data).some(
-        (k) => !['message', 'messages', 'buttonText', 'buttonUrl'].includes(k)
+        (k) =>
+          ![
+            'variants',
+            'message',
+            'messages',
+            'buttonText',
+            'buttonUrl',
+          ].includes(k)
       )
     )
       return null;
-    if (Array.isArray(data.messages)) config.dmMessages = data.messages;
+    if (Array.isArray(data.variants)) config.dmVariants = data.variants;
+    else if (Array.isArray(data.messages)) config.dmMessages = data.messages;
     else config.dmMessage = data.message;
     config.dmButtonText = data.buttonText;
     config.dmButtonUrl = data.buttonUrl;
@@ -324,6 +346,7 @@ export function validateLegacyCanvas(
       .strict(),
     SEND_DM: z
       .object({
+        variants: automationConfigurationShape.dmVariants,
         message: automationConfigurationShape.dmMessage,
         messages: automationConfigurationShape.dmMessages,
         buttonText: automationConfigurationShape.dmButtonText,
@@ -345,6 +368,13 @@ export function validateLegacyCanvas(
     const cfg = parseObject(node.data);
     if (!schemas[node.type].safeParse(cfg).success)
       failAutomation('INVALID_NODE_CONFIG');
+    if (node.type === 'SEND_DM') {
+      try {
+        assertPrivateVariantRepresentation(cfg);
+      } catch (error) {
+        failAutomation((error as Error).message);
+      }
+    }
     if (
       node.type === 'SEND_DM' &&
       ((cfg.buttonUrl && checkPublicHttpsUrl(String(cfg.buttonUrl))) ||
@@ -354,7 +384,8 @@ export function validateLegacyCanvas(
     if (
       ['SEND_DM', 'REPLY_COMMENT'].includes(node.type) &&
       !String(cfg.message || '').trim() &&
-      !(cfg.messages as string[])?.some((m) => m.trim())
+      !(cfg.messages as string[])?.some((m) => m.trim()) &&
+      !(cfg.variants as unknown[])?.length
     )
       failAutomation('ACTION_REQUIRED');
   }

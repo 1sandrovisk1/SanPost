@@ -1,4 +1,5 @@
 'use client';
+import { useAliases } from './hooks/use-unmatched-comments';
 import { PrivateMessageVariations } from './shared-private-variations.component';
 
 import { AutomationMessageVariables } from './shared-message-variables.component';
@@ -181,6 +182,7 @@ export const NodeConfigPanel: FC<NodeConfigPanelProps> = ({
     node.type === 'trigger'
   );
 
+  const { data: aliases } = useAliases(node.type === 'trigger' ? flowId : null);
   const fetchApi = useFetch();
   const { data: flowSummary } = useSWR<{ integrationId: string }>(
     flowId && node.type === 'trigger' ? `/flows/${flowId}` : null,
@@ -357,6 +359,27 @@ export const NodeConfigPanel: FC<NodeConfigPanelProps> = ({
             {/* Specific selectors */}
             {triggerType === 'comment_on_post' && (
               <AutomationPublicationSelector
+                showSpecificContentWhenScheduled
+                scopeNote={
+                  aliases?.length
+                    ? t('automation_instagram_aliases_scope_hint')
+                    : undefined
+                }
+                specificContent={
+                  <details className="mt-3 rounded-lg border border-newTableBorder p-3 text-sm">
+                    <summary className="cursor-pointer font-medium">
+                      {t('trigger_ad_ids_label')}
+                    </summary>
+                    <div className="pt-3">
+                      <AdAliasesField
+                        flowId={flowId}
+                        integrationId={
+                          flowSummary?.integrationId ?? integrationId ?? null
+                        }
+                      />
+                    </div>
+                  </details>
+                }
                 key={integrationId}
                 integrationId={integrationId}
                 mode={currentMode}
@@ -403,16 +426,6 @@ export const NodeConfigPanel: FC<NodeConfigPanelProps> = ({
                     }
                   />
                 </div>
-              </div>
-            )}
-
-            {/* Aliases de dark posts (anuncios) — apenas comment_on_post */}
-            {triggerType === 'comment_on_post' && (
-              <div className="mt-[16px]">
-                <AdAliasesField
-                  flowId={flowId}
-                  integrationId={flowSummary?.integrationId ?? null}
-                />
               </div>
             )}
 
@@ -751,6 +764,19 @@ export const NodeConfigPanel: FC<NodeConfigPanelProps> = ({
             <PrivateMessageVariations
               disabled={disabled}
               messages={config.messages || [config.message || '']}
+              variants={config.variants}
+              buttonText={config.buttonText}
+              buttonUrl={config.buttonUrl}
+              onVariantsChange={(variants) =>
+                setConfig({
+                  ...config,
+                  variants,
+                  message: undefined,
+                  messages: undefined,
+                  buttonText: undefined,
+                  buttonUrl: undefined,
+                })
+              }
               onChange={(messages) =>
                 setConfig({
                   ...config,
@@ -766,60 +792,6 @@ export const NodeConfigPanel: FC<NodeConfigPanelProps> = ({
                 'Use quebras de linha para separar paragrafos. A Meta permite apenas 1 mensagem direta por comentario.'
               )}
             </p>
-
-            {/* Button CTA — mesmo contrato do wizard (buttonText + buttonUrl). */}
-            <div className="mt-[16px] pt-[12px] border-t border-fifth flex flex-col gap-[10px]">
-              <label className="text-[12px] font-semibold text-textColor">
-                {t('dm_button_section', 'Botão na mensagem (opcional)')}
-              </label>
-
-              <div>
-                <label className="block text-[11px] text-customColor18 mb-[4px]">
-                  {t('dm_button_text_label', 'Texto do botão')}
-                </label>
-                <div className={inputWrapperClass}>
-                  <input
-                    type="text"
-                    className={`${inputClass} h-[40px]`}
-                    value={config.buttonText || ''}
-                    onChange={(e) =>
-                      setConfig({ ...config, buttonText: e.target.value })
-                    }
-                    placeholder={t(
-                      'dm_button_text_placeholder',
-                      'Acessar o link'
-                    )}
-                    maxLength={20}
-                  />
-                </div>
-                <p className="text-[10px] text-customColor18 mt-[4px]">
-                  {t('dm_button_text_hint', 'Meta limita a 20 caracteres.')}
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-[11px] text-customColor18 mb-[4px]">
-                  {t('dm_button_url_label', 'URL do botão')}
-                </label>
-                <div className={inputWrapperClass}>
-                  <input
-                    type="url"
-                    className={`${inputClass} h-[40px]`}
-                    value={config.buttonUrl || ''}
-                    onChange={(e) =>
-                      setConfig({ ...config, buttonUrl: e.target.value })
-                    }
-                    placeholder="https://..."
-                  />
-                </div>
-                <p className="text-[10px] text-customColor18 mt-[4px]">
-                  {t(
-                    'dm_button_url_hint',
-                    'Preencha os dois campos para exibir o botão. Deixe vazio para enviar apenas texto.'
-                  )}
-                </p>
-              </div>
-            </div>
           </>
         );
 

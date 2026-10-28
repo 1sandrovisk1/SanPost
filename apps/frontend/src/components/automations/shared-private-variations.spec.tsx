@@ -23,3 +23,35 @@ describe('alternativas privadas', () => {
     expect(select.querySelector('[value="{{comment_name}}"]')).toBeNull();
   });
 });
+it('edita CTA de uma alternativa sem mudar o texto ou botao das outras', () => {
+  const onVariantsChange = vi.fn();
+  render(
+    <PrivateMessageVariations
+      messages={['A', 'B']}
+      buttonText="Antigo"
+      buttonUrl="https://example.com/old"
+      onChange={vi.fn()}
+      onVariantsChange={onVariantsChange}
+    />
+  );
+  fireEvent.click(
+    screen.getAllByRole('button', {
+      name: 'Antigo · https://example.com/old',
+    })[1]
+  );
+  fireEvent.change(screen.getByLabelText('add_link_button_text'), {
+    target: { value: 'Novo' },
+  });
+  fireEvent.change(screen.getByLabelText('add_link_url'), {
+    target: { value: 'https://example.com/new' },
+  });
+  fireEvent.click(screen.getByText('save'));
+  expect(onVariantsChange).toHaveBeenCalledWith([
+    {
+      message: 'A',
+      buttonText: 'Antigo',
+      buttonUrl: 'https://example.com/old',
+    },
+    { message: 'B', buttonText: 'Novo', buttonUrl: 'https://example.com/new' },
+  ]);
+});

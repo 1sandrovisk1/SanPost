@@ -532,3 +532,15 @@ it('previa usa agendamento selecionado e limpa ao trocar conta sem gravar', asyn
   );
   expect(state.fetch.mock.calls.some(([url]) => url === '/flows')).toBe(false);
 });
+it('aninha os IDs de Dark Posts no escopo de publicacoes especificas', async () => {
+  render(<AutomationWizardComponent />);
+  choose();
+  await screen.findByLabelText('automation_webhook_configured');
+  fireEvent.click(screen.getByRole('radio', { name: 'wizard_specific_post' }));
+  const radio = screen.getByRole('radio', { name: 'wizard_specific_post' });
+  expect(
+    radio
+      .closest('div')
+      ?.parentElement?.contains(screen.getByText('trigger_ad_ids_label'))
+  ).toBe(true);
+});

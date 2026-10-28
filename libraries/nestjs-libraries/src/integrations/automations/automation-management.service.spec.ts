@@ -579,6 +579,205 @@ describe('gerenciamento de automacoes por API e agentes', () => {
       requireFollow: true,
     });
   });
+
+  describe('alternativas privadas com botao proprio', () => {
+    const variants = [
+      {
+        message: 'Material A',
+        buttonText: 'Abrir A',
+        buttonUrl: 'https://example.com/a',
+      },
+      {
+        message: 'Material B',
+        buttonText: 'Abrir B',
+        buttonUrl: 'https://example.com/b',
+      },
+      { message: 'Sem botao' },
+    ];
+    const snapshot = {
+      expectedRevision: 1,
+      expectedUpdatedAt: '2026-10-27T12:00:00.000Z',
+    };
+
+    async function configure(version: 1 | 2, data: Record<string, unknown>) {
+      if (version === 1) {
+        const flow = legacy();
+        flow.nodes[2].data = JSON.stringify(data);
+        flows.getFlow.mockResolvedValue(flow as any);
+        return flow.id;
+      }
+      const flow = await shared.save(scope, {} as any);
+      flow.definition = simpleDefinition({ message: 'Substituir' });
+      flow.definition.nodes.find((n) => n.type === 'SEND_DM')!.data =
+        JSON.stringify(data);
+      shared.get.mockResolvedValue(flow);
+      shared.save.mockClear();
+      return flow.id;
+    }
+
+    function savedDm(version: 1 | 2): Record<string, unknown> {
+      if (version === 1)
+        return flows.quickUpdateFlow.mock.calls.at(-1)![2] as unknown as Record<
+          string,
+          unknown
+        >;
+      return JSON.parse(
+        shared.save.mock.calls
+          .at(-1)![1]
+          .definition.nodes.find((n) => n.type === 'SEND_DM')!.data
+      );
+    }
+
+    it.each([1, 2] as const)(
+      'preserva objetos e CTA ao editar outro campo no motor %s',
+      async (version) => {
+        const id = await configure(version, { variants });
+        expect(
+          (await service.detail(scope, id, version)).configuration
+        ).toMatchObject({ dmVariants: variants });
+        await service.update(scope, id, version, {
+          configuration: { name: 'Nome ajustado' },
+          ...snapshot,
+        });
+        const saved = savedDm(version);
+        expect(saved[version === 1 ? 'dmVariants' : 'variants']).toEqual(
+          variants
+        );
+        for (const field of version === 1
+          ? ['dmMessage', 'dmMessages', 'dmButtonText', 'dmButtonUrl']
+          : ['message', 'messages', 'buttonText', 'buttonUrl']) {
+          expect(saved[field]).toBeUndefined();
+        }
+        if (version === 1)
+          expect(saved).toMatchObject({
+            requireFollow: true,
+            openingDmMessage: 'Inicio',
+            maxGateAttempts: 7,
+          });
+      }
+    );
+
+    it.each([
+      [
+        1,
+        {
+          message: 'Antiga',
+          buttonText: 'Global',
+          buttonUrl: 'https://example.com/global',
+        },
+      ],
+      [
+        1,
+        {
+          messages: ['Antiga A', 'Antiga B'],
+          buttonText: 'Global',
+          buttonUrl: 'https://example.com/global',
+        },
+      ],
+      [
+        2,
+        {
+          message: 'Antiga',
+          buttonText: 'Global',
+          buttonUrl: 'https://example.com/global',
+        },
+      ],
+      [
+        2,
+        {
+          messages: ['Antiga A', 'Antiga B'],
+          buttonText: 'Global',
+          buttonUrl: 'https://example.com/global',
+        },
+      ],
+    ] as const)(
+      'troca singular ou lista por objetos e limpa CTA global no motor %s: %p',
+      async (version, original) => {
+        const id = await configure(version, original);
+        await service.update(scope, id, version, {
+          configuration: { dmVariants: variants },
+          ...snapshot,
+        });
+        const saved = savedDm(version);
+        expect(saved[version === 1 ? 'dmVariants' : 'variants']).toEqual(
+          variants
+        );
+        for (const field of version === 1
+          ? ['dmMessage', 'dmMessages', 'dmButtonText', 'dmButtonUrl']
+          : ['message', 'messages', 'buttonText', 'buttonUrl']) {
+          expect(saved[field]).toBeUndefined();
+        }
+      }
+    );
+
+    it.each([
+      [1, { dmMessage: 'Unica' }],
+      [1, { dmMessages: ['Texto A', 'Texto B'] }],
+      [2, { dmMessage: 'Unica' }],
+      [2, { dmMessages: ['Texto A', 'Texto B'] }],
+    ] as const)(
+      'troca objetos por singular ou lista explicitamente no motor %s: %p',
+      async (version, replacement) => {
+        const id = await configure(version, { variants });
+        await service.update(scope, id, version, {
+          configuration: replacement,
+          ...snapshot,
+        });
+        const saved = savedDm(version);
+        expect(
+          saved[version === 1 ? 'dmVariants' : 'variants']
+        ).toBeUndefined();
+        if (version === 1) expect(saved).toMatchObject(replacement);
+        else
+          expect(saved).toEqual(
+            'dmMessage' in replacement
+              ? { message: replacement.dmMessage }
+              : { messages: replacement.dmMessages }
+          );
+      }
+    );
+
+    it.each([
+      { dmMessage: 'Misturada' },
+      { dmMessages: ['Misturada'] },
+      { dmButtonText: 'Global', dmButtonUrl: 'https://example.com/global' },
+    ])(
+      'recusa objetos misturados com representacao ou CTA global: %p',
+      async (mixed) => {
+        await expect(
+          service.create(scope, {
+            platform: 'facebook',
+            name: 'Ambigua',
+            integrationId: 'fb',
+            postMode: 'all',
+            dmVariants: variants,
+            ...mixed,
+            activate: false,
+          })
+        ).rejects.toThrow();
+        expect(shared.save).not.toHaveBeenCalled();
+        expect(flows.createDraftFlow).not.toHaveBeenCalled();
+      }
+    );
+
+    it.each([1, 2] as const)(
+      'recusa alterar somente CTA global em regra por objetos no motor %s',
+      async (version) => {
+        const id = await configure(version, { variants });
+        await expect(
+          service.update(scope, id, version, {
+            configuration: {
+              dmButtonText: 'Nao aplicar',
+              dmButtonUrl: 'https://example.com/global',
+            },
+            ...snapshot,
+          })
+        ).rejects.toThrow();
+        expect(flows.quickUpdateFlow).not.toHaveBeenCalled();
+        expect(shared.save).not.toHaveBeenCalled();
+      }
+    );
+  });
 });
 
 describe('historico normalizado da fachada', () => {

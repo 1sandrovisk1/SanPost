@@ -339,3 +339,73 @@ describe('alternativas privadas', () => {
     }
   );
 });
+
+describe('texto e CTA por alternativa privada', () => {
+  const variants = [
+    {
+      message: 'Primeira',
+      buttonText: 'Primeiro',
+      buttonUrl: 'https://example.com/a',
+    },
+    {
+      message: 'Segunda',
+      buttonText: 'Segundo',
+      buttonUrl: 'https://example.com/b',
+    },
+    { message: 'Sem botao' },
+  ];
+  const graph = (values = variants) => {
+    const g = simpleDefinition({ message: 'old' });
+    g.nodes[1].data = JSON.stringify({ variants: values });
+    return g;
+  };
+  it('escolhe o par inteiro sem herdar CTA de outra alternativa', () => {
+    for (const i of [0, 1, 2]) {
+      const action = planCommentActions(graph(), { text: '' }, () => i)[0];
+      expect(action.text).toBe(variants[i].message);
+      expect(action.button).toEqual(
+        i < 2
+          ? { title: variants[i].buttonText, url: variants[i].buttonUrl }
+          : undefined
+      );
+    }
+  });
+  it('mantem comprimento e botao correlacionados', () => {
+    expect(() =>
+      normalizeDefinition(
+        graph([
+          { message: 'x'.repeat(2000) },
+          {
+            message: 'x'.repeat(600),
+            buttonText: 'Link',
+            buttonUrl: 'https://example.com',
+          },
+        ])
+      )
+    ).not.toThrow();
+    expect(() =>
+      normalizeDefinition(
+        graph([
+          {
+            message: 'x'.repeat(641),
+            buttonText: 'Link',
+            buttonUrl: 'https://example.com',
+          },
+        ])
+      )
+    ).toThrow();
+  });
+  it('rejeita representacoes ambiguas e CTA incompleto', () => {
+    for (const config of [
+      { variants, message: 'old' },
+      { variants, messages: ['old'] },
+      { variants, buttonText: 'old' },
+      { variants: [{ message: 'A', buttonText: 'Link' }] },
+      { variants: [{ message: 'A', surprise: true }] },
+    ]) {
+      const g = graph();
+      g.nodes[1].data = JSON.stringify(config);
+      expect(() => normalizeDefinition(g)).toThrow();
+    }
+  });
+});

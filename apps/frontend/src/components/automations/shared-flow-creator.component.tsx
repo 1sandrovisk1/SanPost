@@ -39,7 +39,7 @@ import { SharedReplyVariations } from './shared-reply-variations.component';
 import { WizardPhonePreview } from './wizard-phone-preview.component';
 import { AutomationPublicReplyToggle } from './shared-public-reply-toggle.component';
 import { AutomationKeywordConditions } from './shared-keyword-conditions.component';
-import { AddLinkModal } from './add-link-modal.component';
+import type { PrivateMessageVariant } from '@gitroom/nestjs-libraries/database/prisma/flows/private-message-variants';
 import {
   sharedFailureCode,
   validateSharedDraft,
@@ -77,6 +77,7 @@ function simpleValues(definition: CommentDefinition) {
     matchMode: cfg.matchMode || 'any',
     message: dmCfg.message || '',
     dmMessages: dmCfg.messages as string[] | undefined,
+    dmVariants: dmCfg.variants as PrivateMessageVariant[] | undefined,
     reply: replyCfg.message || '',
     replyMessages: replyCfg.messages as string[] | undefined,
     buttonText: dmCfg.buttonText || '',
@@ -172,7 +173,6 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
   const [problems, setProblems] = useState<DraftProblem[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
   const [keywordSpecific, setKeywordSpecific] = useState(false);
-  const [showAddLink, setShowAddLink] = useState(false);
   const [publicReply, setPublicReply] = useState(false);
   const [focusNode, setFocusNode] = useState<string | undefined>();
   const [previewChannel, setPreviewChannel] = useState('');
@@ -230,7 +230,8 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
   const advanced = editorOwner.current === 'flow';
   const messenger = values.triggerType === 'messenger_message';
   const [dmPreviewIndex, setDmPreviewIndex] = useState(0);
-  const privateMessages = values.dmMessages || [values.message];
+  const privateMessages = values.dmVariants?.map((v) => v.message) ||
+    values.dmMessages || [values.message];
   const replyMessages = values.replyMessages || [values.reply];
   const hasPublicReply =
     publicReply || definition.nodes.some((n) => n.type === 'REPLY_COMMENT');
@@ -653,20 +654,19 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
                 setPreviewTab('dm');
               }
             }}
-          />
-        )}
-        {!messenger && hasPublicReply && (
-          <SharedReplyVariations
-            disabled={disabled}
-            messages={replyMessages}
-            onChange={(messages) =>
-              editSimple({ reply: '', replyMessages: messages })
-            }
-            onFocus={(index) => {
-              setReplyPreviewIndex(index);
-              setPreviewTab('comments');
-            }}
-          />
+          >
+            <SharedReplyVariations
+              disabled={disabled}
+              messages={replyMessages}
+              onChange={(messages) =>
+                editSimple({ reply: '', replyMessages: messages })
+              }
+              onFocus={(index) => {
+                setReplyPreviewIndex(index);
+                setPreviewTab('comments');
+              }}
+            />
+          </AutomationPublicReplyToggle>
         )}
         {!messenger && (
           <div className="flex items-center justify-between text-xs text-newTextColor/70">
@@ -681,6 +681,18 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
           engine="shared"
           messenger={messenger}
           messages={privateMessages}
+          variants={values.dmVariants}
+          buttonText={values.buttonText}
+          buttonUrl={values.buttonUrl}
+          onVariantsChange={(dmVariants) =>
+            editSimple({
+              dmVariants,
+              message: '',
+              dmMessages: undefined,
+              buttonText: '',
+              buttonUrl: '',
+            })
+          }
           disabled={disabled}
           maxLength={values.buttonText ? 640 : 2000}
           onFocus={(index) => {
@@ -704,33 +716,6 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
           </AutomationContextHelp>
           <span className="shrink-0"></span>
         </div>
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={() => {
-            setPreviewTab('dm');
-            setShowAddLink(true);
-          }}
-          className="rounded border border-dashed border-newTableBorder text-[12px] text-textColor px-3.5 py-2 hover:bg-boxHover disabled:opacity-50"
-        >
-          {values.buttonText && values.buttonUrl
-            ? `${values.buttonText} · ${values.buttonUrl}`
-            : `+ ${t('story_add_link')}`}
-        </button>
-        <AddLinkModal
-          open={showAddLink}
-          initialText={values.buttonText}
-          initialUrl={values.buttonUrl}
-          maxTextLength={20}
-          onSave={(buttonText, buttonUrl) =>
-            editSimple({ buttonText, buttonUrl })
-          }
-          onClose={() => setShowAddLink(false)}
-          onRemove={() => {
-            editSimple({ buttonText: '', buttonUrl: '' });
-            setShowAddLink(false);
-          }}
-        />
       </section>
     </div>
   );
@@ -845,8 +830,20 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
                   Math.min(dmPreviewIndex, privateMessages.length - 1)
                 ]
               }
-              dmButtonText={values.buttonText}
-              dmButtonUrl={values.buttonUrl}
+              dmButtonText={
+                values.dmVariants
+                  ? values.dmVariants[
+                      Math.min(dmPreviewIndex, values.dmVariants.length - 1)
+                    ]?.buttonText || ''
+                  : values.buttonText
+              }
+              dmButtonUrl={
+                values.dmVariants
+                  ? values.dmVariants[
+                      Math.min(dmPreviewIndex, values.dmVariants.length - 1)
+                    ]?.buttonUrl || ''
+                  : values.buttonUrl
+              }
               integrationName={preview?.name}
               integrationPicture={preview?.picture || undefined}
             />

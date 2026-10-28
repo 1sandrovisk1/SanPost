@@ -45,6 +45,19 @@ const BUTTON = {
   buttonText: 'Abrir conteudo',
   buttonUrl: 'https://example.com',
 };
+const BUTTON_VARIANTS = [
+  {
+    message: 'Conteudo A',
+    buttonText: 'Abrir A',
+    buttonUrl: 'https://example.com/a',
+  },
+  {
+    message: 'Conteudo B',
+    buttonText: 'Abrir B',
+    buttonUrl: 'https://example.com/b',
+  },
+  { message: 'Alternativa sem botao' },
+];
 
 function canvas(config: Record<string, unknown>): SaveCanvasDto {
   return {
@@ -396,6 +409,169 @@ describe('FlowsService - alternativas de mensagem privada', () => {
         PROFILE
       );
       expect(repository.getFlow).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('alternativas com texto e botao proprios', () => {
+    const quickObjects = (): QuickCreateFlowDto => ({
+      name: 'CTA por alternativa',
+      integrationId: INTEGRATION,
+      activate: false,
+      postMode: 'all',
+      dmVariants: BUTTON_VARIANTS,
+    });
+    const mixedRepresentations: Array<[string, Partial<QuickCreateFlowDto>]> = [
+      ['mensagem singular', { dmMessage: 'Singular antiga' }],
+      ['lista de textos', { dmMessages: ['Texto antigo'] }],
+      [
+        'CTA global',
+        { dmButtonText: BUTTON.buttonText, dmButtonUrl: BUTTON.buttonUrl },
+      ],
+    ];
+
+    it.each(['quickCreateFlow', 'quickUpdateFlow'] as const)(
+      '%s serializa objetos integros em SEND_DM sem CTA global',
+      async (method) => {
+        if (method === 'quickCreateFlow')
+          await service.quickCreateFlow(ORG, quickObjects(), PROFILE);
+        else await service.quickUpdateFlow(ORG, FLOW, quickObjects(), PROFILE);
+
+        const nodes = repository.saveCanvas.mock.calls[0][2];
+        const privateNodes = nodes.filter((node) => node.type === 'SEND_DM');
+        expect(privateNodes).toHaveLength(1);
+        expect(JSON.parse(privateNodes[0].data!)).toEqual({
+          variants: BUTTON_VARIANTS,
+        });
+        expect(repository.updateFlowStatus).not.toHaveBeenCalled();
+      }
+    );
+
+    describe.each(['quickCreateFlow', 'quickUpdateFlow'] as const)(
+      '%s sem mistura de representacoes',
+      (method) => {
+        it.each(mixedRepresentations)(
+          'recusa %s junto de objetos antes de qualquer escrita',
+          async (_label, mixed) => {
+            const body = { ...quickObjects(), ...mixed };
+            const result =
+              method === 'quickCreateFlow'
+                ? service.quickCreateFlow(ORG, body, PROFILE)
+                : service.quickUpdateFlow(ORG, FLOW, body, PROFILE);
+            await expect(result).rejects.toThrow(
+              new BadRequestException('AMBIGUOUS_PRIVATE_REPLY')
+            );
+            expectNoWrites();
+          }
+        );
+      }
+    );
+
+    describe.each(['saveCanvas', 'updateFlowStatus'] as const)(
+      '%s valida objetos na fronteira nativa',
+      (method) => {
+        it.each([
+          [
+            'objeto sem mensagem',
+            {
+              variants: [
+                { buttonText: 'Abrir', buttonUrl: 'https://example.com' },
+              ],
+            },
+            'INVALID_MESSAGE',
+          ],
+          [
+            'URL insegura',
+            {
+              variants: [
+                {
+                  message: 'Conteudo',
+                  buttonText: 'Abrir',
+                  buttonUrl: 'http://localhost/admin',
+                },
+              ],
+            },
+            'INVALID_BUTTON',
+          ],
+          [
+            'URL privada HTTPS',
+            {
+              variants: [
+                {
+                  message: 'Conteudo',
+                  buttonText: 'Abrir',
+                  buttonUrl: 'https://127.0.0.1/admin',
+                },
+              ],
+            },
+            'INVALID_BUTTON',
+          ],
+          [
+            'objeto com campo desconhecido',
+            { variants: [{ message: 'Conteudo', outroCampo: true }] },
+            'INVALID_MESSAGE',
+          ],
+          [
+            'CTA global misturado',
+            { variants: BUTTON_VARIANTS, ...BUTTON },
+            'AMBIGUOUS_PRIVATE_REPLY',
+          ],
+        ] as const)(
+          'recusa %s antes de persistir ou ativar',
+          async (_label, config, error) => {
+            const body = canvas(config);
+            if (method === 'updateFlowStatus') {
+              const current = await repository.getFlow(ORG, FLOW, PROFILE);
+              repository.getFlow.mockResolvedValue({
+                ...current!,
+                ...body,
+              } as Awaited<ReturnType<FlowsRepository['getFlow']>>);
+            }
+            const result =
+              method === 'saveCanvas'
+                ? service.saveCanvas(ORG, FLOW, body, PROFILE)
+                : service.updateFlowStatus(
+                    ORG,
+                    FLOW,
+                    FlowStatus.ACTIVE,
+                    PROFILE
+                  );
+            await expect(result).rejects.toThrow(
+              new BadRequestException(error)
+            );
+            expectNoWrites();
+          }
+        );
+      }
+    );
+
+    it('saveCanvas preserva pares e alternativa sem botao sem reescrever o grafo', async () => {
+      const body = canvas({ variants: BUTTON_VARIANTS });
+      await service.saveCanvas(ORG, FLOW, body, PROFILE);
+      expect(repository.saveCanvas).toHaveBeenCalledWith(
+        ORG,
+        FLOW,
+        body.nodes,
+        body.edges,
+        PROFILE
+      );
+      expect(repository.updateFlowStatus).not.toHaveBeenCalled();
+    });
+
+    it('ativa canvas com pares validos sem substituir a configuracao persistida', async () => {
+      const current = await repository.getFlow(ORG, FLOW, PROFILE);
+      repository.getFlow.mockResolvedValue({
+        ...current!,
+        ...canvas({ variants: BUTTON_VARIANTS }),
+      } as Awaited<ReturnType<FlowsRepository['getFlow']>>);
+      await service.updateFlowStatus(ORG, FLOW, FlowStatus.ACTIVE, PROFILE);
+      expect(repository.updateFlowStatus).toHaveBeenCalledWith(
+        ORG,
+        FLOW,
+        FlowStatus.ACTIVE,
+        PROFILE
+      );
+      expect(repository.saveCanvas).not.toHaveBeenCalled();
+      expect(repository.updateFlow).not.toHaveBeenCalled();
     });
   });
 });
