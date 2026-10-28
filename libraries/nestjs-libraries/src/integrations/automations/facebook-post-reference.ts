@@ -107,6 +107,9 @@ export function facebookPostPreview(
 ): AutomationPostView {
   return {
     id,
+    ...(typeof post.is_published === 'boolean'
+      ? { isPublished: post.is_published }
+      : {}),
     caption:
       typeof post.message === 'string' ? post.message.slice(0, 5000) : '',
     permalink: safeUrl(post.permalink_url),

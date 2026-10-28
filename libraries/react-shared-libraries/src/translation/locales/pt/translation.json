@@ -2458,7 +2458,7 @@
   "fb_post_help_title": "Onde encontro o ID?",
   "fb_post_lookup_help": "No Gerenciador de Anúncios, abra a prévia do anúncio e a publicação com comentários. Copie o ID da publicação ou seu link permanente. Use o ID da publicação, não o do anúncio ou da campanha.",
   "fb_post_lookup_formats": "Aceita ID numérico, ID completo (Página_Publicação) e links /posts/ID, permalink.php ou /reel/ID. Em vídeos, a relação com a publicação precisa ser confirmada pela Meta. Links curtos (share), pfbid e IDs de anúncio não são aceitos.",
-  "fb_post_lookup_hint": "Use para publicações de anúncios que não aparecem na lista acima.",
+  "fb_post_lookup_hint": "Combine publicações da galeria e Dark Posts na mesma seleção. Use o ID ou link para adicionar uma publicação que não aparece na lista.",
   "fb_post_lookup_confirmed": "Publicação da Página confirmada",
   "fb_post_error_reference": "Não reconhecemos esse formato. Use o ID da publicação ou um link permanente com ID numérico.",
   "fb_post_error_owner": "Essa publicação não foi confirmada como pertencente à Página selecionada. Confira o ID e a Página.",
@@ -2731,5 +2731,7 @@
   "shared_error_post_video_relation_required": "Não foi possível confirmar a publicação vinculada ao vídeo. Confira o ID e o acesso da Página antes de ativar.",
   "fb_selected_posts_recovery_help": "A seleção foi mantida. Algumas miniaturas ainda não foram recuperadas. Se atingir o limite de consultas, aguarde um minuto antes de tentar novamente. Para corrigir uma referência, remova-a e localize a publicação outra vez.",
   "fb_selected_posts_load_more": "Carregar mais miniaturas",
-  "fb_selected_posts_retry": "Tentar recuperar miniaturas novamente"
+  "fb_selected_posts_retry": "Tentar recuperar miniaturas novamente",
+  "fb_post_dark_badge": "Dark Post",
+  "fb_post_by_id_badge": "Por ID"
 }

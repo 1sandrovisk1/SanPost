@@ -47,14 +47,17 @@ function Harness({
   disabled = false,
   ids = [],
 }: any) {
-  const [postIds, setPostIds] = useState<string[]>(ids);
+  const [value, setValue] = useState<any>({
+    postMode: 'specific',
+    postIds: ids,
+  });
   return (
     <SharedChannelPosts
-      channel={{ integrationId: id, postMode: 'specific', postIds }}
+      channel={{ integrationId: id, ...value }}
       provider={provider}
       triggerType={triggerType}
       disabled={disabled}
-      onChange={(c) => setPostIds(c.postIds)}
+      onChange={(c) => setValue(c)}
     />
   );
 }
@@ -133,6 +136,43 @@ describe('publicacao de anuncio no seletor compartilhado', () => {
     expect(screen.getByText('123_456')).toBeTruthy();
     expect(screen.queryByText('shared_posts_not_loaded')).toBeNull();
     expect(state.fetchApi).toHaveBeenCalledTimes(1);
+  });
+  it('mantem miniatura recuperada e selecao apos alternar modos sem repetir a consulta', async () => {
+    state.fetchApi.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        post: {
+          id: '123_456',
+          caption: 'Dark recovered',
+          thumbnailUrl: 'https://scontent.test.fbcdn.net/video.jpg',
+          isPublished: false,
+        },
+      }),
+    });
+    render(
+      <SWRConfig value={{ provider: () => new Map() }}>
+        <Harness ids={['123_456']} />
+      </SWRConfig>
+    );
+    await screen.findByRole('button', { name: 'Dark recovered' });
+    fireEvent.click(
+      screen.getByRole('radio', { name: 'automation_facebook_all_posts' })
+    );
+    fireEvent.click(
+      screen.getByRole('radio', { name: 'automation_facebook_specific_post' })
+    );
+    const post = await screen.findByRole('button', { name: 'Dark recovered' });
+    expect(post.getAttribute('aria-pressed')).toBe('true');
+    expect(post.querySelector('img')?.getAttribute('src')).toBe(
+      'https://scontent.test.fbcdn.net/video.jpg'
+    );
+    expect(state.fetchApi).toHaveBeenCalledTimes(1);
+    const radio = screen.getByRole('radio', {
+      name: 'automation_facebook_specific_post',
+    });
+    expect(
+      radio.closest('div')?.contains(screen.getByText('fb_post_lookup_title'))
+    ).toBe(true);
   });
   it('mantem texto durante consulta e informa erro sem exibir resposta bruta', async () => {
     let done: (value: any) => void;

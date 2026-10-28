@@ -2458,7 +2458,7 @@
   "fb_post_help_title": "Where can I find the ID?",
   "fb_post_lookup_help": "In Ads Manager, open the ad preview and its post with comments. Copy the post ID or permanent link. Use the post ID, not the ad or campaign ID.",
   "fb_post_lookup_formats": "Accepts numeric IDs, full ID (Page_Post), and /posts/ID, permalink.php or /reel/ID links. For videos, Meta must confirm the related Page post. Short links (share), pfbid and ad IDs are not accepted.",
-  "fb_post_lookup_hint": "Use for ad posts that are missing from the list above.",
+  "fb_post_lookup_hint": "Combine gallery posts and Dark Posts in the same selection. Use an ID or link to add a post that is missing from the list.",
   "fb_post_lookup_confirmed": "Page post confirmed",
   "fb_post_error_reference": "We could not recognize this format. Use the post ID or a permanent link with a numeric ID.",
   "fb_post_error_owner": "We could not confirm that this post belongs to the selected Page. Check the ID and Page.",
@@ -2731,5 +2731,7 @@
   "shared_error_post_video_relation_required": "The post linked to this video could not be confirmed. Check its ID and Page access before activating.",
   "fb_selected_posts_recovery_help": "Your selection is preserved. Some thumbnails have not been recovered yet. If the lookup limit is reached, wait a minute before retrying. To correct a reference, remove it and locate the post again.",
   "fb_selected_posts_load_more": "Load more thumbnails",
-  "fb_selected_posts_retry": "Retry thumbnail recovery"
+  "fb_selected_posts_retry": "Retry thumbnail recovery",
+  "fb_post_dark_badge": "Dark Post",
+  "fb_post_by_id_badge": "By ID"
 }

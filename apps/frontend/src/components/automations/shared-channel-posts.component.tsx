@@ -64,6 +64,8 @@ function SharedChannelPostsContent({
   const { resolvedLanguage } = useTranslationSettings();
   const [cursor, setCursor] = useState<string | null>(null);
   const [posts, setPosts] = useState<AutomationPostView[]>([]);
+  const [recovered, setRecovered] = useState<PublicationPreview[]>([]);
+  const [lookedUpIds, setLookedUpIds] = useState<string[]>([]);
   const result = useSharedFlowData<{
     posts: AutomationPostView[];
     nextCursor?: string;
@@ -107,7 +109,7 @@ function SharedChannelPostsContent({
       ]);
   }, [result.data]);
   const missing = channel.postIds.filter(
-    (id) => !posts.some((p) => p.id === id)
+    (id) => !posts.some((p) => p.id === id) && !lookedUpIds.includes(id)
   );
   const selected = useSelectedFacebookPosts(
     provider === 'facebook' &&
@@ -118,13 +120,28 @@ function SharedChannelPostsContent({
       : null,
     missing
   );
+  useEffect(() => {
+    if (selected.posts.length)
+      setRecovered((old) => [
+        ...new Map(
+          [
+            ...old,
+            ...selected.posts.map((post) => ({ ...post, locatedById: true })),
+          ].map((post) => [post.id, post])
+        ).values(),
+      ]);
+  }, [selected.posts]);
   const catalog = useMemo(
     () => [
       ...new Map(
-        [...posts, ...selected.posts].map((post) => [post.id, post])
+        [
+          ...recovered,
+          ...selected.posts.map((post) => ({ ...post, locatedById: true })),
+          ...posts,
+        ].map((post) => [post.id, post])
       ).values(),
     ],
-    [posts, selected.posts]
+    [posts, recovered, selected.posts]
   );
   const unavailable = channel.postIds.filter(
     (id) => !catalog.some((p) => p.id === id)
@@ -258,6 +275,58 @@ function SharedChannelPostsContent({
                 ? () => setCursor(result.data!.nextCursor!)
                 : undefined
             }
+            specificContent={
+              <>
+                {provider === 'facebook' && channel.postMode === 'specific' && (
+                  <SharedFacebookPostLookup
+                    integrationId={channel.integrationId}
+                    selectedIds={channel.postIds}
+                    disabled={disabled}
+                    onAdd={(post) => {
+                      setRecovered((old) => [
+                        ...new Map(
+                          [...old, { ...post, locatedById: true }].map((p) => [
+                            p.id,
+                            p,
+                          ])
+                        ).values(),
+                      ]);
+                      setLookedUpIds((old) => [...new Set([...old, post.id])]);
+                      onChange({
+                        ...channel,
+                        postIds: [...new Set([...channel.postIds, post.id])],
+                      });
+                    }}
+                  />
+                )}
+                {provider === 'facebook' &&
+                  (selected.error ||
+                    selected.failedIds.length > 0 ||
+                    selected.hasMore) && (
+                    <div className="space-y-2 text-xs text-newTextColor/70">
+                      <p>{t('fb_selected_posts_recovery_help')}</p>
+                      {selected.hasMore && (
+                        <button
+                          type="button"
+                          className="underline"
+                          onClick={() => void selected.loadMore()}
+                        >
+                          {t('fb_selected_posts_load_more')}
+                        </button>
+                      )}
+                      {(selected.error || selected.failedIds.length > 0) && (
+                        <button
+                          type="button"
+                          className="underline"
+                          onClick={() => void selected.retry()}
+                        >
+                          {t('fb_selected_posts_retry')}
+                        </button>
+                      )}
+                    </div>
+                  )}
+              </>
+            }
             onChange={(selection) =>
               onChange({
                 ...channel,
@@ -267,48 +336,6 @@ function SharedChannelPostsContent({
               })
             }
           />
-          {provider === 'facebook' && channel.postMode === 'specific' && (
-            <SharedFacebookPostLookup
-              integrationId={channel.integrationId}
-              selectedIds={channel.postIds}
-              disabled={disabled}
-              onAdd={(post) => {
-                setPosts((old) => [
-                  ...new Map([...old, post].map((p) => [p.id, p])).values(),
-                ]);
-                onChange({
-                  ...channel,
-                  postIds: [...new Set([...channel.postIds, post.id])],
-                });
-              }}
-            />
-          )}
-          {provider === 'facebook' &&
-            (selected.error ||
-              selected.failedIds.length > 0 ||
-              selected.hasMore) && (
-              <div className="space-y-2 text-xs text-newTextColor/70">
-                <p>{t('fb_selected_posts_recovery_help')}</p>
-                {selected.hasMore && (
-                  <button
-                    type="button"
-                    className="underline"
-                    onClick={() => void selected.loadMore()}
-                  >
-                    {t('fb_selected_posts_load_more')}
-                  </button>
-                )}
-                {(selected.error || selected.failedIds.length > 0) && (
-                  <button
-                    type="button"
-                    className="underline"
-                    onClick={() => void selected.retry()}
-                  >
-                    {t('fb_selected_posts_retry')}
-                  </button>
-                )}
-              </div>
-            )}
           {channel.postMode === 'specific' && channel.postIds.length > 0 && (
             <details className="text-xs text-newTextColor/60">
               <summary className="cursor-pointer">

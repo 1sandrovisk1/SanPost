@@ -99,6 +99,8 @@ export interface AutomationChannelView {
 }
 export interface AutomationPostView {
   id: string;
+  /** Present only when Meta confirms the publication state. Display-only metadata. */
+  isPublished?: boolean;
   caption?: string;
   permalink?: string;
   thumbnailUrl?: string;

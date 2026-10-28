@@ -16,6 +16,8 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 
 ### Corrigido
 
+- **Seleção combinada de posts e anúncios:** localização por ID/link passa para dentro de Publicações específicas; badges distinguem Dark Post confirmado e recuperação por ID. Alternar modos e voltar durante a edição preserva seleção e miniaturas, sem gravar IDs inativos nem misturar agendamento com posts normais.
+
 - **Dark Post de vídeo do Facebook:** localização por vídeo/Reel comprova o Page Post usado no webhook, evitando regras ativas com ID que nunca corresponde aos comentários. Ativação e edição ativa recusam referência não canônica; miniaturas selecionadas ausentes da galeria são recuperadas ao reabrir o editor, sem alterar a seleção nem reprocessar comentários.
 
 - Stories do Instagram com palavras-chave e reações combinadas permanecem no construtor visual, evitando que um salvamento no editor rápido desative reações que ele não representa.

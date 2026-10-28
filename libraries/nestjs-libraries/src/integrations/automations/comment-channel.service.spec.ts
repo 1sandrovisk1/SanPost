@@ -256,13 +256,11 @@ describe('canal de comentarios', () => {
     expect(write).not.toHaveBeenCalled();
   });
   it('aceita Page Post canonico na ativacao sem consumir budget de lookup', async () => {
-    read
-      .mockResolvedValueOnce(videoPost('123_456'))
-      .mockResolvedValueOnce({
-        id: '789',
-        from: { id: '123' },
-        post_id: '456',
-      });
+    read.mockResolvedValueOnce(videoPost('123_456')).mockResolvedValueOnce({
+      id: '789',
+      from: { id: '123' },
+      post_id: '456',
+    });
     await expect(
       service.assertPost(scope, 'channel', '123_456')
     ).resolves.toBeUndefined();
@@ -339,6 +337,24 @@ describe('canal de comentarios', () => {
     await expect(service.resolvePost(scope, 'channel', '456')).rejects.toThrow(
       code
     );
+  });
+  it('consulta is_published da publicacao canonica para a badge sem inferir anuncio', async () => {
+    read.mockResolvedValue({
+      id: '123_456',
+      from: { id: '123' },
+      is_published: false,
+    });
+    expect(await service.resolvePost(scope, 'channel', '456')).toMatchObject({
+      post: { id: '123_456', isPublished: false },
+    });
+    expect(read).toHaveBeenCalledWith(
+      '123_456',
+      'fixture',
+      expect.objectContaining({
+        fields: expect.stringContaining('is_published'),
+      })
+    );
+    expect(write).not.toHaveBeenCalled();
   });
   it('limita metadados e nao retorna URLs inseguras', async () => {
     read.mockResolvedValue({

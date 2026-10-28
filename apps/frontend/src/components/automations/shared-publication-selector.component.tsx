@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   useT,
   useTranslationSettings,
@@ -27,6 +27,8 @@ export interface PublicationPreview {
   mediaUrl?: string;
   mediaType?: string;
   timestamp?: string;
+  isPublished?: boolean;
+  locatedById?: boolean;
 }
 export function AutomationPublicationSelector({
   integrationId,
@@ -43,6 +45,7 @@ export function AutomationPublicationSelector({
   onLoadMore,
   loadingMore = false,
   onPreviewChange,
+  specificContent,
 }: PublicationChoice & {
   integrationId: string;
   platform?: 'instagram' | 'facebook';
@@ -55,11 +58,32 @@ export function AutomationPublicationSelector({
   onLoadMore?: () => void;
   loadingMore?: boolean;
   onPreviewChange?: (posts: PublicationPreview[]) => void;
+  specificContent?: ReactNode;
 }) {
   const t = useT();
   const { resolvedLanguage } = useTranslationSettings();
   const dialogRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
+  const lastSelection = useRef<
+    | {
+        integrationId: string;
+        choice: PublicationChoice;
+      }
+    | undefined
+  >(undefined);
+  useEffect(() => {
+    if (lastSelection.current?.integrationId !== integrationId)
+      lastSelection.current = undefined;
+    if (mode === 'specific' || mode === 'scheduled')
+      lastSelection.current = {
+        integrationId,
+        choice: {
+          mode,
+          postIds: [...postIds],
+          ...(scheduledPostId ? { scheduledPostId } : {}),
+        },
+      };
+  }, [integrationId, mode, postIds, scheduledPostId]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [scheduled, setScheduled] = useState<ScheduledAutomationPostView[]>([]);
   const query = new URLSearchParams({
@@ -139,6 +163,8 @@ export function AutomationPublicationSelector({
     ...scheduled.map((p) => ({
       ...p,
       scheduled: true,
+      isPublished: undefined as boolean | undefined,
+      locatedById: undefined as boolean | undefined,
       timestamp: p.publishDate,
     })),
     ...posts
@@ -202,6 +228,17 @@ export function AutomationPublicationSelector({
           {t('scheduled_badge')}
         </span>
       )}
+      {platform === 'facebook' &&
+        !p.scheduled &&
+        (p.isPublished === false || p.locatedById) && (
+          <span className="absolute left-1 top-1 max-w-[calc(100%-8px)] truncate rounded bg-newBgColorInner px-1.5 py-0.5 text-[10px] font-medium text-textColor shadow-sm">
+            {t(
+              p.isPublished === false
+                ? 'fb_post_dark_badge'
+                : 'fb_post_by_id_badge'
+            )}
+          </span>
+        )}
       {selected(p) && (
         <span
           className="absolute bottom-1 right-1 rounded-full bg-btnPrimary text-white px-1.5"
@@ -220,7 +257,14 @@ export function AutomationPublicationSelector({
         className="accent-btnPrimary h-4 w-4"
         disabled={disabled}
         checked={value === 'specific' ? scoped : mode === value}
-        onChange={() => onChange({ mode: value, postIds: [] })}
+        onChange={() => {
+          const previous = lastSelection.current;
+          onChange(
+            value === 'specific' && previous?.integrationId === integrationId
+              ? { ...previous.choice, postIds: [...previous.choice.postIds] }
+              : { mode: value, postIds: [] }
+          );
+        }}
       />
       {label}
     </label>
@@ -291,6 +335,7 @@ export function AutomationPublicationSelector({
                 {t('shared_posts_limit')}
               </p>
             )}
+            {mode === 'specific' && specificContent}
           </div>
         )}
       </div>

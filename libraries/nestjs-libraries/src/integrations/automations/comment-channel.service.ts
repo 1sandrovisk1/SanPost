@@ -238,7 +238,7 @@ export class CommentChannelService {
     requestedId: string
   ): Promise<Record<string, unknown>> {
     const fields =
-      'id,from{id},message,permalink_url,created_time,full_picture,attachments{type,media_type,target{id}}';
+      'id,from{id},message,permalink_url,created_time,full_picture,is_published,attachments{type,media_type,target{id}}';
     const assertOwner = (
       object: Record<string, unknown>,
       expectedId: string
