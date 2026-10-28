@@ -112,6 +112,15 @@ export class IntegrationRepository {
     });
   }
 
+  // nome so no Robo MultiPost; vazio volta ao nome da plataforma (upstream #2190)
+  updateCustomName(org: string, id: string, name: string) {
+    return this._integration.model.integration.update({
+      select: { id: true },
+      where: { id, organizationId: org },
+      data: { customName: name.trim() || null },
+    });
+  }
+
   async setTimes(org: string, id: string, times: IntegrationTimeDto) {
     return this._integration.model.integration.update({
       select: {
@@ -185,6 +194,21 @@ export class IntegrationRepository {
       },
     });
 
+    // A pagina foi escolhida por um login novo: a linha que continua viva
+    // assume a identidade, o refresh token e a validade desse login — senao a
+    // proxima renovacao roda como o login antigo e nao acha a pagina
+    // (upstream #2298). Lido antes de a linha nova ser marcada como apagada.
+    const fresh = existing
+      ? await this._integration.model.integration.findFirst({
+          where: { id, organizationId: params.organizationId! },
+          select: {
+            rootInternalId: true,
+            refreshToken: true,
+            tokenExpiration: true,
+          },
+        })
+      : null;
+
     if (existing) {
       await this._posts.model.post.updateMany({
         where: {
@@ -235,6 +259,16 @@ export class IntegrationRepository {
       data: {
         ...params,
         ...encryptedTokenFields,
+        ...(fresh?.rootInternalId
+          ? { rootInternalId: fresh.rootInternalId }
+          : {}),
+        ...(fresh?.refreshToken ? { refreshToken: fresh.refreshToken } : {}),
+        ...(fresh?.tokenExpiration
+          ? { tokenExpiration: fresh.tokenExpiration }
+          : {}),
+        ...(existing
+          ? { refreshNeeded: false, refreshError: null, refreshErrorAt: null }
+          : {}),
         disabled: false,
         deletedAt: null,
       },
@@ -371,7 +405,9 @@ export class IntegrationRepository {
         profile: username,
         providerIdentifier: provider,
         token: encToken,
-        refreshToken: encRefreshToken,
+        // reconexao sem refresh token (ex.: reConnect de pagina) nunca apaga o
+        // refresh token salvo (upstream #1884)
+        ...(refreshToken ? { refreshToken: encRefreshToken } : {}),
         tokenEncrypted,
         ...(expiresIn
           ? { tokenExpiration: new Date(Date.now() + expiresIn * 1000) }
@@ -396,16 +432,20 @@ export class IntegrationRepository {
           })
         )?.rootInternalId || internalId.split('_').pop()!;
 
+      // so a org que conectou: outra org com a mesma conta pode usar outro
+      // app OAuth (credenciais por workspace) e o token desta nao renova la;
+      // e um login sem refresh token nao apaga o salvo (upstream #1884)
       await this._integration.model.integration.updateMany({
         where: {
           id: {
             not: upsert.id,
           },
+          organizationId: org,
           rootInternalId: rootId,
         },
         data: {
           token: encToken,
-          refreshToken: encRefreshToken,
+          ...(refreshToken ? { refreshToken: encRefreshToken } : {}),
           tokenEncrypted,
           refreshNeeded: false,
           refreshError: null,
@@ -605,6 +645,44 @@ export class IntegrationRepository {
             },
           },
       select: { id: true, customerId: true },
+    });
+  }
+
+  getCustomer(orgId: string, id: string) {
+    return this._customers.model.customer.findFirst({
+      where: { id, orgId, deletedAt: null },
+      select: { id: true },
+    });
+  }
+
+  getCustomerByName(orgId: string, name: string) {
+    return this._customers.model.customer.findFirst({
+      where: { orgId, name, deletedAt: null },
+      select: { id: true },
+    });
+  }
+
+  // canais do grupo fora do perfil informado (o grupo e da org inteira)
+  countCustomerIntegrationsOutsideProfile(
+    orgId: string,
+    customerId: string,
+    profileId: string
+  ) {
+    return this._integration.model.integration.count({
+      where: {
+        organizationId: orgId,
+        customerId,
+        deletedAt: null,
+        OR: [{ profileId: null }, { profileId: { not: profileId } }],
+      },
+    });
+  }
+
+  updateCustomerName(orgId: string, id: string, name: string) {
+    return this._customers.model.customer.update({
+      where: { id, orgId },
+      data: { name },
+      select: { id: true, name: true },
     });
   }
 

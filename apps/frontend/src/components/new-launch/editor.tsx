@@ -44,6 +44,7 @@ import Document from '@tiptap/extension-document';
 import Bold from '@tiptap/extension-bold';
 import Text from '@tiptap/extension-text';
 import Paragraph from '@tiptap/extension-paragraph';
+import { Fragment, Slice } from '@tiptap/pm/model';
 import Underline from '@tiptap/extension-underline';
 import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validation';
 import { History } from '@tiptap/extension-history';
@@ -567,8 +568,9 @@ export const Editor: FC<{
 
   const uppy = useUppyUploader({
     onUploadSuccess: (result: any) => {
+      // sem clear(): apagava uploads ainda em andamento quando um anterior
+      // terminava (upstream #2171)
       appendImages(result);
-      uppy.clear();
     },
     allowedFileTypes: 'image/*,video/mp4',
     onStart: () => {},
@@ -1038,6 +1040,26 @@ export const OnlyEditor = forwardRef<
     content: value || '',
     shouldRerenderOnTransaction: true,
     immediatelyRender: false,
+    editorProps: {
+      // o parser padrao junta quebras seguidas e some com as linhas em branco
+      // do texto colado; cada linha vira um paragrafo (upstream #2301)
+      clipboardTextParser: (text, $context, _plain, view) => {
+        const { schema } = view.state;
+        const marks = $context.marks();
+        return Slice.maxOpen(
+          Fragment.from(
+            text
+              .split(/\r\n?|\n/)
+              .map((line) =>
+                schema.nodes.paragraph.create(
+                  null,
+                  line ? schema.text(line, marks) : undefined
+                )
+              )
+          )
+        );
+      },
+    },
     // @ts-ignore
     onPaste: paste,
     onUpdate: (innerProps) => {

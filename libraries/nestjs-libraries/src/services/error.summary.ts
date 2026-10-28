@@ -22,13 +22,17 @@ const REDACTIONS: Array<[RegExp, string]> = [
   [/([a-z][a-z0-9+.-]*:\/\/)[^\s/@:]+:[^\s/@]+@/gi, '$1[redacted]@'],
 ];
 
-const clean = (message: string) => {
-  let out = message.replace(/\s+/g, ' ').trim();
+/** Redige pares nome=valor, JSON, Bearer, chaves conhecidas e credenciais em URL. */
+export const redactSecrets = (message: string) => {
+  let out = message;
   for (const [pattern, replacement] of REDACTIONS) {
     out = out.replace(pattern, replacement);
   }
-  return out.slice(0, MAX_MESSAGE);
+  return out;
 };
+
+const clean = (message: string) =>
+  redactSecrets(message.replace(/\s+/g, ' ').trim()).slice(0, MAX_MESSAGE);
 
 const describeOne = (err: unknown): string => {
   if (!err || typeof err !== 'object') {

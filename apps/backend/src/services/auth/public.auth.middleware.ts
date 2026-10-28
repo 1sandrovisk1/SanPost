@@ -39,6 +39,9 @@ export class PublicAuthMiddleware implements NestMiddleware {
 
         // @ts-ignore
         req.org = { ...org, users: [{ users: { role: 'SUPERADMIN' } }] };
+        // quem aprovou o app OAuth, para o GET /public/v1/me
+        // @ts-ignore
+        req.oauthUserId = authorization.userId;
       } else {
         const profile = await this._profileService.getProfileByApiKey(auth);
         if (profile) {

@@ -42,12 +42,27 @@ export interface IAuthenticator {
     integration?: Integration
   ): Promise<AnalyticsData[]>;
   // Id publico + URL definitiva para persistir quando o releaseId guardado
-  // ainda e um publish id; undefined quando nao ha (ainda) o que resolver.
+  // ainda e um publish id; pending quando a plataforma ainda nao liberou o id,
+  // unavailable quando o post nunca tera link publico, undefined quando nao ha
+  // o que resolver (upstream #2186, #2211, #2212).
   resolveReleaseId?(
     accessToken: string,
     releaseId: string,
+    integration: Integration,
+    settings?: any,
+    releaseURL?: string | null
+  ): Promise<
+    | { postId: string; releaseURL: string }
+    | { pending: true }
+    | { unavailable: true }
+    | undefined
+  >;
+  // URL de um post que o usuario conectou a mao ("Conectar post")
+  releaseUrl?(
+    accessToken: string,
+    releaseId: string,
     integration: Integration
-  ): Promise<{ postId: string; releaseURL: string } | undefined>;
+  ): Promise<string | undefined>;
   changeNickname?(
     id: string,
     accessToken: string,
@@ -210,6 +225,9 @@ export interface SocialProvider
   // Necessario para providers cujo access token expira em horas (YouTube/GMB),
   // onde perder o refresh_token real do OAuth quebra a renovacao automatica.
   keepReconnectAuthTokens?: boolean;
+  // Motivo legivel para uma falha de refresh conhecida (ex.: politica do
+  // Google Workspace); vira o refreshError do canal. undefined = motivo padrao.
+  refreshErrorMessage?(err: any): string | undefined;
   // Revoga programaticamente o token antigo antes da reconexao. Forca o
   // provider a exibir tela de consent e emitir refresh_token novo, mesmo
   // quando a conta ja autorizou o app antes (Google pula consent silencioso).

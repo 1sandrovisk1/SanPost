@@ -605,6 +605,149 @@ offset compartilhado do `getUpdates` do Telegram (limitação do bot
 compartilhado); follow-ups do sub-lote 2 (posts antigos do TikTok, loader de
 imagem do compositor Pinterest, `boardId` do Zernio) e Farcaster #2078/#2080.
 
+### Lote ADOPT — correções pequenas (27/10/2026)
+
+Portados: #2085 (reconectar canal custom-fields), #2094 (modal de cliente sem
+Autocomplete do Mantine), #2153 (ativação não lê corpo após redirect do
+onboarding), #2148/#2143 (guards da extensão Chrome), #2177 (upload falha com
+erro do backend), #2217 (AM/PM no horário — só a linha do `format`, o
+`date.picker.tsx` do fork divergiu), #2248 (menções no modo escuro), #2247
+(`DELETE` público devolve id), #2266 (Plus Jakarta Sans self-hosted),
+`3dc18da9` (PostHog fora do código; o pacote `posthog-js` fica para o PR de
+dependências porque removê-lo re-resolve `@opentelemetry/api` 1.9 → 1.10 no
+lockfile), #2289 + `2ded21d1` (sanitizer: tags de bloco viram `<p>`, regex
+linear). Já cobertos pelos lotes de providers: #1915, #2108, #2116, #2117,
+#2118, #2140, #2141, #2164, #2262. Cobertos de outra forma: #2101 (Sentry já em
+10.76.2), #2225 (log do "Authentication failed" via `summarizeError`). Não
+aplicável agora: #2290 (classe `preview` na página de preview com comentários,
+que o fork ainda não tem — entra com o épico de comentários anônimos no
+preview). `6b102afb` (`destructiveHint`) vai para o lote MCP.
+
+### Lote MCP (27/10/2026)
+
+Portados: #1926 (`GET /public/v1/media` + `mediaListTool`, com o escopo de
+perfil do fork e busca pelo nome original), #2119 (erro curado na listagem de
+posts — calendário e API pública — via `curatedPostError`; o fork não tem a
+`posts.list.tool` do upstream), #2249 (`mention` do LinkedIn como `@Tool`, com
+`this.fetch`) e `8c63e686` (`previewUrl` no retorno do `schedulePostTool`).
+Já coberto pelo PR #327: #2175 (`media` com id/path/alt/thumbnail no
+`schedulePostTool`). Dependem do upgrade do Mastra (épico Mastra/CopilotKit:
+`@mastra/core` 1.24 → 1.67, `@mastra/mcp` 1.4 → 1.18, tabelas espelhadas no
+Prisma): #2235 (protocolo `2026-07-28`) e `6b102afb` (`destructiveHint` na
+`post.settings.tool`, que o fork não tem). Depende da imagem inline no editor
+(P2): `28701a98` (`<img>` no conteúdo de ListMonk/WordPress/artigos do X). Não
+aplicável: `4583ac5d` (relay de MCP do Postiz cloud).
+Revisões: `code-reviewer` (2 MUST FIX aplicados — `mediaListTool` falha
+fechada sem org no contexto e spec do repasse da busca em `MediaService` —,
+mais limite de página, `FRONTEND_URL` com barra final e drift do pitfall 14 do
+backend); `security-auditor` (1 HIGH introduzido e corrigido — o mesmo fail
+open sem org —; MEDIUM aplicado: a mensagem curada passa por `redactSecrets`
+porque Reddit/VK/Slack/Lemmy/Telegram interpolam o texto de erro da API;
+MEDIUM pré-existente registrado: token OAuth (`pos_`) aprovado por um USER
+restrito não carrega `profileId`, então lista mídia e canais da org inteira —
+amarrar o grant ao perfil de quem aprova ou restringir a aprovação a ADMIN).
+Mudança aceita conscientemente: o `mention` do LinkedIn via `this.fetch` faz a
+busca do dashboard seguir o fluxo de refresh em 401 (como o upstream).
+
+### Lote REVIEW (27/10/2026)
+
+Portados à mão (arquivos divergentes): #2083 (foto do bot em modal), #2149,
+#2163, #2145 e #2171 (uploads: cancela só os pendentes, mantém o lote, não
+limpa o Uppy ao terminar outro envio), #2146 (grupo excluído no calendário),
+#2178 (modal sem canal carregado), #2301 (colar texto puro e nome legível
+no tile de mídia), #1827
+(tags), #2207 (find-slot com horários padrão e limite de 365 dias), #1884 e
+#2298 (refresh token na reconexão; a reconexão Meta própria do fork não passa
+por esses caminhos), #2254 (cookies `org` 1 h e `showorg` 1 ano), Sentry
+(#2082, #2100, #2102, #2122, #2142, #2147, #2162, #2165, #2280, #2284 — sem os
+helpers `setSentryUserContext`/`setSentryUser`, que mandariam e-mail/id ao
+Sentry) e os commits diretos `96b78476` (uma única nova tentativa após
+`RefreshToken`, 401 do YouTube vira `RefreshToken`, `invalid_rapt` com
+orientação para Workspace via `refreshErrorMessage?`, `invalid_grant` do login
+Google → 400, analytics com 7 dias por padrão; LinkedIn Page com
+`keepReconnectAuthTokens`), `d883bfa1` (autopost: `AutopostActivity`
+registrada no worker — a atividade `autoPost` não existia no orquestrador —
+e `workflowIdConflictPolicy: 'USE_EXISTING'`), `4e55a959` (concorrência por
+provider), `c9138d35` (SSO `app.agent-media.ai`) e `7229c338` (só o
+`@@index([organizationId])` em `UserOrganization`; o restante do commit é da
+origem do Canva, que o fork não tem). `Invalid state` no callback OAuth
+público vira 400 com mensagem (upstream `96b78476`).
+Já cobertos: #2161 (save com falha) e #1678 (notificação única de refresh).
+Não aplicável: #2255 (o fork não tem `/posts/valid`), `dcb5b09e` (o fork não
+tem o normalizador de vídeo) e `7113c6ce` (billing do Facebook no cloud).
+Adiados: `852ac517` (`GET /public/v1/me`, entra no lote P2); UI do upstream
+(`1251b5a0`, `c6bfe135`, `9fedac40`, `e756fa57`, `5ac6e10f`, `7b29d401`,
+`003a77eb`, `47175b5a`, `31eda494`, `f1a24b5f`) → épico responsivo; `3f848ccb`
+(tirar `--accept-data-loss` do `prisma db push` do boot) é decisão de política
+de deploy; Farcaster #2078/#2080 em PR próprio.
+
+Revisões: `code-reviewer` (MUST FIX: spec da nova tentativa única e do período
+padrão em `checkAnalytics`, que também passa a manter o `profileId` na
+repetição; os 3 `eslint-disable` do `initialize.sentry.next.basic.ts` já
+existiam. SHOULD FIX aplicados: filtro de tag excluída também na
+`post-management.repository` (API/MCP), spec dos limites de concorrência,
+`refreshError` limpo na troca de página, listener nomeado no modal da mídia e
+chave `upload_size_limit_exceeded` em pt/en); `security-auditor` (2 HIGH
+corrigidos — motivo da falha de renovação persistido e logado sem redação, e a
+propagação `oneTimeToken` do LinkedIn sem `organizationId`, que também apagava o
+refresh token das linhas irmãs —; MEDIUM aplicados: leitura da linha nova em
+`updateIntegration` escopada pela org e `summarizeError` no log do analytics do
+YouTube e do cron de renovação). MEDIUM pré-existentes registrados como
+follow-up: `consoleLoggingIntegration` + `enableLogs` mandam todo `console.*`
+do backend ao Sentry Logs sem `beforeSendLog` com `redactSecrets`; login Google
+com `redirect_uri` vindo do cliente e `state: 'login'` constante (CSRF de
+login, se o frontend não valida); `@Body() body: any` no
+`POST /public/provider/:id/connect` (sem auth) repassado ao
+`fetchPageInformation` (o `state` é o único portão); `deleteTag` não atômico
+(integridade, não segurança).
+
+### Lote P2 — features (27/10/2026)
+
+Portados: #2205 (filtro de canais acima do calendário — também na lista, via
+`integrations` no `GetPostsListDto`, sempre dentro do escopo de org/perfil),
+#2206 (moldura verde do publicado), #2204 (excluir vermelho + confirmação
+destrutiva; #2221 já valia — o excluir era o último ícone), #1829 e #1828
+(tags), #2194 + #2211 + #2212 (abrir o post publicado: `GET
+/posts/:id/release-url` com escopo de perfil e token descriptografado,
+`resolveReleaseId` com `pending`/`unavailable`, TikTok `/photo/`, rascunho
+da caixa de entrada e `releaseUrl` só com https do TikTok; a parte do TikTok
+for Business fica com o épico), #2183 (renomear grupo — como o grupo é da org
+inteira, USER só renomeia grupo cujos canais são todos do seu perfil), #2190
+(nome do canal só no Robo MultiPost, `Integration.customName`), #1856 (capa
+pela biblioteca, com i18n), #2203 (método de login nas configurações), #2093 +
+`1752382c` (`client_secret_basic` e 200 no `/oauth/token`; o servidor OAuth do
+fork não tem PKCE nem registro dinâmico, então só a parte do token) e
+`852ac517` (`GET /public/v1/me`, com o perfil da chave de perfil).
+Já coberto: #2155 (título do vídeo do Facebook). Não portados: #2209 (RTL —
+troca a saída do editor para `<p dir="auto">` e quebraria todo parsing
+literal de `<p>` do fork: legenda do TikTok, providers, activity; público
+pt-BR); #2285, #2295, #2302 (painel de mídia nas configurações do post —
+depende do `manage.modal` redesenhado do upstream: entra com o épico
+responsivo/novo modal); `2aae02fe` + `28701a98` (imagem inline no editor —
+mexe em editor, sanitizer, `valid.url.path`, X/WordPress/ListMonk e na
+activity: PR próprio com revisão de segurança); `a194e3f4` (agendamento por
+grupo — composer + schema: épico do novo modal de criação).
+
+Revisões do P2: `code-reviewer` (migração revisada
+`20261027_integration_custom_name` — coluna `customName` e índice de
+`UserOrganization`, idempotente para o overlay local que só roda `prisma
+validate`; "nenhum canal" igual no calendário e na lista; `@ArrayMaxSize` no
+filtro; reset do nome confere a resposta; `openPost` ignora resposta de erro;
+`releaseId` nulo sem asserção; chaves `could_not_save_post`,
+`copy_debug_json` e `confirm_delete_tag` em pt/en; specs de
+`updateReleaseId` com link e das consultas de grupo. A regra "assunto de
+commit sem acentos" do agente não bate com o histórico do repositório nem
+com o `CLAUDE.md` raiz — mantida a prática atual). `security-auditor` (sem
+CRITICAL; MEDIUM aplicados: `getReleaseURL`/`updateReleaseId` também
+conferem o perfil do canal (post legado sem perfil) e falhas entram no cache
+negativo de 5 min. Pré-existentes registrados como follow-up: **HIGH** —
+qualquer membro da org aprova um app OAuth e o token `pos_` vira SUPERADMIN
+da org sem perfil (exigir ADMIN para aprovar ou levar papel/perfil de quem
+aprovou para o token); `/oauth/token` sem throttle e com comparação de
+segredo não constante (`timingSafeEqual`, hash de mão única); resposta do
+OAuth com o `paymentId` da org; nome customizado do canal chega ao agente
+MCP como texto livre — tratar nomes como dado no prompt).
+
 ## Apêndice — classificação 1 por 1 (171 PRs + 74 commits diretos)
 
 Legenda: **P0** segurança (nesta branch) · **ADOPT** cherry-pick/porte leve ·

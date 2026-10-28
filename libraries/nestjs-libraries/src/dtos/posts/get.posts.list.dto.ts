@@ -4,6 +4,8 @@ import {
   IsNumber,
   Min,
   Max,
+  IsArray,
+  ArrayMaxSize,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 
@@ -24,4 +26,13 @@ export class GetPostsListDto {
   @IsOptional()
   @IsString()
   customer?: string;
+
+  // filtro de canais acima do calendario (upstream #2205): ids separados por
+  // virgula; o escopo de org/perfil continua no repositorio
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(200)
+  @IsString({ each: true })
+  @Transform(({ value }) => (value ? String(value).split(',') : []))
+  integrations?: string[];
 }

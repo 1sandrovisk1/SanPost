@@ -307,3 +307,27 @@ describe('LinkedinProvider media', () => {
     ).rejects.toThrow('Range');
   });
 });
+
+// Porte do upstream #2249: a busca de pagina de empresa vira ferramenta do
+// canal (API publica `integration-trigger` e MCP `triggerTool`), via fetch
+// SSRF-safe do provider.
+describe('LinkedinProvider.mention como ferramenta', () => {
+  it('registra mention em @Tool com o parametro query', () => {
+    const tools = Reflect.getMetadata('custom:tool', LinkedinProvider.prototype) || [];
+    const mention = tools.find((t: any) => t.methodName === 'mention');
+    expect(mention).toBeDefined();
+    expect(mention.dataSchema).toEqual([expect.objectContaining({ key: 'query' })]);
+  });
+
+  it('usa o fetch do provider (SSRF-safe, com mapeamento de erro)', async () => {
+    const provider = new LinkedinProvider();
+    const fetchSpy = jest.spyOn(provider, 'fetch').mockResolvedValue({
+      json: async () => ({ elements: [{ id: 42, localizedName: 'Empresa' }] }),
+    } as any);
+
+    await expect(provider.mention('tok', { query: 'empresa' })).resolves.toEqual([
+      { id: '42', label: 'Empresa', image: '' },
+    ]);
+    expect(fetchSpy.mock.calls[0][0]).toContain('vanityName=empresa');
+  });
+});

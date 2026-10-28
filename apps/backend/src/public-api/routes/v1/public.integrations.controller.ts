@@ -24,6 +24,8 @@ import {
 } from '@nestjs/swagger';
 import { GetOrgFromRequest } from '@gitroom/nestjs-libraries/user/org.from.request';
 import { GetPublicApiProfileId } from '@gitroom/nestjs-libraries/user/public.api.profile.from.request';
+import { GetOAuthUserIdFromRequest } from '@gitroom/nestjs-libraries/user/oauth.user.id.from.request';
+import { UsersService } from '@gitroom/nestjs-libraries/database/prisma/users/users.service';
 import { Organization } from '@prisma/client';
 import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.service';
 import { CheckPolicies } from '@gitroom/backend/services/auth/permissions/permissions.ability';
@@ -41,6 +43,7 @@ import {
 import { VideoDto } from '@gitroom/nestjs-libraries/dtos/videos/video.dto';
 import { VideoFunctionDto } from '@gitroom/nestjs-libraries/dtos/videos/video.function.dto';
 import { UploadDto } from '@gitroom/nestjs-libraries/dtos/media/upload.dto';
+import { GetMediaDto } from '@gitroom/nestjs-libraries/dtos/media/get.media.dto';
 import { NotificationService } from '@gitroom/nestjs-libraries/database/prisma/notifications/notification.service';
 import { GetNotificationsDto } from '@gitroom/nestjs-libraries/dtos/notifications/get.notifications.dto';
 import { isSafePublicHttpsUrl } from '@gitroom/nestjs-libraries/dtos/webhooks/webhook.url.validator';
@@ -136,7 +139,8 @@ export class PublicIntegrationsController {
     private _notificationService: NotificationService,
     private _integrationManager: IntegrationManager,
     private _refreshIntegrationService: RefreshIntegrationService,
-    private _encryption: EncryptionService
+    private _encryption: EncryptionService,
+    private _usersService: UsersService
   ) {}
 
   @Post('/upload')
@@ -410,6 +414,30 @@ export class PublicIntegrationsController {
     return this._postsService.deletePost(org.id, group, publicApiProfileId);
   }
 
+  @Get('/me')
+  @ApiOperation({
+    summary: 'Quem está conectado',
+    description:
+      'Organização da chave, o perfil (chave de perfil) e o usuário que aprovou o app OAuth (token `pos_`). Chave de API não tem usuário.',
+  })
+  async getMe(
+    @GetOrgFromRequest() org: Organization,
+    @GetPublicApiProfileId() publicApiProfileId: string | undefined,
+    @GetOAuthUserIdFromRequest() userId?: string
+  ) {
+    Sentry.metrics.count('public_api-request', 1);
+    const user = userId ? await this._usersService.getPersonal(userId) : null;
+
+    // so campos de exibicao (upstream 852ac517)
+    return {
+      organization: { id: org.id, name: org.name },
+      profile: publicApiProfileId ? { id: publicApiProfileId } : null,
+      user: user
+        ? { id: user.id, name: user.name, picture: user.picture?.path || null }
+        : null,
+    };
+  }
+
   @Get('/is-connected')
   @ApiOperation({ summary: 'Healthcheck da chave de API', description: 'Retorna `{ connected: true }` se a chave for válida.' })
   async getActiveIntegrations(@GetOrgFromRequest() org: Organization) {
@@ -443,7 +471,7 @@ export class PublicIntegrationsController {
     return (await this._integrationService.getIntegrationsList(org.id, effectiveProfileId)).map(
       (org) => ({
         id: org.id,
-        name: org.name,
+        name: org.customName || org.name,
         identifier: org.providerIdentifier,
         picture: org.picture,
         disabled: org.disabled,
@@ -508,6 +536,38 @@ export class PublicIntegrationsController {
     } catch (err) {
       throw new HttpException({ msg: 'Failed to generate auth URL' }, 500);
     }
+  }
+
+  @Get('/media')
+  @ApiOperation({
+    summary: 'Listar a biblioteca de mídia',
+    description:
+      'Mídia já enviada, da mais recente para a mais antiga, 18 por página, com busca opcional pelo nome original. Chave de perfil: só a mídia do perfil (e a sem perfil).',
+  })
+  async getMedia(
+    @GetOrgFromRequest() org: Organization,
+    @GetPublicApiProfileId() publicApiProfileId: string | undefined,
+    @Query() query: GetMediaDto
+  ) {
+    Sentry.metrics.count('public_api-request', 1);
+    const { pages, results } = await this._mediaService.getMedia(
+      org.id,
+      query.page || 1,
+      publicApiProfileId,
+      query.search
+    );
+
+    // so campos de exibicao: nada de contagens internas nem uso em posts
+    return {
+      pages,
+      results: results.map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        originalName: p.originalName,
+        path: p.path,
+        createdAt: p.createdAt,
+      })),
+    };
   }
 
   @Get('/notifications')

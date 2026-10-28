@@ -29,7 +29,7 @@ export class ThreadsProvider extends SocialAbstract implements SocialProvider {
     'threads_manage_insights',
     // 'threads_profile_discovery',
   ];
-  override maxConcurrentJob = 2; // Threads has moderate rate limits
+  override maxConcurrentJob = 20; // Threads limits are per profile (upstream 4e55a959)
   refreshCron = true;
 
   editor = 'normal' as const;

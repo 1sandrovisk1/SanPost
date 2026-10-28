@@ -43,7 +43,7 @@ export class IntegrationListTool implements AgentToolInterface {
           output: (
             await this._integrationService.getIntegrationsList(organizationId, profileId)
           ).map((p) => ({
-            name: p.name,
+            name: p.customName || p.name,
             id: p.id,
             disabled: p.disabled,
             picture: p.picture || '/no-picture.jpg',

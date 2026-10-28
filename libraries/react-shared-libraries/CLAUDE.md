@@ -14,7 +14,7 @@ Shared React components + helpers, used by the main frontend (`apps/frontend`), 
 | Subdirectory | Content |
 |---|---|
 | `form/` | UI primitives: `button`, `input`, `select`, `custom.select`, `checkbox`, `textarea`, `slider`, `color.picker`, `canonical`, `total` |
-| `helpers/` | Hooks and utilities: `useIsVisible`, `useMediaDirectory`, `usePreventWindowUnload`, `useStateCallback`, `useTrack`, `mantineWrapper`, `safeImage`, `imageWithFallback`, `videoFrame`, `videoOrImage`, `uppyUpload`, `utcDateRender`, `variableContext`, `posthog`, etc. |
+| `helpers/` | Hooks and utilities: `useIsVisible`, `useMediaDirectory`, `usePreventWindowUnload`, `useStateCallback`, `useTrack`, `mantineWrapper`, `safeImage`, `imageWithFallback`, `videoFrame`, `videoOrImage`, `uppyUpload`, `utcDateRender`, `variableContext`, etc. |
 | `sentry/` | Shared frontend Sentry wrappers |
 | `toaster/` | Toast notification system |
 | `translation/` | i18n: `i18n.config`, `i18next`, `useT()` hooks (client and server), `translated-label`, `locales/` (17 languages) |
@@ -71,7 +71,6 @@ If no suitable primitive exists, **write one natively** — do not install from 
 | `utcDateRender` | Consistent UTC formatting |
 | `variableContext` | Global variables context (backend URL, flags) |
 | `mantineWrapper` | Wrapper for occasional Mantine components |
-| `posthog` | PostHog initialization |
 | `delete.dialog` | Delete confirmation modal |
 
 ### Sentry and Toaster

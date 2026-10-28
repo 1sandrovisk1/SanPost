@@ -144,8 +144,6 @@ services:
       # SENTRY_ORG: ''
       # SENTRY_PROJECT: ''
       # SENTRY_SPOTLIGHT: '1'
-      # NEXT_PUBLIC_POSTHOG_KEY: ''
-      # NEXT_PUBLIC_POSTHOG_HOST: ''
       # NEXT_PUBLIC_FACEBOOK_PIXEL: ''
       # FACEBOOK_PIXEL_ACCESS_TOKEN: ''
 

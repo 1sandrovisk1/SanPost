@@ -16,6 +16,7 @@ import isSameOrAfter from 'dayjs/plugin/isSameOrAfter';
 import utc from 'dayjs/plugin/utc';
 import { v4 as uuidv4 } from 'uuid';
 import { CreateTagDto } from '@gitroom/nestjs-libraries/dtos/posts/create.tag.dto';
+import { curatedPostError } from './post.error.curation';
 
 dayjs.extend(isoWeek);
 dayjs.extend(weekOfYear);
@@ -223,9 +224,13 @@ export class PostsRepository {
         releaseURL: true,
         releaseId: true,
         state: true,
+        // so a mensagem curada sai daqui (curatedPostError, upstream #2119)
+        error: true,
         intervalInDays: true,
         group: true,
         tags: {
+          // tag apagada (soft delete) nao aparece mais no post (upstream #1827)
+          where: { tag: { deletedAt: null } },
           select: {
             tag: true,
           },
@@ -252,27 +257,29 @@ export class PostsRepository {
       },
     });
 
-    return list.reduce((all, post) => {
-      if (!post.intervalInDays) {
-        return [...all, post];
-      }
-
-      const addMorePosts = [];
-      let startingDate = dayjs.utc(post.publishDate);
-      while (dayjs.utc(endDate).isSameOrAfter(startingDate)) {
-        if (dayjs(startingDate).isSameOrAfter(dayjs.utc(post.publishDate))) {
-          addMorePosts.push({
-            ...post,
-            publishDate: startingDate.toDate(),
-            actualDate: post.publishDate,
-          });
+    return list
+      .map((post) => ({ ...post, error: curatedPostError(post.error) }))
+      .reduce((all, post) => {
+        if (!post.intervalInDays) {
+          return [...all, post];
         }
 
-        startingDate = startingDate.add(post.intervalInDays, 'days');
-      }
+        const addMorePosts = [];
+        let startingDate = dayjs.utc(post.publishDate);
+        while (dayjs.utc(endDate).isSameOrAfter(startingDate)) {
+          if (dayjs(startingDate).isSameOrAfter(dayjs.utc(post.publishDate))) {
+            addMorePosts.push({
+              ...post,
+              publishDate: startingDate.toDate(),
+              actualDate: post.publishDate,
+            });
+          }
 
-      return [...all, ...addMorePosts];
-    }, [] as any[]);
+          startingDate = startingDate.add(post.intervalInDays, 'days');
+        }
+
+        return [...all, ...addMorePosts];
+      }, [] as any[]);
   }
 
   async getPostsList(orgId: string, query: GetPostsListDto, profileId?: string) {
@@ -299,10 +306,13 @@ export class PostsRepository {
       deletedAt: null as Date | null,
       parentPostId: null as string | null,
       intervalInDays: null as number | null,
-      ...(query.customer
+      ...(query.customer || query.integrations?.length
         ? {
             integration: {
-              customerId: query.customer,
+              ...(query.customer ? { customerId: query.customer } : {}),
+              ...(query.integrations?.length
+                ? { id: { in: query.integrations } }
+                : {}),
             },
           }
         : {}),
@@ -325,6 +335,8 @@ export class PostsRepository {
           state: true,
           group: true,
           tags: {
+            // tag apagada (soft delete) nao aparece mais no post (upstream #1827)
+            where: { tag: { deletedAt: null } },
             select: {
               tag: true,
             },
@@ -363,11 +375,14 @@ export class PostsRepository {
       },
     });
 
+    // mesmo escopo do soft delete: o id devolvido (e usado para encerrar o
+    // workflow do post) nunca e de um grupo de outro perfil
     return this._post.model.post.findFirst({
       where: {
         organizationId: orgId,
         group,
         parentPostId: null,
+        ...(profileId ? { profileId } : {}),
       },
       select: {
         id: true,
@@ -385,6 +400,8 @@ export class PostsRepository {
       include: {
         integration: true,
         tags: {
+          // tag apagada (soft delete) nao aparece mais no post (upstream #1827)
+          where: { tag: { deletedAt: null } },
           select: {
             tag: true,
           },
@@ -413,6 +430,8 @@ export class PostsRepository {
           ? {
               integration: true,
               tags: {
+                // tag apagada (soft delete) nao aparece mais no post (upstream #1827)
+                where: { tag: { deletedAt: null } },
                 select: {
                   tag: true,
                 },
@@ -468,9 +487,19 @@ export class PostsRepository {
     });
   }
 
-  updateReleaseId(id: string, orgId: string, releaseId: string) {
+  updateReleaseId(
+    id: string,
+    orgId: string,
+    releaseId: string,
+    releaseURL?: string
+  ) {
+    // a URL vem do provider quando o post e conectado a mao (upstream #2212)
+    const data = {
+      releaseId: String(releaseId),
+      ...(releaseURL ? { releaseURL } : {}),
+    };
     if (this.transaction) return this.transaction.model.$transaction(async tx => {
-      const post = await tx.post.update({ where: { id, organizationId: orgId, releaseId: 'missing' }, data: { releaseId: String(releaseId) } });
+      const post = await tx.post.update({ where: { id, organizationId: orgId, releaseId: 'missing' }, data });
       if (releaseId && releaseId !== 'missing') await tx.scheduledAutomationTarget.updateMany({ where: { postId: id, integrationId: post.integrationId, publishedReleaseId: null, flow: { organizationId: post.organizationId, profileId: post.profileId } }, data: { publishedReleaseId: String(releaseId) } });
       return { id: post.id };
     });
@@ -480,9 +509,7 @@ export class PostsRepository {
         organizationId: orgId,
         releaseId: 'missing',
       },
-      data: {
-        releaseId: String(releaseId),
-      },
+      data,
       // a resposta vai para a API publica/dashboard: nunca a linha inteira
       select: { id: true },
     });
@@ -951,8 +978,8 @@ export class PostsRepository {
     });
   }
 
-  deleteTag(id: string, orgId: string, profileId?: string) {
-    return this._tags.model.tags.update({
+  async deleteTag(id: string, orgId: string, profileId?: string) {
+    const tag = await this._tags.model.tags.update({
       where: {
         id,
         orgId,
@@ -962,6 +989,15 @@ export class PostsRepository {
         deletedAt: new Date(),
       },
     });
+
+    // vinculos de uma tag apagada nao servem mais (upstream #1827)
+    await this._tagsPosts.model.tagsPosts.deleteMany({
+      where: {
+        tagId: tag.id,
+      },
+    });
+
+    return tag;
   }
 
   createComment(

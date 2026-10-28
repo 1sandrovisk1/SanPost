@@ -143,7 +143,7 @@ describe('TiktokProvider (lote out/2026)', () => {
     expect(String(safe.mock.calls[0][0])).toContain('/post/publish/status/fetch/');
   });
 
-  it('resolveReleaseId ignora ids que nao sao publish_id e devolve undefined sem id publico', async () => {
+  it('resolveReleaseId ignora ids que nao sao publish_id e devolve pending sem id publico', async () => {
     const provider = new TiktokProvider();
     const safe = jest
       .spyOn(provider as any, 'analyticsFetch')
@@ -156,8 +156,80 @@ describe('TiktokProvider (lote out/2026)', () => {
 
     await expect(
       provider.resolveReleaseId('TOKEN', 'v_pub_url~abc', { profile: 'perfil' } as any)
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({ pending: true });
     expect(safe).toHaveBeenCalledTimes(1);
+  });
+
+  it('post privado nunca tera link publico e nao consulta a plataforma (upstream #2211)', async () => {
+    const provider = new TiktokProvider();
+    const safe = jest.spyOn(provider as any, 'analyticsFetch');
+
+    await expect(
+      provider.resolveReleaseId('TOKEN', 'v_pub_url~abc', { profile: 'perfil' } as any, {
+        privacy_level: 'SELF_ONLY',
+      })
+    ).resolves.toEqual({ unavailable: true });
+    expect(safe).not.toHaveBeenCalled();
+  });
+
+  it('post de foto resolve para /photo/ (upstream #2211)', async () => {
+    const provider = new TiktokProvider();
+    jest
+      .spyOn(provider as any, 'analyticsFetch')
+      .mockResolvedValue({ text: async () => statusBody(`[${BIG_ID}]`) } as any);
+
+    await expect(
+      provider.resolveReleaseId('TOKEN', 'p_pub_url~abc', { profile: 'perfil' } as any)
+    ).resolves.toEqual({
+      postId: BIG_ID,
+      releaseURL: `https://www.tiktok.com/@perfil/photo/${BIG_ID}`,
+    });
+  });
+
+  it('rascunho da caixa de entrada usa o publish id do fragmento e ignora a privacidade (upstream #2212)', async () => {
+    const provider = new TiktokProvider();
+    const safe = jest
+      .spyOn(provider as any, 'analyticsFetch')
+      .mockResolvedValueOnce({ text: async () => statusBody('[]') } as any)
+      .mockResolvedValueOnce({ text: async () => statusBody(`[${BIG_ID}]`) } as any);
+    const inbox = 'https://www.tiktok.com/messages?lang=en#v_inbox_file~abc';
+
+    // ainda nao publicado: segue abrindo a caixa de entrada
+    await expect(
+      provider.resolveReleaseId('TOKEN', 'missing', { profile: 'perfil' } as any, { privacy_level: 'SELF_ONLY' }, inbox)
+    ).resolves.toBeUndefined();
+    await expect(
+      provider.resolveReleaseId('TOKEN', 'missing', { profile: 'perfil' } as any, { privacy_level: 'SELF_ONLY' }, inbox)
+    ).resolves.toEqual({
+      postId: BIG_ID,
+      releaseURL: `https://www.tiktok.com/@perfil/video/${BIG_ID}`,
+    });
+    expect(JSON.parse((safe.mock.calls[0][1] as any).body)).toEqual({
+      publish_id: 'v_inbox_file~abc',
+    });
+    // 'missing' sem fragmento: nada a resolver
+    await expect(
+      provider.resolveReleaseId('TOKEN', 'missing', { profile: 'perfil' } as any, {}, 'https://www.tiktok.com/messages?lang=en')
+    ).resolves.toBeUndefined();
+  });
+
+  it('releaseUrl devolve o share_url sem rastreio e recusa link fora do TikTok (upstream #2212)', async () => {
+    const provider = new TiktokProvider();
+    jest
+      .spyOn(provider as any, 'analyticsFetch')
+      .mockResolvedValueOnce({
+        json: async () => ({
+          data: { videos: [{ share_url: 'https://www.tiktok.com/@perfil/video/1?u_code=x&client_key=k' }] },
+        }),
+      } as any)
+      .mockResolvedValueOnce({
+        json: async () => ({ data: { videos: [{ share_url: 'javascript:alert(1)' }] } }),
+      } as any);
+
+    await expect(provider.releaseUrl('TOKEN', '1')).resolves.toBe(
+      'https://www.tiktok.com/@perfil/video/1'
+    );
+    await expect(provider.releaseUrl('TOKEN', '1')).resolves.toBeUndefined();
   });
 
   it('postAnalytics com publish_id ainda nao resolvido devolve vazio sem consultar o video', async () => {
@@ -190,7 +262,11 @@ describe('TiktokProvider (lote out/2026)', () => {
 
     await expect(
       (provider as any).uploadedVideoSuccess('perfil', 'v_pub_file~abc', 'TOKEN')
-    ).resolves.toEqual({ url: 'https://www.tiktok.com/messages?lang=en', id: 'missing' });
+    ).resolves.toEqual({
+      // publish id no fragmento para resolver o rascunho depois (upstream #2212)
+      url: 'https://www.tiktok.com/messages?lang=en#v_pub_file~abc',
+      id: 'missing',
+    });
   });
 
   it('corpo que nao e JSON (ou sem data) falha rapido em vez de girar', async () => {
@@ -236,7 +312,7 @@ describe('TiktokProvider (lote out/2026)', () => {
 
     await expect(
       provider.resolveReleaseId('TOKEN', 'v_pub_url~abc', { profile: null } as any)
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({ pending: true });
   });
 
   it('refreshToken usa as credenciais do perfil (ClientInformation) e cai no env sem elas', async () => {
@@ -266,5 +342,49 @@ describe('TiktokProvider (lote out/2026)', () => {
     const body = String(fetchMock.mock.calls[0][1].body);
     expect(body).toContain('client_key=profile-key');
     expect(body).toContain('client_secret=profile-secret');
+  });
+});
+
+// Texto acima do limite do TikTok era enviado e voltava como `invalid_params`
+// ("Invalid request parameters"), sem dizer que o problema era o tamanho.
+describe('TiktokProvider limite de texto', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  const post = (message: string, path: string, method = 'DIRECT_POST') =>
+    ({
+      id: 'p1',
+      message,
+      media: [{ path }],
+      settings: { content_posting_method: method, privacy_level: 'PUBLIC_TO_EVERYONE' },
+    }) as any;
+
+  it('video com legenda acima de 2.200 falha com BadBody antes de chamar o TikTok', async () => {
+    const provider = new TiktokProvider();
+    const fetchSpy = jest.spyOn(provider, 'fetch');
+
+    const error = await provider
+      .post('u1', 'tok', [post('a'.repeat(2201), 'https://cdn.example/v.mp4')], { profile: 'perfil' } as any)
+      .catch((e) => e);
+
+    expect(error).toBeInstanceOf(BadBody);
+    expect(error.message).toMatch(/2[.]?201/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('foto aceita descricao ate 4.000 e recusa acima', async () => {
+    const provider = new TiktokProvider();
+    jest.spyOn(provider, 'fetch');
+
+    await expect(
+      provider.post('u1', 'tok', [post('a'.repeat(4001), 'https://cdn.example/f.jpg')], { profile: 'perfil' } as any)
+    ).rejects.toBeInstanceOf(BadBody);
+  });
+
+  it('titulo de foto vai cortado em 90 tambem no envio para rascunho (UPLOAD)', () => {
+    const body = (new TiktokProvider() as any).buildTikokPostInfoBody({
+      ...post('desc', 'https://cdn.example/f.jpg', 'UPLOAD'),
+      settings: { content_posting_method: 'UPLOAD', title: 't'.repeat(120) },
+    });
+    expect(body.post_info.title).toHaveLength(90);
   });
 });

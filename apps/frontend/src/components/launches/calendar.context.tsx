@@ -78,10 +78,15 @@ export const CalendarContext = createContext({
   setListPage: (page: number) => {
     /** empty **/
   },
+  selectedChannels: null as string[] | null,
+  setSelectedChannels: (channels: string[] | null) => {
+    /** empty **/
+  },
 });
 
 export interface Integrations {
   name: string;
+  originalName?: string;
   id: string;
   disabled?: boolean;
   inBetweenSteps: boolean;
@@ -154,12 +159,25 @@ export const CalendarWeekProvider: FC<{
       ? { startDate: initStartDate, endDate: initEndDate }
       : getDateRange(display);
 
+  // null = todos os canais (upstream #2205)
+  const [selectedChannels, setSelectedChannelsRaw] = useState<
+    string[] | null
+  >(null);
+  const setSelectedChannels = useCallback((next: string[] | null) => {
+    setSelectedChannelsRaw(next);
+    setListPage(0);
+  }, []);
+
   const [filters, setFilters] = useState({
     startDate: initialRange.startDate,
     endDate: initialRange.endDate,
     customer: initCustomer || null,
     display,
   });
+
+  useEffect(() => {
+    setSelectedChannels(null);
+  }, [filters.customer]);
 
   const params = useMemo(() => {
     return new URLSearchParams({
@@ -189,8 +207,13 @@ export const CalendarWeekProvider: FC<{
       page: listPage.toString(),
       limit: '100',
       customer: filters?.customer?.toString() || '',
+      // [] = nenhum canal, como no calendario (filtro no cliente); a lista
+      // manda um id que nao existe para voltar vazia
+      ...(selectedChannels
+        ? { integrations: selectedChannels.join(',') || 'none' }
+        : {}),
     }).toString();
-  }, [listPage, filters.customer]);
+  }, [listPage, filters.customer, selectedChannels]);
 
   const loadListData = useCallback(async () => {
     const response = await fetch(`/posts/list?${listParams}`);
@@ -318,6 +341,14 @@ export const CalendarWeekProvider: FC<{
     mutateList();
   }, [mutateCalendar, mutateList]);
 
+  const filterByChannels = useCallback(
+    (list: any[]) =>
+      selectedChannels
+        ? list.filter((p) => selectedChannels.includes(p.integration.id))
+        : list,
+    [selectedChannels]
+  );
+
   // Determine loading state based on current view
   const loading = filters.display === 'list' ? listIsLoading : calendarIsLoading;
 
@@ -327,7 +358,7 @@ export const CalendarWeekProvider: FC<{
         trendings,
         reloadCalendarView,
         ...filters,
-        posts: calendarIsLoading ? [] : internalData,
+        posts: calendarIsLoading ? [] : filterByChannels(internalData),
         loading,
         integrations,
         setFilters: setFiltersWrapper,
@@ -340,6 +371,8 @@ export const CalendarWeekProvider: FC<{
         listPage,
         listTotalPages,
         setListPage,
+        selectedChannels,
+        setSelectedChannels,
       }}
     >
       {children}

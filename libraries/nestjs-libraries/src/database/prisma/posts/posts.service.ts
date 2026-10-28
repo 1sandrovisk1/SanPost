@@ -7,6 +7,12 @@ import {
   Logger,
 } from '@nestjs/common';
 import { summarizeError } from '@gitroom/nestjs-libraries/services/error.summary';
+import {
+  isTikTokPhotoPost,
+  TIKTOK_IDENTIFIERS,
+  tiktokCaptionTooLong,
+  tiktokPlainText,
+} from '@gitroom/nestjs-libraries/integrations/social/tiktok.caption';
 import { PostsRepository } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.repository';
 import { CreatePostDto } from '@gitroom/nestjs-libraries/dtos/posts/create.post.dto';
 import dayjs from 'dayjs';
@@ -163,7 +169,8 @@ export class PostsService {
       this._logger.warn(
         `getMissingContent failed (post=${postId}): ${summarizeError(e)}`
       );
-      if (e instanceof RefreshToken) {
+      // uma nova tentativa so: RefreshToken depois do refresh recursava sempre
+      if (e instanceof RefreshToken && !forceRefresh) {
         return this.getMissingContent(orgId, postId, true, profileId);
       }
     }
@@ -198,7 +205,34 @@ export class PostsService {
   ) {
     const post = await this._postRepository.getPostById(postId, orgId);
     this.assertPostInProfile(post, profileId);
-    return this._postRepository.updateReleaseId(postId, orgId, releaseId);
+    // post legado sem perfil: o canal tambem precisa ser do perfil
+    this.assertPostInProfile({ profileId: post?.integration?.profileId }, profileId);
+
+    // a URL e um bonus: conectar nao pode falhar quando ela nao vem
+    // (upstream #2212)
+    let releaseURL: string | undefined;
+    if (post?.releaseId === 'missing') {
+      try {
+        releaseURL = await this._integrationManager
+          .getSocialIntegration(post.integration.providerIdentifier)
+          .releaseUrl?.(
+            decryptIntegrationToken(this._encryption, post.integration.token),
+            String(releaseId),
+            post.integration
+          );
+      } catch (e) {
+        this._logger.warn(
+          `releaseUrl falhou para o post ${postId}: ${summarizeError(e)}`
+        );
+      }
+    }
+
+    return this._postRepository.updateReleaseId(
+      postId,
+      orgId,
+      releaseId,
+      releaseURL
+    );
   }
 
   // Porte do upstream #2186: providers que publicam antes de ter o id publico
@@ -211,9 +245,15 @@ export class PostsService {
       id: string;
       releaseId: string;
       releaseURL: string | null;
+      settings?: string | null;
       integration: Integration;
     }
-  ): Promise<{ releaseId: string; releaseURL: string | null }> {
+  ): Promise<{
+    releaseId: string;
+    releaseURL: string | null;
+    pending?: boolean;
+    unavailable?: boolean;
+  }> {
     const stored = { releaseId: post.releaseId, releaseURL: post.releaseURL };
     const integrationProvider = this._integrationManager.getSocialIntegration(
       post.integration.providerIdentifier
@@ -226,18 +266,33 @@ export class PostsService {
     // plataforma a cada abertura das estatisticas (GET sem throttle, mesmo
     // token e endpoint do polling de publicacao, rate limit por token).
     const unresolvedKey = `release-resolve:${orgId}:${post.id}`;
-    if (await ioRedis.get(unresolvedKey)) {
-      return stored;
+    const cached = await ioRedis.get(unresolvedKey);
+    if (cached) {
+      // 'pending': a plataforma ainda nao liberou o link; outro valor: nada a
+      // resolver por enquanto (ex.: rascunho do TikTok ainda na caixa de entrada)
+      return cached === 'pending' ? { ...stored, pending: true } : stored;
+    }
+
+    let settings: any = {};
+    try {
+      settings = JSON.parse(post.settings || '{}');
+    } catch {
+      settings = {};
     }
 
     const resolved = await integrationProvider.resolveReleaseId(
       post.integration.token,
       post.releaseId,
-      post.integration
+      post.integration,
+      settings,
+      post.releaseURL
     );
-    if (!resolved) {
-      await ioRedis.set(unresolvedKey, '1', 'EX', 300);
-      return stored;
+    if (!resolved || 'pending' in resolved) {
+      await ioRedis.set(unresolvedKey, resolved ? 'pending' : '1', 'EX', 300);
+      return { ...stored, pending: !!resolved };
+    }
+    if ('unavailable' in resolved) {
+      return { ...stored, unavailable: true };
     }
     if (resolved.postId === post.releaseId) {
       return stored;
@@ -251,6 +306,91 @@ export class PostsService {
       resolved.releaseURL
     );
     return { releaseId: resolved.postId, releaseURL: resolved.releaseURL };
+  }
+
+  // link do post publicado, resolvido no clique do icone do calendario
+  // (upstream #2194, #2211): plataformas que liberam o id publico depois da
+  // publicacao (TikTok) so sao consultadas aqui ou nas estatisticas
+  async getReleaseURL(
+    orgId: string,
+    postId: string,
+    profileId?: string,
+    forceRefresh = false
+  ): Promise<{
+    releaseURL: string;
+    pending?: boolean;
+    unavailable?: boolean;
+    reconnect?: boolean;
+  }> {
+    const post = await this._postRepository.getPostById(postId, orgId);
+    this.assertPostInProfile(post, profileId);
+    // post legado sem perfil: o canal tambem precisa ser do perfil
+    this.assertPostInProfile({ profileId: post?.integration?.profileId }, profileId);
+    if (!post?.releaseURL) {
+      return { releaseURL: '' };
+    }
+
+    const integrationProvider = this._integrationManager.getSocialIntegration(
+      post.integration.providerIdentifier
+    );
+    if (!integrationProvider.resolveReleaseId || !post.releaseId) {
+      return { releaseURL: post.releaseURL };
+    }
+
+    const getIntegration = post.integration!;
+
+    // so renova depois que a plataforma recusar o token: post ja resolvido
+    // nunca chega a plataforma
+    if (forceRefresh) {
+      const data = await this._refreshIntegrationService.refresh(
+        getIntegration
+      );
+      if (!data) {
+        return { releaseURL: post.releaseURL, reconnect: true };
+      }
+
+      if (data.accessToken) {
+        getIntegration.token = data.accessToken;
+
+        if (integrationProvider.refreshWait) {
+          await timer(10000);
+        }
+      } else {
+        await this._integrationService.disconnectChannel(orgId, getIntegration);
+        return { releaseURL: post.releaseURL, reconnect: true };
+      }
+    }
+
+    getIntegration.token = decryptIntegrationToken(
+      this._encryption,
+      getIntegration.token
+    );
+
+    try {
+      const { releaseURL, pending, unavailable } = await this.resolveRelease(
+        orgId,
+        {
+          id: post.id,
+          releaseId: post.releaseId,
+          releaseURL: post.releaseURL,
+          settings: post.settings,
+          integration: getIntegration,
+        }
+      );
+      return { releaseURL: releaseURL || post.releaseURL, pending, unavailable };
+    } catch (e) {
+      if (e instanceof RefreshToken && !forceRefresh) {
+        return this.getReleaseURL(orgId, postId, profileId, true);
+      }
+      this._logger.warn(
+        `getReleaseURL falhou para o post ${postId}: ${summarizeError(e)}`
+      );
+    }
+
+    // falha (ou token recusado de novo): cliques seguidos nao voltam a
+    // renovar o token nem a consultar a plataforma por 5 min
+    await ioRedis.set(`release-resolve:${orgId}:${post.id}`, 'pending', 'EX', 300);
+    return { releaseURL: post.releaseURL, pending: true };
   }
 
   async checkPostAnalytics(
@@ -326,6 +466,7 @@ export class PostsService {
         id: post.id,
         releaseId: post.releaseId,
         releaseURL: post.releaseURL,
+        settings: post.settings,
         integration: getIntegration,
       });
 
@@ -349,7 +490,9 @@ export class PostsService {
       this._logger.warn(
         `checkPostAnalytics failed (post=${postId}): ${summarizeError(e)}`
       );
-      if (e instanceof RefreshToken) {
+      // uma nova tentativa so (upstream 96b78476): sem isto a recursao chamava
+      // o refresh do provider para sempre
+      if (e instanceof RefreshToken && !forceRefresh) {
         return this.checkPostAnalytics(orgId, postId, date, true, profileId);
       }
     }
@@ -855,6 +998,8 @@ export class PostsService {
           } catch (err) {}
         }
       } catch (err) {}
+
+      return { id: post.id };
     }
 
     return { error: true };
@@ -940,6 +1085,28 @@ export class PostsService {
     } catch (err) { if (options?.strict) throw err; }
   }
 
+  // Texto que o TikTok (nativo ou via Zernio) vai recusar e barrado na criacao
+  // — dashboard, API publica, MCP e CLI passam por aqui. Antes ia para a fila
+  // e voltava como `invalid_params` generico na hora de publicar.
+  private assertTikTokTextLength(body: CreatePostDto) {
+    for (const post of body.posts || []) {
+      if (!TIKTOK_IDENTIFIERS.includes(post?.settings?.__type)) {
+        continue;
+      }
+      const [first] = post.value || [];
+      if (!first) {
+        continue;
+      }
+      const tooLong = tiktokCaptionTooLong(
+        tiktokPlainText(first.content || ''),
+        isTikTokPhotoPost(first.image as Array<{ path?: string }>)
+      );
+      if (tooLong) {
+        throw new BadRequestException(tooLong);
+      }
+    }
+  }
+
   private guardAgainstRepublish(
     post: {
       state: State;
@@ -1016,6 +1183,12 @@ export class PostsService {
       for (const existingPost of existingPosts) {
         this.guardAgainstRepublish(existingPost, 'createPost');
       }
+    }
+
+    // com encurtador o texto muda depois daqui: o provider checa de novo antes
+    // de publicar, com a mesma mensagem
+    if (body.type !== 'draft' && !body.shortLink) {
+      this.assertTikTokTextLength(body);
     }
 
     // canal de cada post precisa ser do perfil: a API publica e a tool MCP ja
@@ -1292,11 +1465,14 @@ export class PostsService {
       orgId,
       integrationId
     );
+    // sem canal ativo nao ha horarios: usa os horarios padrao do canal novo
+    // em vez de recursar para sempre (upstream #2207)
     return this.findFreeDateTimeRecursive(
       orgId,
-      findTimes,
+      findTimes.length ? findTimes : [120, 400, 700],
       dayjs.utc().startOf('day'),
-      profileId
+      profileId,
+      0
     );
   }
 
@@ -1313,8 +1489,17 @@ export class PostsService {
     orgId: string,
     times: number[],
     date: dayjs.Dayjs,
-    profileId?: string
+    profileId: string | undefined,
+    daysChecked: number
   ): Promise<string> {
+    // para depois de um ano: a busca nunca pode ficar sem fim
+    if (daysChecked > 365) {
+      return date
+        .clone()
+        .add(times[0] || 0, 'minutes')
+        .format('YYYY-MM-DDTHH:mm:00');
+    }
+
     const list = await this._postRepository.getPostsCountsByDates(
       orgId,
       times,
@@ -1323,7 +1508,13 @@ export class PostsService {
     );
 
     if (!list.length) {
-      return this.findFreeDateTimeRecursive(orgId, times, date.add(1, 'day'), profileId);
+      return this.findFreeDateTimeRecursive(
+        orgId,
+        times,
+        date.add(1, 'day'),
+        profileId,
+        daysChecked + 1
+      );
     }
 
     const num = list.reduce<null | number>((prev, curr) => {

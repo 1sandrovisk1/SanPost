@@ -19,7 +19,7 @@ jest.mock('@gitroom/nestjs-libraries/redis/redis.service', () => ({
 }));
 
 import { HttpException, Logger } from '@nestjs/common';
-import { BadBody } from '@gitroom/nestjs-libraries/integrations/social.abstract';
+import { BadBody, RefreshToken } from '@gitroom/nestjs-libraries/integrations/social.abstract';
 import { PostsService } from './posts.service';
 
 const makePost = (overrides: Record<string, unknown> = {}) => ({
@@ -215,7 +215,8 @@ describe('PostsService.updateReleaseId (escopo por perfil)', () => {
     await service.updateReleaseId('org-1', 'post-1', '123', 'prof-2');
     await service.updateReleaseId('org-1', 'post-1', '123');
     expect(postRepository.updateReleaseId).toHaveBeenCalledTimes(2);
-    expect(postRepository.updateReleaseId).toHaveBeenCalledWith('post-1', 'org-1', '123');
+    // post ja conectado (releaseId != 'missing'): sem URL nova
+    expect(postRepository.updateReleaseId).toHaveBeenCalledWith('post-1', 'org-1', '123', undefined);
   });
 });
 
@@ -274,5 +275,78 @@ describe('PostsService.getStatistics / getOldPosts (escopo por perfil)', () => {
     const { service, postRepository } = buildStats(null);
     await service.getOldPosts('org-1', '2026-10-26', 'prof-1');
     expect(postRepository.getOldPosts).toHaveBeenCalledWith('org-1', '2026-10-26', 'prof-1');
+  });
+});
+
+// Porte do upstream #2247: DELETE da API publica devolve o id do post apagado.
+describe('PostsService.deletePost (retorno)', () => {
+  const buildDelete = (deleted: { id: string } | null) => {
+    const postRepository = { deletePost: jest.fn().mockResolvedValue(deleted) };
+    const temporalService = {
+      client: {
+        getRawClient: () => ({
+          workflow: {
+            list: async function* () {
+              // nenhum workflow rodando
+            },
+          },
+        }),
+      },
+    };
+    return new PostsService(
+      postRepository as any,
+      {} as any,
+      {} as any,
+      null as any,
+      null as any,
+      null as any,
+      temporalService as any,
+      null as any,
+      null as any,
+      { decrypt: jest.fn() } as any,
+      {} as any
+    );
+  };
+
+  it('devolve { id } do post apagado', async () => {
+    await expect(buildDelete({ id: 'post-9' }).deletePost('org-1', 'g1')).resolves.toEqual({
+      id: 'post-9',
+    });
+  });
+
+  it('grupo inexistente continua devolvendo { error: true }', async () => {
+    await expect(buildDelete(null).deletePost('org-1', 'g-x')).resolves.toEqual({ error: true });
+  });
+});
+
+// upstream 96b78476: RefreshToken depois de um refresh bem-sucedido recursava
+// para sempre (cada volta chamava o refresh do provider de novo).
+describe('PostsService - uma unica nova tentativa apos RefreshToken', () => {
+  it('checkPostAnalytics tenta de novo uma vez e desiste', async () => {
+    const provider = {
+      postAnalytics: jest
+        .fn()
+        .mockRejectedValue(new RefreshToken('youtube', '{}', '{}', 'expired')),
+    };
+    const { service, refreshIntegrationService } = build(
+      makePost({ releaseId: 'vid-1', integration: { ...makePost().integration, providerIdentifier: 'youtube' } }),
+      provider
+    );
+    refreshIntegrationService.refresh.mockResolvedValue({ accessToken: 'novo' });
+    jest.spyOn(service as any, 'resolveRelease').mockResolvedValue({ releaseId: 'vid-1' });
+
+    await expect(service.checkPostAnalytics('org-1', 'post-1', 7, false, 'prof-2')).resolves.toEqual([]);
+    expect(provider.postAnalytics).toHaveBeenCalledTimes(2);
+  });
+
+  it('getMissingContent tenta de novo uma vez e desiste', async () => {
+    const provider = {
+      missing: jest.fn().mockRejectedValue(new RefreshToken('tiktok', '{}', '{}', 'expired')),
+    };
+    const { service, refreshIntegrationService } = build(makePost(), provider);
+    refreshIntegrationService.refresh.mockResolvedValue({ accessToken: 'novo' });
+
+    await expect(service.getMissingContent('org-1', 'post-1', false, 'prof-2')).resolves.toEqual([]);
+    expect(provider.missing).toHaveBeenCalledTimes(2);
   });
 });

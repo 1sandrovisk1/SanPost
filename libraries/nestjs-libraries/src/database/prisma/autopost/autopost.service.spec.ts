@@ -104,3 +104,44 @@ describe('AutopostService downloads', () => {
     await expect(build().loadUrl('http://169.254.169.254/')).resolves.toBe('');
   });
 });
+
+// upstream d883bfa1: o start sem await deixava a rejeicao solta e, se o
+// workflow ja existia, o fluxo caia no terminate e matava o autopost ativo.
+describe('AutopostService.processCron', () => {
+  const buildCron = (start: jest.Mock) => {
+    const terminateWorkflow = jest.fn().mockResolvedValue(true);
+    const temporal = {
+      client: { getRawClient: () => ({ workflow: { start } }) },
+      terminateWorkflow,
+    };
+    const service = new AutopostService({} as any, temporal as any, {} as any, {} as any);
+    return { service, terminateWorkflow };
+  };
+
+  it('ativo: reaproveita o workflow em execucao e nunca o encerra', async () => {
+    const start = jest.fn().mockResolvedValue({ workflowId: 'autopost-1' });
+    const { service, terminateWorkflow } = buildCron(start);
+
+    await service.processCron(true, 'org-1', '1');
+
+    expect(start.mock.calls[0][1]).toMatchObject({
+      workflowId: 'autopost-1',
+      workflowIdConflictPolicy: 'USE_EXISTING',
+    });
+    expect(terminateWorkflow).not.toHaveBeenCalled();
+  });
+
+  it('ativo com falha no start devolve false sem encerrar o workflow', async () => {
+    const start = jest.fn().mockRejectedValue(new Error('temporal fora'));
+    const { service, terminateWorkflow } = buildCron(start);
+
+    await expect(service.processCron(true, 'org-1', '1')).resolves.toBe(false);
+    expect(terminateWorkflow).not.toHaveBeenCalled();
+  });
+
+  it('inativo encerra o workflow', async () => {
+    const { service, terminateWorkflow } = buildCron(jest.fn());
+    await service.processCron(false, 'org-1', '1');
+    expect(terminateWorkflow).toHaveBeenCalledWith('autopost-1');
+  });
+});

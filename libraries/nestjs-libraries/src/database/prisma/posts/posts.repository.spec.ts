@@ -159,3 +159,183 @@ describe('PostsRepository.getOldPosts', () => {
     expect(findMany.mock.calls[0][0].where.profileId).toBeUndefined();
   });
 });
+
+// O id devolvido (e usado para encerrar workflows) precisa ser de um post que
+// o chamador alcanca: com perfil, o grupo de outro perfil nao e apagado nem
+// devolvido.
+describe('PostsRepository.deletePost (escopo por perfil)', () => {
+  const build = () => {
+    const prismaMock = createPrismaRepositoryMock('post');
+    (prismaMock.model.post as any).updateMany = jest.fn().mockResolvedValue({ count: 0 });
+    (prismaMock.model.post as any).findFirst = jest.fn().mockResolvedValue(null);
+    const repo = new PostsRepository(
+      prismaMock as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any
+    );
+    return {
+      repo,
+      updateMany: prismaMock.model.post.updateMany as jest.Mock,
+      findFirst: prismaMock.model.post.findFirst as jest.Mock,
+    };
+  };
+
+  it('aplica o perfil tanto no soft delete quanto na busca do post devolvido', async () => {
+    const { repo, updateMany, findFirst } = build();
+    await repo.deletePost('org-1', 'g1', 'prof-1');
+    expect(updateMany.mock.calls[0][0].where).toMatchObject({ group: 'g1', profileId: 'prof-1' });
+    expect(findFirst.mock.calls[0][0].where).toMatchObject({
+      organizationId: 'org-1',
+      group: 'g1',
+      parentPostId: null,
+      profileId: 'prof-1',
+    });
+  });
+
+  it('sem perfil (admin/chave de org) nao filtra por perfil', async () => {
+    const { repo, findFirst } = build();
+    await repo.deletePost('org-1', 'g1');
+    expect(findFirst.mock.calls[0][0].where.profileId).toBeUndefined();
+  });
+});
+
+// #2119: o calendario mostra o motivo da falha — so a mensagem curada.
+describe('PostsRepository.getPosts (erro curado)', () => {
+  it('seleciona error e devolve so a mensagem curada de bad_body', async () => {
+    const prismaMock = createPrismaRepositoryMock('post');
+    (prismaMock.model.post as any).findMany = jest.fn().mockResolvedValue([
+      {
+        id: 'p1',
+        publishDate: new Date('2026-10-27T10:00:00Z'),
+        intervalInDays: null,
+        state: 'ERROR',
+        error: JSON.stringify({ cause: { type: 'bad_body', failure: { message: 'Vídeo recusado' } } }),
+      },
+      {
+        id: 'p2',
+        publishDate: new Date('2026-10-27T11:00:00Z'),
+        intervalInDays: null,
+        state: 'ERROR',
+        error: '{"refresh_token":"SECRET"}',
+      },
+    ]);
+    const repo = new PostsRepository(prismaMock as any, {} as any, {} as any, {} as any, {} as any, {} as any);
+
+    const list: any[] = await repo.getPosts('org-1', {
+      startDate: '2026-10-26T00:00:00Z',
+      endDate: '2026-11-02T00:00:00Z',
+    } as any);
+
+    const select = (prismaMock.model.post.findMany as jest.Mock).mock.calls[0][0].select;
+    expect(select.error).toBe(true);
+    expect(list.find((p) => p.id === 'p1').error).toBe('Vídeo recusado');
+    expect(list.find((p) => p.id === 'p2').error).toBeNull();
+    expect(JSON.stringify(list)).not.toContain('SECRET');
+  });
+});
+
+// Porte do upstream #1827: tag apagada (soft delete) some dos posts e perde os
+// vinculos.
+describe('PostsRepository - tags apagadas', () => {
+  it('getPosts so traz tags nao apagadas', async () => {
+    const prismaMock = createPrismaRepositoryMock('post');
+    (prismaMock.model.post as any).findMany = jest.fn().mockResolvedValue([]);
+    const repo = new PostsRepository(prismaMock as any, {} as any, {} as any, {} as any, {} as any, {} as any);
+    await repo.getPosts('org-1', { startDate: '2026-10-26T00:00:00Z', endDate: '2026-11-02T00:00:00Z' } as any);
+    const select = (prismaMock.model.post.findMany as jest.Mock).mock.calls[0][0].select;
+    expect(select.tags).toMatchObject({ where: { tag: { deletedAt: null } } });
+  });
+
+  it('deleteTag remove os vinculos da tag com os posts', async () => {
+    const tags = { update: jest.fn().mockResolvedValue({ id: 'tag-1' }) };
+    const tagsPosts = { deleteMany: jest.fn().mockResolvedValue({ count: 2 }) };
+    const repo = new PostsRepository(
+      {} as any,
+      {} as any,
+      {} as any,
+      { model: { tags } } as any,
+      { model: { tagsPosts } } as any,
+      {} as any
+    );
+    await expect(repo.deleteTag('tag-1', 'org-1', 'prof-1')).resolves.toEqual({ id: 'tag-1' });
+    expect(tags.update.mock.calls[0][0].where).toEqual({ id: 'tag-1', orgId: 'org-1', profileId: 'prof-1' });
+    expect(tagsPosts.deleteMany).toHaveBeenCalledWith({ where: { tagId: 'tag-1' } });
+  });
+});
+
+// Porte do upstream #2205: filtro de canais acima do calendario.
+describe('PostsRepository.getPostsList (filtro de canais)', () => {
+  const build = () => {
+    const prismaMock = createPrismaRepositoryMock('post');
+    prismaMock.model.post.findMany.mockResolvedValue([]);
+    prismaMock.model.post.count.mockResolvedValue(0);
+    const repo = new PostsRepository(
+      prismaMock as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any
+    );
+    return { prismaMock, repo };
+  };
+
+  it('restringe aos canais escolhidos sem perder org, perfil e cliente', async () => {
+    const { prismaMock, repo } = build();
+
+    await repo.getPostsList(
+      'org-1',
+      { customer: 'cli-1', integrations: ['int-1', 'int-2'] } as any,
+      'perfil-1'
+    );
+
+    const where = prismaMock.model.post.findMany.mock.calls[0][0]!.where as any;
+    expect(where.AND).toEqual(
+      expect.arrayContaining([
+        { OR: [{ organizationId: 'org-1' }] },
+        { profileId: 'perfil-1' },
+      ])
+    );
+    expect(where.integration).toEqual({
+      customerId: 'cli-1',
+      id: { in: ['int-1', 'int-2'] },
+    });
+  });
+
+  it('sem canais escolhidos nao filtra por canal', async () => {
+    const { prismaMock, repo } = build();
+
+    await repo.getPostsList('org-1', { integrations: [] } as any);
+
+    const where = prismaMock.model.post.findMany.mock.calls[0][0]!.where as any;
+    expect(where.integration).toBeUndefined();
+  });
+});
+
+// Porte do upstream #2212: conectar o post a mao tambem grava o link.
+describe('PostsRepository.updateReleaseId (link do post conectado)', () => {
+  it('grava o link junto do id so quando ele vem, sempre restrito a org e a posts missing', async () => {
+    const post = createPrismaRepositoryMock('post');
+    const tx = {
+      post: { update: jest.fn().mockResolvedValue({ id: 'p', integrationId: 'i', organizationId: 'o', profileId: null }) },
+      scheduledAutomationTarget: { updateMany: jest.fn() },
+    };
+    const transaction = { model: { $transaction: jest.fn(async (cb: any) => cb(tx)) } };
+    const repo = new PostsRepository(post as any, {} as any, {} as any, {} as any, {} as any, {} as any, transaction as any);
+
+    await repo.updateReleaseId('p', 'o', '123', 'https://www.tiktok.com/@perfil/video/123');
+    await repo.updateReleaseId('p', 'o', '456');
+
+    expect(tx.post.update).toHaveBeenNthCalledWith(1, {
+      where: { id: 'p', organizationId: 'o', releaseId: 'missing' },
+      data: { releaseId: '123', releaseURL: 'https://www.tiktok.com/@perfil/video/123' },
+    });
+    expect(tx.post.update).toHaveBeenNthCalledWith(2, {
+      where: { id: 'p', organizationId: 'o', releaseId: 'missing' },
+      data: { releaseId: '456' },
+    });
+  });
+});

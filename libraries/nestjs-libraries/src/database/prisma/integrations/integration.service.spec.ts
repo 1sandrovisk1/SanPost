@@ -15,6 +15,7 @@ import { IntegrationService } from './integration.service';
 import { HttpException } from '@nestjs/common';
 import { SYSTEM_USER_PAGE_TOKEN_TTL } from '@gitroom/nestjs-libraries/integrations/meta-system-user.service';
 import { ioRedis } from '@gitroom/nestjs-libraries/redis/redis.service';
+import { RefreshToken } from '@gitroom/nestjs-libraries/integrations/social.abstract';
 
 const makeService = (repo: any) =>
   new IntegrationService(
@@ -38,6 +39,123 @@ describe('IntegrationService', () => {
     expect(await service.checkAnalytics({ id: 'org' } as any, 'int', '7', false, 'perfil')).toEqual(metric);
     expect(ioRedis.get).toHaveBeenCalledWith('integration:analytics-v2:org:int:7');
   });
+  describe('checkAnalytics - renovacao e periodo (upstream 96b78476)', () => {
+    const build = (analytics: jest.Mock) => {
+      const repo = {
+        getIntegrationById: jest.fn(async () => ({
+          id: 'int',
+          profileId: 'perfil',
+          type: 'social',
+          providerIdentifier: 'youtube',
+          internalId: 'canal',
+          token: 'tok',
+          tokenExpiration: new Date(Date.now() + 86400000),
+        })),
+      };
+      const refresh = { refresh: jest.fn().mockResolvedValue({ accessToken: 'novo' }) };
+      const service = new IntegrationService(
+        repo as any,
+        {} as any,
+        { getSocialIntegration: jest.fn().mockReturnValue({ analytics }) } as any,
+        {} as any,
+        refresh as any,
+        {} as any,
+        { decrypt: jest.fn((v: string) => v) } as any,
+        {} as any,
+        {} as any
+      );
+      return { service, refresh };
+    };
+
+    beforeEach(() => {
+      (ioRedis.get as jest.Mock).mockReset().mockResolvedValue(null);
+      (ioRedis.set as jest.Mock).mockReset().mockResolvedValue('OK');
+    });
+
+    it('renova e tenta de novo uma unica vez, mantendo o perfil', async () => {
+      const analytics = jest
+        .fn()
+        .mockRejectedValue(new RefreshToken('youtube', '{}', '{}'));
+      const { service, refresh } = build(analytics);
+      const spy = jest.spyOn(service, 'checkAnalytics');
+
+      await expect(
+        service.checkAnalytics({ id: 'org' } as any, 'int', '7', false, 'perfil')
+      ).resolves.toEqual([]);
+
+      expect(refresh.refresh).toHaveBeenCalledTimes(1);
+      expect(analytics).toHaveBeenCalledTimes(2);
+      expect(spy).toHaveBeenCalledTimes(2);
+      expect(spy.mock.calls[1]).toEqual([{ id: 'org' }, 'int', '7', true, 'perfil']);
+    });
+
+    it('periodo ausente ou invalido usa 7 dias no cache e no provider', async () => {
+      const analytics = jest.fn().mockResolvedValue([]);
+      const { service } = build(analytics);
+
+      await service.checkAnalytics({ id: 'org' } as any, 'int', 'abc');
+      await service.checkAnalytics({ id: 'org' } as any, 'int', 'Infinity');
+
+      expect(ioRedis.get).toHaveBeenNthCalledWith(1, 'integration:analytics-v2:org:int:7');
+      expect(ioRedis.get).toHaveBeenNthCalledWith(2, 'integration:analytics-v2:org:int:7');
+      expect(analytics.mock.calls.map((c) => c[2])).toEqual([7, 7]);
+    });
+  });
+
+  describe('updateCustomerName (upstream #2183)', () => {
+    const repoWith = (over: Record<string, jest.Mock> = {}) => ({
+      getCustomer: jest.fn().mockResolvedValue({ id: 'cli-1' }),
+      getCustomerByName: jest.fn().mockResolvedValue(null),
+      countCustomerIntegrationsOutsideProfile: jest.fn().mockResolvedValue(0),
+      updateCustomerName: jest.fn().mockResolvedValue({ id: 'cli-1', name: 'Novo' }),
+      ...over,
+    });
+
+    it('admin renomeia sem checar perfil', async () => {
+      const repo = repoWith();
+      await expect(
+        makeService(repo).updateCustomerName('org-1', 'cli-1', 'Novo')
+      ).resolves.toEqual({ id: 'cli-1', name: 'Novo' });
+      expect(repo.countCustomerIntegrationsOutsideProfile).not.toHaveBeenCalled();
+      expect(repo.updateCustomerName).toHaveBeenCalledWith('org-1', 'cli-1', 'Novo');
+    });
+
+    it('grupo de outra org (ou inexistente) responde 404', async () => {
+      const repo = repoWith({ getCustomer: jest.fn().mockResolvedValue(null) });
+      await expect(
+        makeService(repo).updateCustomerName('org-1', 'cli-x', 'Novo')
+      ).rejects.toMatchObject({ status: 404 });
+      expect(repo.updateCustomerName).not.toHaveBeenCalled();
+    });
+
+    it('USER nao renomeia grupo com canais de outro perfil, nem sem perfil', async () => {
+      const repo = repoWith({
+        countCustomerIntegrationsOutsideProfile: jest.fn().mockResolvedValue(2),
+      });
+      await expect(
+        makeService(repo).updateCustomerName('org-1', 'cli-1', 'Novo', 'perfil-1')
+      ).rejects.toMatchObject({ status: 403 });
+      await expect(
+        makeService(repo).updateCustomerName('org-1', 'cli-1', 'Novo', null)
+      ).rejects.toMatchObject({ status: 403 });
+      expect(repo.countCustomerIntegrationsOutsideProfile).toHaveBeenCalledWith(
+        'org-1',
+        'cli-1',
+        'perfil-1'
+      );
+      expect(repo.updateCustomerName).not.toHaveBeenCalled();
+    });
+
+    it('nome ja usado por outro grupo da org responde 400', async () => {
+      const repo = repoWith({
+        getCustomerByName: jest.fn().mockResolvedValue({ id: 'cli-2' }),
+      });
+      await expect(
+        makeService(repo).updateCustomerName('org-1', 'cli-1', 'Novo', 'perfil-1')
+      ).rejects.toMatchObject({ status: 400 });
+    });
+  });
+
   describe('validateIntegrationProfile', () => {
     it('retorna sem validar quando profileId ausente e perfil nao obrigatorio', async () => {
       const repo = { getIntegrationById: jest.fn() };

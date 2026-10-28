@@ -264,11 +264,15 @@ const OnboardingStep2: FC<{ onBack: () => void; onFinish: () => void }> = ({
       {/* YouTube Video Embed */}
       <div className="relative flex-1 rounded-[12px] overflow-hidden">
         <div className="absolute left-0 top-0 w-full h-full flex justify-center">
+          {/* URL tinha dois `?` (o autoplay nunca valia) e o embed nao
+              declarava referrer: com `Referrer-Policy: no-referrer` no proxy
+              o player do YouTube mostra "Erro 153" no lugar do video */}
           <iframe
             className="h-full aspect-video"
-            src="https://www.youtube.com/embed/BdsCVvEYgHU?si=vvhaZJ8I5oXXvVJS?autoplay=1"
-            title="Postiz Tutorial"
-            allow="autoplay"
+            src="https://www.youtube-nocookie.com/embed/BdsCVvEYgHU?autoplay=1&rel=0"
+            title="Tutorial"
+            allow="autoplay; encrypted-media; picture-in-picture"
+            referrerPolicy="strict-origin-when-cross-origin"
             allowFullScreen
           />
         </div>

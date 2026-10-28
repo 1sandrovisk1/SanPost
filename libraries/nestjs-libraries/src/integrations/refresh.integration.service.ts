@@ -9,6 +9,7 @@ import {
 import { TemporalService } from 'nestjs-temporal-core';
 import { EncryptionService } from '@gitroom/nestjs-libraries/crypto/encryption.service';
 import { decryptIntegrationToken } from '@gitroom/nestjs-libraries/crypto/integration-token.helper';
+import { redactSecrets } from '@gitroom/nestjs-libraries/services/error.summary';
 import { MetaSystemUserService } from '@gitroom/nestjs-libraries/integrations/meta-system-user.service';
 
 @Injectable()
@@ -128,9 +129,17 @@ export class RefreshIntegrationService {
         // (social.abstract) carrega em `details[].body` o corpo da requisicao,
         // que contem o refresh_token/client_secret. `message` costuma vir vazio,
         // por isso NAO ha fallback para `err` (serializar o objeto vazaria o token).
-        reason = `${(err as Error)?.name || 'Error'}: ${
-          (err as Error)?.message || 'sem detalhe'
-        }`;
+        // a mensagem crua vai para o log, `refreshError` e o StatusEvent:
+        // providers que interpolam o corpo/URL da API no texto (VK, Lemmy,
+        // Meta) carregariam segredo — redigida e limitada como no
+        // summarizeError
+        reason =
+          socialProvider.refreshErrorMessage?.(err) ||
+          redactSecrets(
+            `${(err as Error)?.name || 'Error'}: ${
+              (err as Error)?.message || 'sem detalhe'
+            }`
+          ).slice(0, 300);
         console.error(
           `[refresh] provider=${integration.providerIdentifier} integration=${integration.id} org=${integration.organizationId} refresh falhou: ${reason}`
         );

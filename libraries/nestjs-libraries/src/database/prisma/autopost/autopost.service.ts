@@ -124,10 +124,13 @@ export class AutopostService {
   async processCron(active: boolean, orgId: string, id: string) {
     if (active) {
       try {
-        return this._temporalService.client
+        return await this._temporalService.client
           .getRawClient()
           ?.workflow.start('autoPostWorkflow', {
             workflowId: `autopost-${id}`,
+            // workflow ja rodando le as configuracoes a cada execucao: mantem
+            // (upstream d883bfa1)
+            workflowIdConflictPolicy: 'USE_EXISTING',
             taskQueue: 'main',
             args: [{ id, immediately: true }],
             typedSearchAttributes: new TypedSearchAttributes([
@@ -137,7 +140,10 @@ export class AutopostService {
               },
             ]),
           });
-      } catch (err) {}
+      } catch (err) {
+        // nunca cair no terminate abaixo e matar um autopost ativo
+        return false;
+      }
     }
 
     try {

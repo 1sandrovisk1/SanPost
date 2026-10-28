@@ -1,3 +1,4 @@
+import { summarizeError } from '@gitroom/nestjs-libraries/services/error.summary';
 import {
   forwardRef,
   HttpException,
@@ -186,6 +187,10 @@ export class IntegrationService {
       user,
       org
     );
+  }
+
+  updateCustomName(org: string, id: string, name: string) {
+    return this._integrationRepository.updateCustomName(org, id, name);
   }
 
   updateNameAndUrl(id: string, name: string, url: string) {
@@ -382,12 +387,10 @@ export class IntegrationService {
         );
       } catch (err) {
         // Erro inesperado (ex.: provider desconhecido, decrypt falhou) nao pode
-        // derrubar o refresh dos demais canais. Loga SOMENTE name+message, nunca
-        // o objeto cru (pode carregar corpo de requisicao com refresh_token).
+        // derrubar o refresh dos demais canais. Resumo redigido, nunca o objeto
+        // cru (pode carregar corpo de requisicao com refresh_token).
         console.error(
-          `[refresh-tokens] integration=${integration.id} org=${integration.organizationId} falhou: ${
-            (err as Error)?.name || 'Error'
-          }: ${(err as Error)?.message || 'sem detalhe'}`
+          `[refresh-tokens] integration=${integration.id} org=${integration.organizationId} falhou: ${summarizeError(err)}`
         );
       }
     }
@@ -594,8 +597,13 @@ export class IntegrationService {
       }
     }
 
+    // dias ausentes ou invalidos em chamadas da API publica: mesmo padrao do
+    // app (upstream 96b78476)
+    const requestedDays = Number(date);
+    const days =
+      Number.isFinite(requestedDays) && requestedDays > 0 ? requestedDays : 7;
     const getIntegrationData = await ioRedis.get(
-      `integration:analytics-v2:${org.id}:${integration}:${date}`
+      `integration:analytics-v2:${org.id}:${integration}:${days}`
     );
     if (getIntegrationData) {
       return JSON.parse(getIntegrationData);
@@ -612,11 +620,11 @@ export class IntegrationService {
         const loadAnalytics = await integrationProvider.analytics(
           getIntegration.internalId,
           getIntegration.token,
-          +date,
+          days,
           getIntegration
         );
         await ioRedis.set(
-          `integration:analytics-v2:${org.id}:${integration}:${date}`,
+          `integration:analytics-v2:${org.id}:${integration}:${days}`,
           JSON.stringify(loadAnalytics),
           'EX',
           !process.env.NODE_ENV || process.env.NODE_ENV === 'development'
@@ -625,8 +633,9 @@ export class IntegrationService {
         );
         return loadAnalytics;
       } catch (e) {
-        if (e instanceof RefreshToken) {
-          return this.checkAnalytics(org, integration, date, true);
+        // uma nova tentativa so: sem isto a recursao nao terminava
+        if (e instanceof RefreshToken && !forceRefresh) {
+          return this.checkAnalytics(org, integration, date, true, profileId);
         }
       }
     }
@@ -636,6 +645,48 @@ export class IntegrationService {
 
   customers(orgId: string) {
     return this._integrationRepository.customers(orgId);
+  }
+
+  // renomear grupo de canais (upstream #2183). O grupo vale para a org
+  // inteira: um USER so renomeia grupo cujos canais sao todos do seu perfil.
+  async updateCustomerName(
+    orgId: string,
+    id: string,
+    name: string,
+    requireProfileId?: string | null
+  ) {
+    const customer = await this._integrationRepository.getCustomer(orgId, id);
+    if (!customer) {
+      throw new HttpException('Group not found', HttpStatus.NOT_FOUND);
+    }
+
+    if (requireProfileId !== undefined) {
+      const outside = requireProfileId
+        ? await this._integrationRepository.countCustomerIntegrationsOutsideProfile(
+            orgId,
+            id,
+            requireProfileId
+          )
+        : 1;
+      if (outside > 0) {
+        throw new HttpException(
+          'This group has channels from other profiles',
+          HttpStatus.FORBIDDEN
+        );
+      }
+    }
+
+    const exists = await this._integrationRepository.getCustomerByName(
+      orgId,
+      name
+    );
+    if (exists && exists.id !== id) {
+      throw new HttpException(
+        'A group with this name already exists',
+        HttpStatus.BAD_REQUEST
+      );
+    }
+    return this._integrationRepository.updateCustomerName(orgId, id, name);
   }
 
   getPlugsByIntegrationId(org: string, integrationId: string) {

@@ -204,10 +204,19 @@ export class MediaRepository {
     });
   }
 
-  async getMedia(org: string, page: number, profileId?: string) {
+  async getMedia(
+    org: string,
+    page: number,
+    profileId?: string,
+    search?: string
+  ) {
     const pageNum = (page || 1) - 1;
     // Show media for the active profile + unscoped media (profileId is null)
     const profileFilter = this.profileFilter(profileId);
+    // busca pelo nome original (API publica / MCP, upstream #1926)
+    const searchFilter = search?.trim()
+      ? { originalName: { contains: search.trim(), mode: 'insensitive' as const } }
+      : {};
     const query: Prisma.MediaCountArgs = {
       where: {
         organization: {
@@ -217,6 +226,7 @@ export class MediaRepository {
         // passa a exibir páginas vazias depois de uma exclusão em massa.
         deletedAt: null,
         ...profileFilter,
+        ...searchFilter,
       },
     };
     const pages = Math.ceil((await this._media.model.media.count(query)) / 18);
@@ -225,6 +235,7 @@ export class MediaRepository {
         organizationId: org,
         deletedAt: null,
         ...profileFilter,
+        ...searchFilter,
       },
       orderBy: {
         createdAt: 'desc',
@@ -234,6 +245,7 @@ export class MediaRepository {
         name: true,
         originalName: true,
         path: true,
+        createdAt: true,
         thumbnail: true,
         alt: true,
         thumbnailTimestamp: true,

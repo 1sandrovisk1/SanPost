@@ -41,7 +41,7 @@ as ferramentas sozinho, incluindo as de automação). Você só precisa da URL +
 Exemplo (Claude Code): \`claude mcp add multipost --transport http --header "Authorization: Bearer <CHAVE>" "${base}/mcp"\`
 
 **Ferramentas MCP disponíveis:** \`integrationList\`, \`integrationSchema\`,
-\`schedulePostTool\`, \`generateImage\`, \`generateVideoOptions\`/\`generateVideo\`,
+\`schedulePostTool\`, \`mediaListTool\`, \`generateImage\`, \`generateVideoOptions\`/\`generateVideo\`,
 \`webSearchTool\`, \`extractUrlsTool\`, \`knowledgeBaseQuery\`,
 \`createCommentAutomationTool\`, \`listCommentAutomationsTool\`,
 \`setCommentAutomationStatusTool\`. Use uma chave de perfil para escopar tudo a ele.

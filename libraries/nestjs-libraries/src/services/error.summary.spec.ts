@@ -1,5 +1,5 @@
 import { ApplicationFailure } from '@temporalio/common';
-import { summarizeError } from './error.summary';
+import { redactSecrets, summarizeError } from './error.summary';
 import { BadBody, RefreshToken } from '@gitroom/nestjs-libraries/integrations/social.abstract';
 
 // Logs de excecao de provider: o objeto inteiro carrega `details` com o corpo
@@ -56,5 +56,11 @@ describe('summarizeError', () => {
     expect(summarizeError('boom')).toBe('boom');
     expect(summarizeError(undefined)).toBe('unknown error');
     expect(summarizeError(ApplicationFailure.nonRetryable('m', 'tipo'))).toContain('type=tipo');
+  });
+
+  it('redactSecrets fica disponivel para outras superficies (sem cortar o texto)', () => {
+    expect(redactSecrets('falha: access_token=SECRET e Bearer abc.def')).toBe(
+      'falha: access_token=[redacted] e Bearer [redacted]'
+    );
   });
 });

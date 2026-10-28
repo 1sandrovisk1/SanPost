@@ -17,7 +17,7 @@ import mime from 'mime-types';
 import { Integration } from '@prisma/client';
 
 export class VkProvider extends SocialAbstract implements SocialProvider {
-  override maxConcurrentJob = 2; // VK has moderate API limits
+  override maxConcurrentJob = 5; // VK limits are per user token (upstream 4e55a959)
   identifier = 'vk';
   name = 'VK';
   isBetweenSteps = false;

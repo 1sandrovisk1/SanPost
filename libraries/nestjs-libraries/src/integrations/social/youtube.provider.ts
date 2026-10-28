@@ -1,4 +1,5 @@
 import { DashboardFunction } from '@gitroom/nestjs-libraries/integrations/dashboard.function.decorator';
+import { summarizeError } from '@gitroom/nestjs-libraries/services/error.summary';
 import {
   AnalyticsData,
   AuthTokenDetails,
@@ -14,6 +15,7 @@ import { YoutubeSettingsDto } from '@gitroom/nestjs-libraries/dtos/posts/provide
 import {
   BadBody,
   SocialAbstract,
+  RefreshToken,
 } from '@gitroom/nestjs-libraries/integrations/social.abstract';
 import * as process from 'node:process';
 import dayjs from 'dayjs';
@@ -317,15 +319,37 @@ export class YoutubeProvider extends SocialAbstract implements SocialProvider {
     }
   }
 
+  // A politica de sessao do Google Workspace (invalid_rapt) derruba o refresh
+  // de tempos em tempos; o motivo vira orientacao para o admin (upstream #1884)
+  refreshErrorMessage(err: any): string | undefined {
+    const data = err?.response?.data || {};
+    const text = `${data.error_subtype || ''} ${data.error_description || ''} ${
+      err?.message || ''
+    }`;
+
+    if (text.includes('invalid_rapt')) {
+      return 'A política de sessão do Google Workspace da sua organização invalidou o acesso. Peça ao administrador do Google Workspace para marcar o Robô MultiPost como app confiável e ativar "Isentar apps confiáveis" (https://support.google.com/a/answer/9368756) e reconecte o canal.';
+    }
+
+    return undefined;
+  }
+
   async reConnect(
     id: string,
     requiredId: string,
     accessToken: string
   ): Promise<Omit<AuthTokenDetails, 'refreshToken' | 'expiresIn'>> {
-    const pages = await this.pages(accessToken);
-    const findPage = pages.find((p) => p.id === requiredId);
+    const { client, youtube } = clientAndYoutube();
+    client.setCredentials({ access_token: accessToken });
 
-    if (!findPage) {
+    // direto no channels.list: pages() engole o erro real do Google e uma
+    // lista vazia virava "canal nao encontrado" (upstream #1884)
+    const { data } = await youtube(client).channels.list({
+      part: ['id'],
+      mine: true,
+    });
+
+    if (!(data.items || []).some((p) => p.id === requiredId)) {
       throw new Error('Channel not found');
     }
 
@@ -564,8 +588,20 @@ export class YoutubeProvider extends SocialAbstract implements SocialProvider {
       }
 
       return result;
-    } catch (err) {
-      console.error('Error fetching YouTube post analytics:', err);
+    } catch (err: any) {
+      // token expirado/revogado: checkPostAnalytics renova e tenta de novo uma
+      // vez (upstream 96b78476)
+      if (err?.response?.status === 401) {
+        throw new RefreshToken(
+          this.identifier,
+          JSON.stringify(err.response.data || {}),
+          '{}'
+        );
+      }
+      console.error(
+        'Error fetching YouTube post analytics:',
+        summarizeError(err)
+      );
       return [];
     }
   }
