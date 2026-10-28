@@ -88,7 +88,7 @@ beforeEach(() => {
   state.query = '';
   state.refresh.mockReset();
   state.refresh.mockImplementation(async () => state.flow);
-  window.history.replaceState(null, '', '/automacoes/flow/wizard');
+  window.history.replaceState(null, '', '/automations/instagram/flow');
 });
 afterEach(cleanup);
 describe('navegacao V1 preserva rascunhos', () => {

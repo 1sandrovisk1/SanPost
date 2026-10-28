@@ -1,14 +1,12 @@
-import { NewInstagramEditor } from '@gitroom/frontend/components/automations/shared-new-instagram-editor.component';
-
-export default async function NovaAutomacaoPage({
+import { redirect } from 'next/navigation';
+import { legacyAutomationDestination } from '@gitroom/frontend/components/automations/shared-routes';
+export const dynamic = 'force-dynamic';
+export default async function Page({
+  params,
   searchParams,
 }: {
-  searchParams: Promise<{ type?: string }>;
+  params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { type } = await searchParams;
-  return (
-    <div className="bg-newBgColorInner flex-1 flex-col flex min-w-0 lg:min-h-0 lg:h-[calc(100dvh-105px)] lg:overflow-hidden">
-      <NewInstagramEditor type={type} />
-    </div>
-  );
+  redirect(legacyAutomationDestination(['nova'], await searchParams));
 }

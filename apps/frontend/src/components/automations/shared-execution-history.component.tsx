@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import {
   useT,
   useTranslationSettings,
@@ -103,9 +103,24 @@ function ExecutionDrawer({
     )
       setFinished(true);
   }, [result.error, detail]);
-  const refresh = () => {
+  const [manualRefresh, setManualRefresh] = useState<
+    'idle' | 'loading' | 'success' | 'error'
+  >('idle');
+  const refresh = async () => {
     setFinished(false);
-    void Promise.resolve(result.mutate()).catch(() => undefined);
+    setManualRefresh('loading');
+    try {
+      const updated = await result.mutate();
+      if (
+        updated?.id !== id ||
+        !Array.isArray(updated.steps) ||
+        !updated.technical
+      )
+        throw new Error('INVALID_DETAIL');
+      setManualRefresh('success');
+    } catch {
+      setManualRefresh('error');
+    }
   };
   return (
     <SettingsDrawer
@@ -122,12 +137,28 @@ function ExecutionDrawer({
       onClose={onClose}
       footer={
         <div className="flex flex-wrap justify-end gap-2">
-          <Button secondary disabled={result.isLoading} onClick={refresh}>
+          <Button
+            secondary
+            disabled={result.isLoading || manualRefresh === 'loading'}
+            loading={manualRefresh === 'loading'}
+            aria-busy={manualRefresh === 'loading'}
+            onClick={refresh}
+          >
             {t('history_refresh')}
           </Button>
         </div>
       }
     >
+      {manualRefresh === 'success' && (
+        <p role="status" className="text-xs text-green-600">
+          {t('history_refreshed')}
+        </p>
+      )}
+      {manualRefresh === 'error' && (
+        <p role="alert" className="text-sm text-btnPrimary">
+          {t('history_refresh_failed')}
+        </p>
+      )}
       {result.isLoading && <p role="status">{t('history_loading_detail')}</p>}
       {(result.error || (detail && !valid)) && (
         <p role="alert" className="text-btnPrimary">
@@ -285,18 +316,13 @@ export function AutomationExecutionHistory({
     () => setTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone),
     []
   );
-  const timezoneName = timezone
-    ? new Intl.DateTimeFormat(resolvedLanguage || 'en', {
-        timeZone: timezone,
-        timeZoneName: 'long',
-      })
-        .formatToParts(new Date())
-        .find((p) => p.type === 'timeZoneName')?.value || timezone
-    : t('history_timezone_browser');
   const [status, setStatus] = useState('all');
   const [period, setPeriod] = useState('all');
   const [cursors, setCursors] = useState<Array<string | null>>([null]);
   const [selected, setSelected] = useState<string | null>(null);
+  const [refreshState, setRefreshState] = useState<
+    'idle' | 'loading' | 'success' | 'error'
+  >('idle');
   const from = useMemo(
     () =>
       period === 'all'
@@ -312,6 +338,10 @@ export function AutomationExecutionHistory({
     `/automation-history/${engine}/${encodeURIComponent(flowId)}?${params}`,
     5000
   );
+  const queryKey = `${engine}:${flowId}:${params}`;
+  const currentQuery = useRef(queryKey);
+  currentQuery.current = queryKey;
+  useEffect(() => setRefreshState('idle'), [queryKey]);
   const valid = Array.isArray(result.data?.items);
   const items = valid ? result.data!.items : [];
   const failed = Boolean(result.error || (result.data && !valid));
@@ -320,8 +350,17 @@ export function AutomationExecutionHistory({
     if (kind === 'status') setStatus(value);
     else setPeriod(value);
   };
-  const refresh = (): void => {
-    void Promise.resolve(result.mutate()).catch((): undefined => undefined);
+  const refresh = async () => {
+    const startedQuery = queryKey;
+    setRefreshState('loading');
+    try {
+      const updated = await result.mutate();
+      if (!Array.isArray(updated?.items))
+        throw new Error('Invalid history response');
+      if (currentQuery.current === startedQuery) setRefreshState('success');
+    } catch {
+      if (currentQuery.current === startedQuery) setRefreshState('error');
+    }
   };
   return (
     <section className="mx-auto w-full max-w-[1400px] space-y-5">
@@ -334,12 +373,17 @@ export function AutomationExecutionHistory({
           <button
             type="button"
             aria-label={t('history_refresh')}
-            disabled={result.isLoading}
+            disabled={result.isLoading || refreshState === 'loading'}
+            aria-busy={refreshState === 'loading'}
+            title={t('history_refresh')}
             onClick={refresh}
             className="rounded-lg border border-newTableBorder p-2 hover:bg-boxHover disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-btnPrimary"
           >
             <svg
               aria-hidden="true"
+              className={
+                refreshState === 'loading' ? 'animate-spin' : undefined
+              }
               width="16"
               height="16"
               viewBox="0 0 24 24"
@@ -393,15 +437,17 @@ export function AutomationExecutionHistory({
             ))}
           </select>
         </label>
-        <div className="mb-1 flex items-center gap-1 text-xs text-newTextColor/50">
-          <span>{timezoneName}</span>
-          <AutomationContextHelp label={t('history_timezone_help')}>
-            {timezone
-              ? t('history_timezone').replace('{timezone}', timezone)
-              : t('history_timezone_browser')}
-          </AutomationContextHelp>
-        </div>
       </div>
+      {refreshState === 'success' && !failed && (
+        <p role="status" className="text-xs text-green-600">
+          {t('history_refreshed')}
+        </p>
+      )}
+      {refreshState === 'error' && (
+        <p role="alert" className="text-sm text-btnPrimary">
+          {t('history_refresh_failed')}
+        </p>
+      )}
       {result.isLoading && (
         <p role="status" className="p-4 text-sm text-newTextColor/65">
           {t('history_loading')}
@@ -442,7 +488,21 @@ export function AutomationExecutionHistory({
                   'started',
                 ].map((key) => (
                   <th key={key} className="p-3 font-medium">
-                    {t(`history_column_${key}`)}
+                    <span className="inline-flex items-center gap-1">
+                      {t(`history_column_${key}`)}
+                      {key === 'started' && (
+                        <AutomationContextHelp
+                          label={t('history_timezone_help')}
+                        >
+                          {timezone
+                            ? t('history_timezone').replace(
+                                '{timezone}',
+                                timezone
+                              )
+                            : t('history_timezone_browser')}
+                        </AutomationContextHelp>
+                      )}
+                    </span>
                   </th>
                 ))}
                 <th className="p-3">

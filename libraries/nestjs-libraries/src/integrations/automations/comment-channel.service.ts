@@ -30,6 +30,7 @@ import {
 import {
   facebookPostReference,
   facebookPostPreview,
+  facebookPostVideoId,
 } from './facebook-post-reference';
 @Injectable()
 export class CommentChannelService {
@@ -220,16 +221,70 @@ export class CommentChannelService {
     const connection = await this.facebook.authorizedPostLookup(scope, id);
     if (connection.pageId !== integration.internalId)
       throw new HttpException('POST_CHANNEL_MISMATCH', 412);
-    let post: Record<string, unknown>;
+    const post = await this.canonicalFacebookPost(
+      new MetaAutomationGraphClient(),
+      connection.pageToken,
+      integration.internalId,
+      postId
+    );
+    return { post: facebookPostPreview(post, String(post.id)) };
+  }
+
+  /** Shared ownership proof. Lookup budgets belong to the public entry, not activation. */
+  private async canonicalFacebookPost(
+    graph: MetaAutomationGraphClient,
+    token: string,
+    pageId: string,
+    requestedId: string
+  ): Promise<Record<string, unknown>> {
+    const fields =
+      'id,from{id},message,permalink_url,created_time,full_picture,is_published,attachments{type,media_type,target{id}}';
+    const assertOwner = (
+      object: Record<string, unknown>,
+      expectedId: string
+    ) => {
+      if (object.id !== expectedId || record(object.from).id !== pageId)
+        throw new HttpException('POST_CHANNEL_MISMATCH', 412);
+    };
     try {
-      post = await new MetaAutomationGraphClient().read(
-        postId,
-        connection.pageToken,
-        {
-          fields: 'id,from{id},message,permalink_url,created_time,full_picture',
-        }
-      );
+      let post: Record<string, unknown> | undefined;
+      let videoId: string | undefined;
+      try {
+        post = await graph.read(requestedId, token, { fields });
+      } catch (error) {
+        // Some Videos accept Page_video as an alias; others only accept the bare Video id.
+        if (
+          !(error instanceof MetaAutomationError) ||
+          error.category !== 'META_REJECTED'
+        )
+          throw error;
+        videoId = requestedId.split('_')[1];
+      }
+      if (post) {
+        assertOwner(post, requestedId);
+        videoId = facebookPostVideoId(post);
+        if (!videoId) return post;
+      }
+      if (!videoId || !/^[1-9]\d{0,31}$/.test(videoId))
+        throw new HttpException('POST_VIDEO_RELATION_REQUIRED', 412);
+      const video = await graph.read(videoId, token, {
+        fields: 'id,from{id},post_id',
+      });
+      assertOwner(video, videoId);
+      if (
+        typeof video.post_id !== 'string' ||
+        !/^[1-9]\d{0,31}(?:_[1-9]\d{0,31})?$/.test(video.post_id)
+      )
+        throw new HttpException('POST_VIDEO_RELATION_REQUIRED', 412);
+      const canonicalId = facebookPostReference(video.post_id, pageId);
+      if (post && canonicalId === requestedId) return post;
+      const canonical = await graph.read(canonicalId, token, { fields });
+      assertOwner(canonical, canonicalId);
+      if (facebookPostVideoId(canonical) !== videoId)
+        throw new HttpException('POST_VIDEO_RELATION_REQUIRED', 412);
+      return canonical;
     } catch (error) {
+      if (error instanceof HttpException) throw error;
       const category =
         error instanceof MetaAutomationError
           ? error.category
@@ -240,44 +295,83 @@ export class CommentChannelService {
         throw new HttpException('POST_LOOKUP_RETRY', 503);
       throw new HttpException('POST_LOOKUP_UNAVAILABLE', 412);
     }
-    if (post.id !== postId || record(post.from).id !== integration.internalId)
-      throw new HttpException('POST_CHANNEL_MISMATCH', 412);
-    return { post: facebookPostPreview(post, postId) };
   }
-  async scheduledPublishedIds(scope: FlowScope, id: string, releaseId: string): Promise<string[]> {
+  async scheduledPublishedIds(
+    scope: FlowScope,
+    id: string,
+    releaseId: string
+  ): Promise<string[]> {
     const integration = await this.repository.integration(scope, id);
     if (integration.providerIdentifier !== 'facebook') {
-      if (!/^\d+$/.test(releaseId)) throw new HttpException('PUBLICATION_ID_PENDING', 412);
+      if (!/^\d+$/.test(releaseId))
+        throw new HttpException('PUBLICATION_ID_PENDING', 412);
       return [releaseId];
     }
-    if (new RegExp(`^${integration.internalId}_\\d+$`).test(releaseId)) return [releaseId];
-    if (!/^\d+$/.test(releaseId)) throw new HttpException('PUBLICATION_ID_PENDING', 412);
+    if (new RegExp(`^${integration.internalId}_\\d+$`).test(releaseId))
+      return [releaseId];
+    if (!/^\d+$/.test(releaseId))
+      throw new HttpException('PUBLICATION_ID_PENDING', 412);
     // A video id is not a Page post id. Prove the relationship via attachments.
     const c = await this.connection(scope, id);
     let cursor: string | undefined;
     for (let page = 0; page < 5; page++) {
-      const result = await c.graph.read(`${integration.internalId}/published_posts`, c.token, {
-        fields: 'id,attachments{target{id},subattachments{target{id}}}', limit: '25', ...(cursor ? { after: cursor } : {}),
-      });
+      const result = await c.graph.read(
+        `${integration.internalId}/published_posts`,
+        c.token,
+        {
+          fields: 'id,attachments{target{id},subattachments{target{id}}}',
+          limit: '25',
+          ...(cursor ? { after: cursor } : {}),
+        }
+      );
       for (const raw of Array.isArray(result.data) ? result.data : []) {
         const post = record(raw);
-        if (typeof post.id !== 'string' || !new RegExp(`^${integration.internalId}_\\d+$`).test(post.id)) continue;
+        if (
+          typeof post.id !== 'string' ||
+          !new RegExp(`^${integration.internalId}_\\d+$`).test(post.id)
+        )
+          continue;
         const attachments = record(post.attachments).data;
-        const targets = (Array.isArray(attachments) ? attachments : []).flatMap(a => {
-          const attachment = record(a);
-          const sub = record(attachment.subattachments).data;
-          return [record(attachment.target).id, ...(Array.isArray(sub) ? sub.map(x => record(record(x).target).id) : [])];
-        });
+        const targets = (Array.isArray(attachments) ? attachments : []).flatMap(
+          (a) => {
+            const attachment = record(a);
+            const sub = record(attachment.subattachments).data;
+            return [
+              record(attachment.target).id,
+              ...(Array.isArray(sub)
+                ? sub.map((x) => record(record(x).target).id)
+                : []),
+            ];
+          }
+        );
         if (targets.includes(releaseId)) return [post.id];
       }
       const next = record(record(result.paging).cursors).after;
-      if (!record(result.paging).next || typeof next !== 'string' || !/^[A-Za-z0-9_=-]{1,2048}$/.test(next)) break;
+      if (
+        !record(result.paging).next ||
+        typeof next !== 'string' ||
+        !/^[A-Za-z0-9_=-]{1,2048}$/.test(next)
+      )
+        break;
       cursor = next;
     }
     throw new HttpException('PUBLICATION_ID_PENDING', 412);
   }
   async assertPost(scope: FlowScope, id: string, postId: string) {
     const c = await this.connection(scope, id);
+    if (c.facebook) {
+      if (facebookPostReference(postId, c.integration.internalId) !== postId)
+        throw new HttpException('POST_REFERENCE_NOT_CANONICAL', 412);
+      const post = await this.canonicalFacebookPost(
+        c.graph,
+        c.token,
+        c.integration.internalId,
+        postId
+      );
+      if (post.id !== postId)
+        throw new HttpException('POST_REFERENCE_NOT_CANONICAL', 412);
+      return;
+    }
     const post = await c.graph.read(postId, c.token, {
       fields: c.facebook ? 'id,from{id}' : 'id,owner{id}',
     });

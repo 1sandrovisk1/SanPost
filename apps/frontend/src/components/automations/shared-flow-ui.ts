@@ -1,3 +1,4 @@
+import { assertPrivateVariantRepresentation } from '@gitroom/nestjs-libraries/database/prisma/flows/private-message-variants';
 import {
   normalizeDefinition,
   type CommentDefinition,
@@ -25,7 +26,8 @@ export function validateSharedDraft(
   if (!name.trim()) problems.push({ field: 'name', code: 'NAME_REQUIRED' });
   if (!channels.length)
     problems.push({ field: 'channels', code: 'CHANNEL_REQUIRED' });
-  if (channels.some(c => c.postMode === 'scheduled' && !c.scheduledPostId)) problems.push({ field: 'posts', code: 'POST_REQUIRED' });
+  if (channels.some((c) => c.postMode === 'scheduled' && !c.scheduledPostId))
+    problems.push({ field: 'posts', code: 'POST_REQUIRED' });
   if (channels.some((c) => c.postMode === 'specific' && !c.postIds.length))
     problems.push({ field: 'posts', code: 'POST_REQUIRED' });
   try {
@@ -35,9 +37,12 @@ export function validateSharedDraft(
     const invalid = definition.nodes.find((node) => {
       try {
         const cfg = JSON.parse(node.data);
+        if (node.type === 'SEND_DM') assertPrivateVariantRepresentation(cfg);
         return (
           ['SEND_DM', 'REPLY_COMMENT'].includes(node.type) &&
-          ((!cfg.message?.trim() && !cfg.messages?.length) ||
+          ((!cfg.message?.trim() &&
+            !cfg.messages?.length &&
+            !cfg.variants?.length) ||
             (cfg.messages !== undefined &&
               (!Array.isArray(cfg.messages) ||
                 !cfg.messages.length ||
@@ -46,7 +51,12 @@ export function validateSharedDraft(
                   (message: unknown) =>
                     typeof message !== 'string' ||
                     !message.trim() ||
-                    message.length > 2200
+                    message.length >
+                      (node.type === 'SEND_DM'
+                        ? cfg.buttonText
+                          ? 640
+                          : 2000
+                        : 2200)
                 ))) ||
             cfg.message?.length >
               (node.type === 'SEND_DM'

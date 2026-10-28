@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   useT,
   useTranslationSettings,
@@ -27,6 +27,8 @@ export interface PublicationPreview {
   mediaUrl?: string;
   mediaType?: string;
   timestamp?: string;
+  isPublished?: boolean;
+  locatedById?: boolean;
 }
 export function AutomationPublicationSelector({
   integrationId,
@@ -43,6 +45,9 @@ export function AutomationPublicationSelector({
   onLoadMore,
   loadingMore = false,
   onPreviewChange,
+  specificContent,
+  showSpecificContentWhenScheduled = false,
+  scopeNote,
 }: PublicationChoice & {
   integrationId: string;
   platform?: 'instagram' | 'facebook';
@@ -55,11 +60,34 @@ export function AutomationPublicationSelector({
   onLoadMore?: () => void;
   loadingMore?: boolean;
   onPreviewChange?: (posts: PublicationPreview[]) => void;
+  specificContent?: ReactNode;
+  showSpecificContentWhenScheduled?: boolean;
+  scopeNote?: ReactNode;
 }) {
   const t = useT();
   const { resolvedLanguage } = useTranslationSettings();
   const dialogRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
+  const lastSelection = useRef<
+    | {
+        integrationId: string;
+        choice: PublicationChoice;
+      }
+    | undefined
+  >(undefined);
+  useEffect(() => {
+    if (lastSelection.current?.integrationId !== integrationId)
+      lastSelection.current = undefined;
+    if (mode === 'specific' || mode === 'scheduled')
+      lastSelection.current = {
+        integrationId,
+        choice: {
+          mode,
+          postIds: [...postIds],
+          ...(scheduledPostId ? { scheduledPostId } : {}),
+        },
+      };
+  }, [integrationId, mode, postIds, scheduledPostId]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [scheduled, setScheduled] = useState<ScheduledAutomationPostView[]>([]);
   const query = new URLSearchParams({
@@ -139,6 +167,8 @@ export function AutomationPublicationSelector({
     ...scheduled.map((p) => ({
       ...p,
       scheduled: true,
+      isPublished: undefined as boolean | undefined,
+      locatedById: undefined as boolean | undefined,
       timestamp: p.publishDate,
     })),
     ...posts
@@ -202,6 +232,17 @@ export function AutomationPublicationSelector({
           {t('scheduled_badge')}
         </span>
       )}
+      {platform === 'facebook' &&
+        !p.scheduled &&
+        (p.isPublished === false || p.locatedById) && (
+          <span className="absolute left-1 top-1 max-w-[calc(100%-8px)] truncate rounded bg-newBgColorInner px-1.5 py-0.5 text-[10px] font-medium text-textColor shadow-sm">
+            {t(
+              p.isPublished === false
+                ? 'fb_post_dark_badge'
+                : 'fb_post_by_id_badge'
+            )}
+          </span>
+        )}
       {selected(p) && (
         <span
           className="absolute bottom-1 right-1 rounded-full bg-btnPrimary text-white px-1.5"
@@ -220,7 +261,14 @@ export function AutomationPublicationSelector({
         className="accent-btnPrimary h-4 w-4"
         disabled={disabled}
         checked={value === 'specific' ? scoped : mode === value}
-        onChange={() => onChange({ mode: value, postIds: [] })}
+        onChange={() => {
+          const previous = lastSelection.current;
+          onChange(
+            value === 'specific' && previous?.integrationId === integrationId
+              ? { ...previous.choice, postIds: [...previous.choice.postIds] }
+              : { mode: value, postIds: [] }
+          );
+        }}
       />
       {label}
     </label>
@@ -232,14 +280,42 @@ export function AutomationPublicationSelector({
           scoped ? 'border-btnPrimary bg-btnPrimary/5' : 'border-newTableBorder'
         }`}
       >
-        {radio(
-          'specific',
-          t(
-            platform === 'facebook'
-              ? 'automation_facebook_specific_post'
-              : 'wizard_specific_post'
-          )
-        )}
+        <div className="flex items-center justify-between gap-2">
+          {radio(
+            'specific',
+            t(
+              platform === 'facebook'
+                ? 'automation_facebook_specific_post'
+                : 'wizard_specific_post'
+            )
+          )}
+          {scoped && (
+            <button
+              type="button"
+              disabled={disabled}
+              aria-label={t('automation_select_publications')}
+              title={t('automation_select_publications')}
+              onClick={() => {
+                setCursor(null);
+                void result.mutate();
+                setOpen(true);
+              }}
+              className="shrink-0 rounded-md p-1.5 hover:bg-boxHover focus-visible:ring-2 focus-visible:ring-btnPrimary disabled:opacity-40"
+            >
+              <svg
+                aria-hidden="true"
+                width="17"
+                height="17"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.7"
+              >
+                <path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5" />
+              </svg>
+            </button>
+          )}
+        </div>
         {scoped && (
           <div className="mt-3 space-y-2">
             <div className="grid grid-cols-4 gap-1.5">
@@ -262,18 +338,7 @@ export function AutomationPublicationSelector({
                 </button>
               ))}
             </div>
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={() => {
-                setCursor(null);
-                void result.mutate();
-                setOpen(true);
-              }}
-              className="text-[13px] text-btnPrimary font-medium disabled:opacity-50"
-            >
-              {t('automation_select_publications')}
-            </button>
+
             {mode === 'scheduled' &&
               scheduled.find((p) => p.id === scheduledPostId)?.status !==
                 'published' && (
@@ -291,6 +356,8 @@ export function AutomationPublicationSelector({
                 {t('shared_posts_limit')}
               </p>
             )}
+            {(mode === 'specific' || showSpecificContentWhenScheduled) &&
+              specificContent}
           </div>
         )}
       </div>
@@ -309,6 +376,9 @@ export function AutomationPublicationSelector({
               : 'wizard_all_posts'
           )
         )}
+        {mode === 'all' && scopeNote && (
+          <p className="mt-2 text-xs text-newTextColor/70">{scopeNote}</p>
+        )}
       </div>
       <div
         className={`rounded-lg border p-3 ${
@@ -318,6 +388,9 @@ export function AutomationPublicationSelector({
         }`}
       >
         {radio('next_publication', t('wizard_next_publication'))}
+        {mode === 'next_publication' && scopeNote && (
+          <p className="mt-2 text-xs text-newTextColor/70">{scopeNote}</p>
+        )}
         {mode === 'next_publication' && (
           <p className="text-[11px] text-newTextColor/60 mt-2 ml-6">
             {t('automation_next_unreserved_hint')}

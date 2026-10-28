@@ -85,6 +85,8 @@ Story do Facebook não é um gatilho com origem comprovada. Não o apresentar co
 | `replyMessage` | string, 2200 | Uma resposta pública |
 | `replyMessages` | até 10 strings não vazias, 2200 cada | Variações públicas; não enviar junto de `replyMessage` |
 | `dmMessage` | string, 2000 | Mensagem privada/final |
+| `dmVariants` | objeto[], 1–10 | Texto e botão/link próprios por alternativa; uma escolhida por execução |
+| `dmMessages` | string[], 1–10 | Alternativas de uma única mensagem privada; 640 por alternativa com botão |
 | `dmButtonText` | string, IG 80/FB 20 | Texto do botão; enviar com URL e mensagem |
 | `dmButtonUrl` | HTTPS público, IG 2048/FB 2000 | URL do botão; redes privadas, credenciais na URL e protocolo inseguro são recusados |
 | `requireFollow` | boolean | Habilita verificação de seguidor nos fluxos Instagram suportados |
@@ -173,7 +175,7 @@ Cada nó tem `id`, `type`, `data` (**string JSON**), `positionX`, `positionY` e 
 | TRIGGER | triggerType, keywords, matchMode; priority só Messenger. V1 também mode, postIds, storyIds, scheduledPostId e campos Instagram do gate/reações |
 | CONDITION | keywords, matchMode |
 | REPLY_COMMENT | message, messages |
-| SEND_DM | message, buttonText, buttonUrl |
+| SEND_DM | message ou messages com buttonText/buttonUrl comuns; ou variants com texto e CTA próprios (representações exclusivas) |
 | DELAY | duration inteiro 0–86400, unit seconds/minutes/hours |
 
 `sourceHandle="match"`/`"no_match"` só em condição. Um gatilho, sem ciclos, nós conectados e ações compatíveis com o canal. V1: até 100 nós/200 arestas/128 KiB; V2: 30 nós/60 arestas/64 KiB. Limites de mensagem e URLs continuam aplicáveis. Campos fora da lista são recusados.
@@ -266,3 +268,48 @@ Testes automatizados cobrem campos, HTTP/Swagger, schemas MCP, perfil, preserva�
 A validação de organização/perfil também ocorre ao admitir e retomar regras legadas já salvas. Mover a conta para outro perfil não transfere suas automações: a execução incompatível é recusada. Contas antigas sem perfil mantêm a compatibilidade dentro da própria organização. Botões postback somente retomam o registro da conta e do remetente originais, preservando os textos do snapshot.
 
 Mutações e consultas remotas da API aplicam o guard de requisições por organização/handler e os limites declarados nas rotas (ou o padrão configurado da instância), com `429` quando esgotados. Leituras locais de capacidades, lista e detalhe da regra não entram nesse orçamento; o histórico normalizado público/privado é uma exceção protegida, com 60/minuto. Painel privado usa 60/minuto nos caminhos protegidos; os webhooks Meta não passam por esse orçamento. O transporte MCP é independente: estes limites HTTP não constituem uma cota MCP.
+
+### Identidade de vídeo/Dark Post do Facebook
+
+`options?resource=resolve_post` (e a ferramenta MCP equivalente) aceita também ID de vídeo e link HTTPS Facebook `/reel/ID`. O retorno `post.id` é o **Page Post canônico**, comprovado por `Video.post_id`, `from.id` e a relação com o vídeo; pode diferir da referência enviada. Use esse retorno em `configuration.postIds`, nunca construa `Página_IDdoVídeo`. O painel usa o mesmo resolvedor. Sem prova da relação: `412 POST_VIDEO_RELATION_REQUIRED`; ativar ou editar regra ativa com alias de vídeo: `412 POST_REFERENCE_NOT_CANONICAL`. Nenhum endpoint ou contrato de escrita mudou; a prévia recebeu apenas metadado opcional de leitura. Não há migração silenciosa ou reprocessamento. O orçamento de localização permanece 20 por aplicativo/Página/minuto e 120/app/minuto; respeite `POST_LOOKUP_RATE_LIMITED` (429) e tente novamente após um minuto.
+
+
+Na prévia retornada por `resolve_post`, `isPublished?: boolean` é metadado opcional, somente leitura: aparece apenas quando a Meta confirma `is_published` como booleano. `false` significa Page Post não publicado, não comprova anúncio pago/veiculação. Não enviar esse metadado em `configuration`; `postIds` continua aceitando juntos posts normais e Dark Posts canônicos no modo `specific`, sem tipo separado.
+
+
+## Alternativas de mensagem privada (28/10)
+
+`dmMessages: string[]` é uma alternativa a `dmMessage`, com 1–10 textos não vazios de até 2.000 caracteres. Uma única alternativa é escolhida por execução, e o botão/link é comum a todas. Com botão, novas alternativas têm limite de 640 caracteres, inclusive após interpolação. O singular antigo mantém compatibilidade; não envie os dois campos na mesma criação ou edição. `capabilities` anuncia a lista e os limites.
+
+Na edição parcial, omitir ambos preserva a mensagem existente; informar `dmMessages` substitui o singular, e informar `dmMessage` substitui a lista. Campos omitidos de botão, escopo, alvo agendado e gate continuam preservados. Exemplo de corpo de PUT V2 (use a revisão real):
+
+```json
+{"expectedRevision": 3, "configuration": {"dmMessages": ["Olá {{comment_name}}, aqui está o conteúdo!", "Obrigado pelo interesse, {{comment_name}}!"]}}
+```
+
+No canvas V1/V2, a representação é `SEND_DM.data = JSON.stringify({messages:[...],buttonText,buttonUrl})`. Não se trata de mensagens em sequência: vários SEND_DM continuam respeitando a composição de uma resposta do motor. As ferramentas MCP de criação, edição e canvas usam o mesmo schema e as mesmas validações.
+
+V2 sorteia na ingestão de comentário ou mensagem do Messenger e persiste a ação escolhida no snapshot; retry e reentrega não sorteiam novamente. V1 protege replays anteriores com `patched('private-message-variants-v1')` e usa seleção estável por execução/nó, sem consumir o sorteio público. No gate, o texto final é congelado antes do PendingPostback. O histórico V1 não passa a comprovar o texto enviado; não reconstruir a alternativa a partir da regra atual.
+
+Tokens V1 continuam `{commenter_name}`, `{commenter_id}`, `{comment_text}`, `{media_id}`. V2 usa `{{comment_name}}`, `{{comment_text}}`, `{{comment_id}}`, `{{media_id}}`; Messenger só oferece texto e ID da mensagem recebida, pois não consulta nome/publicação. A interpolação V2 aplica-se ao texto, não ao botão.
+
+Variar textos não garante evitar bloqueios. Botão de URL abre o site e não cria uma continuação da conversa. Envio após interação depende do evento e da janela aplicável; não existe permissão para mensagens ilimitadas.
+
+
+### Texto e botão próprios por alternativa
+
+Use `dmVariants: [{message, buttonText?, buttonUrl?}]` para variar também o botão. Cada objeto é indivisível: somente uma alternativa, com seu texto e CTA, é entregue. No canvas V1/V2 use `SEND_DM.variants`. O rápido, o construtor, REST e MCP preservam essa representação ao reabrir/editar.
+
+Texto não vazio, até 2.000 caracteres sem botão ou 640 com botão; título até 20 e URL HTTPS pública até 2.000, sem credenciais. Título e URL são opcionais juntos. A alternativa sem botão não herda o de outra. Limites são correlacionados: 2.000 sem botão e 600 com botão podem coexistir. A composição entre vários SEND_DM conserva o último botão configurado e valida o comprimento resultante, inclusive após interpolação do texto. Título/URL não interpolam variáveis.
+
+```json
+{"expectedRevision": 3, "configuration": {"dmVariants": [
+  {"message": "Aqui está o conteúdo!", "buttonText": "Ver conteúdo", "buttonUrl": "https://example.com/conteudo"},
+  {"message": "Preparei o link para você.", "buttonText": "Acessar agora", "buttonUrl": "https://example.com/conteudo"},
+  {"message": "Obrigado pelo interesse!"}
+]}}
+```
+
+Não combinar `dmVariants` com `dmMessage`, `dmMessages` ou botão comum. Ao editar parcialmente, omitir os campos preserva a representação atual; informar `dmVariants` substitui singular/lista/botão comum, e informar singular/lista substitui os objetos. Alterar somente o botão comum de uma regra com `dmVariants` é recusado: envie a lista de objetos atualizada. O singular e `dmMessages` anteriores permanecem compatíveis.
+
+V2 congela texto e botão juntos em `snapshot.actions` na ingestão, também no Messenger. V1 usa `patched('private-message-button-variants-v1')`, sem mudar o ramo anterior; escolha estável por execução/nó e snapshot do par no gate. Retry/clique não escolhem outra alternativa. Não é uma sequência de mensagens nem uma garantia contra bloqueios.

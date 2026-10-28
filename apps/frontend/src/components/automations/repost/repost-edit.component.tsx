@@ -38,7 +38,7 @@ export const RepostEditComponent: FC<Props> = ({ id }) => {
       <div className="flex items-center gap-[12px]">
         <button
           type="button"
-          onClick={() => router.push('/automacoes')}
+          onClick={() => router.push('/automations')}
           aria-label={t('back', 'Voltar')}
           className="text-customColor18 hover:text-textColor text-[18px]"
         >
@@ -53,9 +53,9 @@ export const RepostEditComponent: FC<Props> = ({ id }) => {
         initial={rule}
         onSaved={() => {
           mutate();
-          router.push('/automacoes');
+          router.push('/automations');
         }}
-        onCancel={() => router.push('/automacoes')}
+        onCancel={() => router.push('/automations')}
       />
 
       <div className="flex flex-col gap-[8px] pt-[16px] border-t border-fifth">

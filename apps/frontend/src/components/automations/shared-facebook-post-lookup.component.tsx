@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { Button } from '@gitroom/react/form/button';
@@ -11,6 +11,7 @@ import type {
 
 const feedback: Record<string, string> = {
   INVALID_POST_REFERENCE: 'fb_post_error_reference',
+  POST_VIDEO_RELATION_REQUIRED: 'fb_post_error_video_relation',
   POST_CHANNEL_MISMATCH: 'fb_post_error_owner',
   POST_LOOKUP_ACCESS_REQUIRED: 'fb_post_error_access',
   POST_LOOKUP_RETRY: 'fb_post_error_retry',
@@ -24,10 +25,12 @@ export function SharedFacebookPostLookup({
   selectedIds,
   disabled,
   onAdd,
+  selectedContent,
 }: {
   integrationId: string;
   selectedIds: string[];
   disabled: boolean;
+  selectedContent?: ReactNode;
   onAdd: (post: AutomationPostView) => void;
 }) {
   const t = useT();
@@ -182,6 +185,7 @@ export function SharedFacebookPostLookup({
             </Button>
           </div>
         )}
+        {selectedContent}
         <details className="text-xs text-newTextColor/70">
           <summary className="cursor-pointer underline">
             {t('fb_post_help_title')}

@@ -1,4 +1,8 @@
 'use client';
+import { AutomationEditorStage } from './shared-editor-stage.component';
+import { AutomationPublicReplyToggle } from './shared-public-reply-toggle.component';
+import { PrivateMessageVariations } from './shared-private-variations.component';
+import { AutomationConnectionIndicator } from './shared-connection-indicator.component';
 import { AutomationContextHelp } from './shared-context-help.component';
 
 import { EditorPendingAction } from './shared-editor-footer.component';
@@ -12,7 +16,10 @@ import {
   EditorRecord,
   EditorStatus,
 } from './shared-editor-actions';
-import { JourneyPreviewControls } from './shared-response-controls.component';
+import {
+  AutomationFollowGateFields,
+  JourneyPreviewControls,
+} from './shared-response-controls.component';
 import type { PreviewJourneyStage } from './shared-preview-journey';
 import {
   AutomationPreviewPanel,
@@ -20,19 +27,8 @@ import {
   AutomationPhoneFrame,
 } from './shared-editor-preview.component';
 import { AutomationAccountSelect } from './shared-account-select.component';
-import {
-  InstagramEditorConnection,
-  useInstagramEditorConnection,
-} from './shared-instagram-connection.component';
-import {
-  FC,
-  useCallback,
-  useEffect,
-  useId,
-  useMemo,
-  useState,
-  useRef,
-} from 'react';
+import { useInstagramEditorConnection } from './shared-instagram-connection.component';
+import { FC, useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import { useIntegrationList } from '@gitroom/frontend/components/launches/helpers/use.integration.list';
@@ -40,7 +36,10 @@ import { useIntegrationStories } from '@gitroom/frontend/components/automations/
 import { useRouter } from 'next/navigation';
 import { useToaster } from '@gitroom/react/toaster/toaster';
 import { WizardPhonePreview } from '@gitroom/frontend/components/automations/wizard-phone-preview.component';
-import { AddLinkModal } from '@gitroom/frontend/components/automations/add-link-modal.component';
+import {
+  validatePrivateButtonVariants,
+  type PrivateMessageVariant,
+} from '@gitroom/nestjs-libraries/database/prisma/flows/private-message-variants';
 
 interface Props {
   flowId?: string;
@@ -76,7 +75,6 @@ export const StoryWizardComponent: FC<Props> = ({
   workspace,
 }) => {
   const t = useT();
-  const messageId = useId();
   const fetchApi = useFetch();
   const router = useRouter();
   const toaster = useToaster();
@@ -102,9 +100,13 @@ export const StoryWizardComponent: FC<Props> = ({
     FOLLOW_GATE_DEFAULT_PT
   );
   const [dmMessage, setDmMessage] = useState('');
+  const [dmMessages, setDmMessages] = useState<string[]>(['']);
+  const [dmVariants, setDmVariants] = useState<
+    PrivateMessageVariant[] | undefined
+  >();
+  const [dmPreviewIndex, setDmPreviewIndex] = useState(0);
   const [dmButtonText, setDmButtonText] = useState('');
   const [dmButtonUrl, setDmButtonUrl] = useState('');
-  const [showAddLink, setShowAddLink] = useState(false);
   const [saving, setSaving] = useState(false);
   const [pendingAction, setPendingAction] =
     useState<EditorPendingAction>('save');
@@ -135,6 +137,8 @@ export const StoryWizardComponent: FC<Props> = ({
     requireFollow,
     followGateMessage,
     dmMessage,
+    dmMessages,
+    dmVariants,
     dmButtonText,
     dmButtonUrl,
   });
@@ -226,7 +230,14 @@ export const StoryWizardComponent: FC<Props> = ({
         ? triggerCfg.followGateMessage
         : FOLLOW_GATE_DEFAULT_PT
     );
-    setDmMessage(dmCfg.message || '');
+    setDmVariants(dmCfg.variants);
+    setDmMessage(
+      dmCfg.variants?.[0]?.message || dmCfg.messages?.[0] || dmCfg.message || ''
+    );
+    setDmMessages(
+      dmCfg.variants?.map((v: PrivateMessageVariant) => v.message) ||
+        dmCfg.messages || [dmCfg.message || '']
+    );
     setDmButtonText(dmCfg.buttonText || '');
     setDmButtonUrl(dmCfg.buttonUrl || '');
   }, [initialFlow, flowId, resetBaseline, dirty]);
@@ -267,6 +278,15 @@ export const StoryWizardComponent: FC<Props> = ({
   const removeKeyword = (k: string) =>
     setKeywords(keywords.filter((x) => x !== k));
 
+  const invalidDmVariants = (() => {
+    if (!dmVariants) return false;
+    try {
+      validatePrivateButtonVariants(dmVariants);
+      return false;
+    } catch {
+      return true;
+    }
+  })();
   const formProblems = [
     ...(!name.trim() ? [t('automation_name_required')] : []),
     ...(!integrationId ? [t('automation_account_required')] : []),
@@ -279,7 +299,11 @@ export const StoryWizardComponent: FC<Props> = ({
     ...(keywordMode === 'specific' && !keywords.length
       ? [t('automation_keywords_required')]
       : []),
-    ...(!dmMessage.trim() ? [t('automation_response_required')] : []),
+    ...(invalidDmVariants ||
+    !dmMessage.trim() ||
+    dmMessages.some((m) => !m.trim() || m.length > (dmButtonText ? 640 : 2000))
+      ? [t('automation_response_required')]
+      : []),
     ...(requireFollow && !followGateMessage.trim()
       ? [t('automation_follow_messages_required')]
       : []),
@@ -317,8 +341,10 @@ export const StoryWizardComponent: FC<Props> = ({
           body.keywords = keywords;
         }
         if (dmMessage.trim()) {
-          body.dmMessage = dmMessage.trim();
-          if (dmButtonText.trim() && dmButtonUrl.trim()) {
+          if (dmVariants) body.dmVariants = dmVariants;
+          else if (dmMessages.length > 1) body.dmMessages = dmMessages;
+          else body.dmMessage = dmMessage.trim();
+          if (!dmVariants && dmButtonText.trim() && dmButtonUrl.trim()) {
             body.dmButtonText = dmButtonText.trim();
             body.dmButtonUrl = dmButtonUrl.trim();
           }
@@ -338,7 +364,7 @@ export const StoryWizardComponent: FC<Props> = ({
           }
         );
         toaster.show(t(isEditing ? 'flow_updated' : 'flow_created'), 'success');
-        if (!flowId) router.push(`/automacoes/${flow.id}/wizard`);
+        if (!flowId) router.push(`/automations/instagram/${flow.id}`);
       } catch (error) {
         const reason = t(
           `shared_error_${
@@ -353,7 +379,7 @@ export const StoryWizardComponent: FC<Props> = ({
         setActionError(message);
         toaster.show(message, 'warning');
         if (configurationSaved && !flowId && latestFlow.current)
-          router.push(`/automacoes/${latestFlow.current.id}/wizard`);
+          router.push(`/automations/instagram/${latestFlow.current.id}`);
       } finally {
         setSaving(false);
       }
@@ -370,6 +396,8 @@ export const StoryWizardComponent: FC<Props> = ({
       requireFollow,
       followGateMessage,
       dmMessage,
+      dmMessages,
+      dmVariants,
       dmButtonText,
       dmButtonUrl,
       fetchApi,
@@ -439,6 +467,7 @@ export const StoryWizardComponent: FC<Props> = ({
       name={name}
       nameLabel={t('flow_name')}
       onNameChange={setName}
+      picture={(selectedIntegration as any)?.picture}
       subtitle={`${(selectedIntegration as any)?.name || ''} · ${t(
         'automation_name_instagram_story'
       )}`}
@@ -468,7 +497,7 @@ export const StoryWizardComponent: FC<Props> = ({
               workspace?.readOnly ||
               editorStatus === 'ARCHIVED'
             }
-            className="min-w-0 border-0 p-6 space-y-5 lg:flex-1 lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain"
+            className="min-w-0 border-0 p-4 space-y-3 lg:flex-1 lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain"
           >
             {/* Messaging token banner */}
             {needsMessagingConfig && (
@@ -506,15 +535,28 @@ export const StoryWizardComponent: FC<Props> = ({
             )}
 
             {/* Name + integration */}
-            <div className={sectionClass}>
-              <h2 className="mt-3 text-base font-semibold">
-                {t('automation_section_account')}
-              </h2>
+            <AutomationEditorStage
+              kind="account"
+              step={1}
+              title={t('automation_section_account')}
+              summary={(selectedIntegration as any)?.name}
+            >
               <AutomationAccountSelect
+                connection={
+                  integrationId && (
+                    <AutomationConnectionIndicator
+                      integrationId={integrationId}
+                      provider="instagram"
+                      ready={connection.ready}
+                      loading={connection.loading}
+                    />
+                  )
+                }
                 label={t('wizard_account')}
                 value={integrationId}
                 accounts={instagramIntegrations.map((ig: any) => ({
                   id: ig.id,
+                  picture: ig.picture,
                   name: ig.name || ig.display || ig.id,
                 }))}
                 disabled={isEditing || !!draftId || saving}
@@ -533,16 +575,21 @@ export const StoryWizardComponent: FC<Props> = ({
                   {t('shared_connect_channel')}
                 </a>
               )}
-              {integrationId && (
-                <InstagramEditorConnection connection={connection} />
-              )}
-            </div>
+            </AutomationEditorStage>
 
             {/* Story mode */}
-            <div className={sectionClass}>
-              <h3 className={sectionTitleClass}>
-                {t('automation_section_origin')}
-              </h3>
+            <AutomationEditorStage
+              kind="origin"
+              step={2}
+              title={t('automation_section_origin')}
+              summary={t(
+                storyMode === 'all'
+                  ? 'story_mode_all'
+                  : storyMode === 'specific'
+                  ? 'story_mode_specific'
+                  : 'story_mode_next'
+              )}
+            >
               <label
                 className={radioRowClass}
                 onClick={() => setStoryMode('all')}
@@ -685,13 +732,19 @@ export const StoryWizardComponent: FC<Props> = ({
                   )}
                 </div>
               </label>
-            </div>
+            </AutomationEditorStage>
 
             {/* Keyword mode */}
-            <div className={sectionClass}>
-              <h3 className={sectionTitleClass}>
-                {t('automation_section_conditions')}
-              </h3>
+            <AutomationEditorStage
+              kind="conditions"
+              step={3}
+              title={t('automation_section_conditions')}
+              summary={
+                keywordMode === 'specific'
+                  ? keywords.join(', ')
+                  : t('story_keyword_mode_any')
+              }
+            >
               <label
                 className={radioRowClass}
                 onClick={() => setKeywordMode('any_word_or_reaction')}
@@ -764,107 +817,93 @@ export const StoryWizardComponent: FC<Props> = ({
                   )}
                 </div>
               </label>
-            </div>
+            </AutomationEditorStage>
 
             {/* DM section */}
-            <div className={sectionClass}>
-              <h3 className={sectionTitleClass}>
-                {t('automation_section_response')}
-              </h3>
-              <label htmlFor={messageId} className="text-sm">
-                {t('shared_message')}
-              </label>
-              <textarea
-                id={messageId}
-                value={dmMessage}
-                onFocus={() => {
+            <AutomationEditorStage
+              kind="private"
+              step={4}
+              title={t('automation_stage_private_title')}
+              summary={t(
+                dmMessages.length === 1
+                  ? 'automation_stage_variations_one'
+                  : 'automation_stage_variations_count'
+              ).replace('{count}', String(dmMessages.length))}
+            >
+              <PrivateMessageVariations
+                maxLength={dmButtonText ? 640 : 2000}
+                messages={dmMessages}
+                variants={dmVariants}
+                buttonText={dmButtonText}
+                buttonUrl={dmButtonUrl}
+                onVariantsChange={(variants) => {
+                  setDmVariants(variants);
+                  setDmMessages(variants.map((v) => v.message));
+                  setDmMessage(variants[0]?.message || '');
+                  setDmButtonText('');
+                  setDmButtonUrl('');
+                }}
+                onChange={(messages) => {
+                  setDmMessages(messages);
+                  setDmMessage(messages[0]);
+                }}
+                onFocus={(index) => {
+                  setDmPreviewIndex(index);
                   setActivePreviewTab('dm');
                   setJourneyStage('delivery');
                 }}
-                onChange={(e) => setDmMessage(e.target.value)}
-                rows={4}
-                placeholder={t(
-                  'story_dm_placeholder',
-                  'Escreva uma mensagem...'
-                )}
-                className="w-full bg-newBgColorInner border border-newTableBorder rounded-[8px] text-[13px] text-textColor px-[14px] py-[10px] outline-none resize-none"
               />
-              <button
-                type="button"
-                onClick={() => {
-                  setActivePreviewTab('dm');
-                  setJourneyStage('delivery');
-                  setShowAddLink(true);
-                }}
-                className="self-start rounded-[4px] border border-dashed border-fifth text-[12px] text-textColor px-[14px] py-[8px] hover:bg-boxHover"
-              >
-                {dmButtonText && dmButtonUrl
-                  ? `${dmButtonText} · ${dmButtonUrl}`
-                  : `+ ${t('story_add_link', 'Adicionar um link')}`}
-              </button>
-            </div>
+            </AutomationEditorStage>
 
             {/* Extras */}
-            <div className={sectionClass}>
-              <h3 className={sectionTitleClass}>
-                {t('story_section_extras', 'Outros recursos para automatizar')}
-              </h3>
-              <div className="rounded-[6px] border border-fifth">
-                <div className="flex items-center gap-1 pr-3">
-                  <label className="flex flex-1 items-center justify-between gap-[12px] p-[10px] cursor-pointer">
-                    <div>
-                      <div className="text-[13px] text-textColor">
-                        {t(
-                          'story_require_follow',
-                          'Pedir para seguir antes de enviar'
-                        )}
-                      </div>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={requireFollow}
-                      onChange={(e) => {
-                        setRequireFollow(e.target.checked);
-                        setJourneyStage(e.target.checked ? 'gate' : 'delivery');
-                        setActivePreviewTab('dm');
-                      }}
-                      className="h-[18px] w-[18px] accent-btnPrimary cursor-pointer"
-                    />
-                  </label>
-                  <AutomationContextHelp label={t('automation_follow_help')}>
-                    {t('story_require_follow_hint')}
-                  </AutomationContextHelp>
-                </div>
+            <AutomationEditorStage
+              kind="followers"
+              step={5}
+              title={t('automation_stage_followers_title')}
+              summary={t(
+                requireFollow
+                  ? 'automation_stage_enabled'
+                  : 'automation_stage_disabled'
+              )}
+            >
+              <div className="space-y-3">
+                <AutomationPublicReplyToggle
+                  enabled={requireFollow}
+                  label={t('story_require_follow')}
+                  help={
+                    <AutomationContextHelp label={t('automation_follow_help')}>
+                      {t('story_require_follow_hint')}
+                    </AutomationContextHelp>
+                  }
+                  onChange={(enabled) => {
+                    setRequireFollow(enabled);
+                    setJourneyStage(enabled ? 'gate' : 'delivery');
+                    setActivePreviewTab('dm');
+                  }}
+                />
                 {requireFollow && (
-                  <div className="border-t border-fifth p-[10px] flex flex-col gap-[6px]">
-                    <label
-                      htmlFor={`${messageId}-gate`}
-                      className="text-[11px] text-customColor18"
-                    >
-                      {t(
-                        'story_follow_gate_label',
-                        'Mensagem enviada para quem ainda não segue'
-                      )}
-                    </label>
-                    <textarea
-                      id={`${messageId}-gate`}
-                      value={followGateMessage}
-                      onFocus={() => {
-                        setActivePreviewTab('dm');
-                        setJourneyStage('gate');
-                      }}
-                      onChange={(e) => setFollowGateMessage(e.target.value)}
-                      rows={3}
-                      placeholder={t(
-                        'story_follow_gate_placeholder',
-                        FOLLOW_GATE_DEFAULT_PT
-                      )}
-                      className="w-full bg-newBgColorInner border border-newTableBorder rounded-[6px] text-[12px] text-textColor px-[10px] py-[8px] outline-none resize-none"
-                    />
-                  </div>
+                  <AutomationFollowGateFields
+                    story
+                    values={{
+                      openingDmMessage: '',
+                      openingDmButtonText: '',
+                      followGateMessage,
+                      alreadyFollowedButtonText: '',
+                      gateExhaustedMessage: '',
+                      maxGateAttempts: 3,
+                    }}
+                    onChange={(patch) => {
+                      if (patch.followGateMessage !== undefined)
+                        setFollowGateMessage(patch.followGateMessage);
+                    }}
+                    onFocusStage={() => {
+                      setActivePreviewTab('dm');
+                      setJourneyStage('gate');
+                    }}
+                  />
                 )}
               </div>
-            </div>
+            </AutomationEditorStage>
           </fieldset>
         </section>
 
@@ -891,9 +930,21 @@ export const StoryWizardComponent: FC<Props> = ({
               storyThumb={
                 selectedStory?.thumbnailUrl || selectedStory?.mediaUrl
               }
-              dmMessage={dmMessage}
-              dmButtonText={dmButtonText}
-              dmButtonUrl={dmButtonUrl}
+              dmMessage={
+                dmMessages[Math.min(dmPreviewIndex, dmMessages.length - 1)]
+              }
+              dmButtonText={
+                dmVariants
+                  ? dmVariants[Math.min(dmPreviewIndex, dmVariants.length - 1)]
+                      ?.buttonText || ''
+                  : dmButtonText
+              }
+              dmButtonUrl={
+                dmVariants
+                  ? dmVariants[Math.min(dmPreviewIndex, dmVariants.length - 1)]
+                      ?.buttonUrl || ''
+                  : dmButtonUrl
+              }
               commenterName="usuario"
               integrationPicture={(selectedIntegration as any)?.picture}
               integrationName={(selectedIntegration as any)?.name}
@@ -902,17 +953,6 @@ export const StoryWizardComponent: FC<Props> = ({
             />
           </AutomationPhoneFrame>
         </AutomationPreviewPanel>
-
-        <AddLinkModal
-          open={showAddLink}
-          initialText={dmButtonText}
-          initialUrl={dmButtonUrl}
-          onClose={() => setShowAddLink(false)}
-          onSave={(text, url) => {
-            setDmButtonText(text);
-            setDmButtonUrl(url);
-          }}
-        />
       </AutomationEditorLayout>
     </AutomationWorkspace>
   );

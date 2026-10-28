@@ -80,19 +80,11 @@ beforeEach(() => {
 afterEach(cleanup);
 describe('entrada e lista unificadas', () => {
   it.each([
-    ['instagram', 'comment', '/automacoes/nova?type=comment'],
-    ['instagram', 'story', '/automacoes/nova?type=story'],
-    ['instagram', 'repost', '/automacoes/repost/nova'],
-    [
-      'facebook',
-      'comment',
-      '/automacoes/compartilhada/nova?trigger=comment_on_post',
-    ],
-    [
-      'facebook',
-      'message',
-      '/automacoes/compartilhada/nova?trigger=messenger_message',
-    ],
+    ['instagram', 'comment', '/automations/instagram/new?type=comment'],
+    ['instagram', 'story', '/automations/instagram/new?type=story'],
+    ['instagram', 'repost', '/automations/reposts/new'],
+    ['facebook', 'comment', '/automations/new?trigger=comment_on_post'],
+    ['facebook', 'message', '/automations/new?trigger=messenger_message'],
   ])('abre %s %s sem criar registros', (network, trigger, route) => {
     render(<NovaAutomacaoModal open onClose={vi.fn()} />);
     fireEvent.click(
@@ -132,15 +124,24 @@ describe('entrada e lista unificadas', () => {
   });
   it('contem o foco do teclado e restaura o botao de abertura', () => {
     const opener = document.createElement('button');
-    document.body.appendChild(opener); opener.focus();
+    document.body.appendChild(opener);
+    opener.focus();
     const { unmount } = render(<NovaAutomacaoModal open onClose={vi.fn()} />);
-    expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'Instagram' }));
+    expect(document.activeElement).toBe(
+      screen.getByRole('tab', { name: 'Instagram' })
+    );
     const close = screen.getByRole('button', { name: 'close' });
-    close.focus(); fireEvent.keyDown(close, { key: 'Tab', shiftKey: true });
-    const last = screen.getByRole('button', { name: /automation_start_repost/ });
+    close.focus();
+    fireEvent.keyDown(close, { key: 'Tab', shiftKey: true });
+    const last = screen.getByRole('button', {
+      name: /automation_start_repost/,
+    });
     expect(document.activeElement).toBe(last);
-    fireEvent.keyDown(last, { key: 'Tab' }); expect(document.activeElement).toBe(close);
-    unmount(); expect(document.activeElement).toBe(opener); opener.remove();
+    fireEvent.keyDown(last, { key: 'Tab' });
+    expect(document.activeElement).toBe(close);
+    unmount();
+    expect(document.activeElement).toBe(opener);
+    opener.remove();
   });
   it('exibe uma tabela com linhas V1 e V2 e usa revisao somente no V2', async () => {
     state.legacy = [

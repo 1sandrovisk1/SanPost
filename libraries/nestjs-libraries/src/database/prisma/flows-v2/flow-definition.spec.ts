@@ -302,3 +302,110 @@ describe('definicao compartilhada', () => {
     expect(() => normalizeDefinition(graph)).not.toThrow();
   });
 });
+describe('alternativas privadas', () => {
+  it('escolhe uma unica alternativa antes de renderizar e mantem a chave de entrega', () => {
+    const graph = simpleDefinition({
+      message: '',
+      dmMessages: ['Oi {{comment_name}}', 'Texto {{comment_text}}'],
+    });
+    expect(
+      planCommentActions(graph, { text: 'quero', actorName: 'Ana' }, () => 1)
+    ).toEqual([
+      {
+        key: 'private_reply',
+        kind: 'private_reply',
+        text: 'Texto quero',
+        delaySeconds: 0,
+      },
+    ]);
+  });
+  it('valida a maior alternativa do caminho mesmo quando outra seria escolhida', () => {
+    const graph = simpleDefinition({
+      message: '',
+      dmMessages: ['ok', 'x'.repeat(641)],
+      buttonText: 'Link',
+      buttonUrl: 'https://example.com',
+    });
+    expect(() => planCommentActions(graph, { text: '' }, () => 0)).toThrow(
+      'MESSAGE_TOO_LONG'
+    );
+  });
+  it.each([[[]], [['']], [Array(11).fill('a')], [['x'.repeat(2001)]]])(
+    'recusa lista privada invalida %j',
+    (messages) => {
+      const graph = simpleDefinition({ message: 'base' });
+      graph.nodes[1].data = JSON.stringify({ messages });
+      expect(() => normalizeDefinition(graph)).toThrow();
+    }
+  );
+});
+
+describe('texto e CTA por alternativa privada', () => {
+  const variants = [
+    {
+      message: 'Primeira',
+      buttonText: 'Primeiro',
+      buttonUrl: 'https://example.com/a',
+    },
+    {
+      message: 'Segunda',
+      buttonText: 'Segundo',
+      buttonUrl: 'https://example.com/b',
+    },
+    { message: 'Sem botao' },
+  ];
+  const graph = (values = variants) => {
+    const g = simpleDefinition({ message: 'old' });
+    g.nodes[1].data = JSON.stringify({ variants: values });
+    return g;
+  };
+  it('escolhe o par inteiro sem herdar CTA de outra alternativa', () => {
+    for (const i of [0, 1, 2]) {
+      const action = planCommentActions(graph(), { text: '' }, () => i)[0];
+      expect(action.text).toBe(variants[i].message);
+      expect(action.button).toEqual(
+        i < 2
+          ? { title: variants[i].buttonText, url: variants[i].buttonUrl }
+          : undefined
+      );
+    }
+  });
+  it('mantem comprimento e botao correlacionados', () => {
+    expect(() =>
+      normalizeDefinition(
+        graph([
+          { message: 'x'.repeat(2000) },
+          {
+            message: 'x'.repeat(600),
+            buttonText: 'Link',
+            buttonUrl: 'https://example.com',
+          },
+        ])
+      )
+    ).not.toThrow();
+    expect(() =>
+      normalizeDefinition(
+        graph([
+          {
+            message: 'x'.repeat(641),
+            buttonText: 'Link',
+            buttonUrl: 'https://example.com',
+          },
+        ])
+      )
+    ).toThrow();
+  });
+  it('rejeita representacoes ambiguas e CTA incompleto', () => {
+    for (const config of [
+      { variants, message: 'old' },
+      { variants, messages: ['old'] },
+      { variants, buttonText: 'old' },
+      { variants: [{ message: 'A', buttonText: 'Link' }] },
+      { variants: [{ message: 'A', surprise: true }] },
+    ]) {
+      const g = graph();
+      g.nodes[1].data = JSON.stringify(config);
+      expect(() => normalizeDefinition(g)).toThrow();
+    }
+  });
+});

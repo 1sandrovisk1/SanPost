@@ -1,6 +1,9 @@
 'use client';
-import { useEffect, type ReactNode } from 'react';
-import { AutomationContextHelp } from './shared-context-help.component';
+import {
+  AutomationRequirements,
+  AutomationRequirementsContext,
+} from './shared-requirements.component';
+import { useContext, useEffect, type ReactNode } from 'react';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 
 export function AutomationPreviewPanel({
@@ -25,16 +28,8 @@ export function AutomationPreviewPanel({
       )}
       <div className="w-full min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain flex flex-col items-center">
         <div className="w-full max-w-[340px] shrink-0 my-auto space-y-4 flex flex-col items-center">
-          <div className="text-center">
-            <h2 className="text-sm font-semibold">{t('shared_preview')}</h2>
-            <div className="flex items-center justify-center gap-1 text-xs text-newTextColor/50 mt-1">
-              <span>{t('automation_preview_illustrative')}</span>
-              <AutomationContextHelp label={t('automation_preview_help')}>
-                {t('shared_preview_hint')}
-              </AutomationContextHelp>
-            </div>
-          </div>
           {children}
+          <AutomationRequirements />
         </div>
       </div>
     </aside>
@@ -59,8 +54,16 @@ export function AutomationEditorLayout({ children }: { children: ReactNode }) {
 }
 
 export function AutomationPhoneFrame({ children }: { children: ReactNode }) {
+  const { valid, problems } = useContext(AutomationRequirementsContext);
+  const hasRequirements = !valid && !!problems?.length;
   return (
-    <div className="[zoom:0.93] [@media(min-height:1050px)]:[zoom:1]">
+    <div
+      className={
+        hasRequirements
+          ? '[zoom:0.78] [@media(min-height:1050px)]:[zoom:0.93]'
+          : '[zoom:0.93] [@media(min-height:1050px)]:[zoom:1]'
+      }
+    >
       {children}
     </div>
   );

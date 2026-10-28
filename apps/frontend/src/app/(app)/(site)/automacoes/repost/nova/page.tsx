@@ -1,9 +1,12 @@
-import { RepostWizardComponent } from '@gitroom/frontend/components/automations/repost/repost-wizard.component';
-
-export default function NovaRepostRulePage() {
-  return (
-    <div className="bg-newBgColorInner flex-1 flex-col flex">
-      <RepostWizardComponent />
-    </div>
-  );
+import { redirect } from 'next/navigation';
+import { legacyAutomationDestination } from '@gitroom/frontend/components/automations/shared-routes';
+export const dynamic = 'force-dynamic';
+export default async function Page({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  redirect(legacyAutomationDestination(['repost', 'nova'], await searchParams));
 }

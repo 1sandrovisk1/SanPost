@@ -1,4 +1,8 @@
 'use client';
+import { AutomationPublicReplyToggle } from './shared-public-reply-toggle.component';
+import { AutomationFollowGateFields } from './shared-response-controls.component';
+import { useAliases } from './hooks/use-unmatched-comments';
+import { PrivateMessageVariations } from './shared-private-variations.component';
 
 import { AutomationMessageVariables } from './shared-message-variables.component';
 import { AutomationPublicationSelector } from './shared-publication-selector.component';
@@ -180,6 +184,7 @@ export const NodeConfigPanel: FC<NodeConfigPanelProps> = ({
     node.type === 'trigger'
   );
 
+  const { data: aliases } = useAliases(node.type === 'trigger' ? flowId : null);
   const fetchApi = useFetch();
   const { data: flowSummary } = useSWR<{ integrationId: string }>(
     flowId && node.type === 'trigger' ? `/flows/${flowId}` : null,
@@ -356,6 +361,27 @@ export const NodeConfigPanel: FC<NodeConfigPanelProps> = ({
             {/* Specific selectors */}
             {triggerType === 'comment_on_post' && (
               <AutomationPublicationSelector
+                showSpecificContentWhenScheduled
+                scopeNote={
+                  aliases?.length
+                    ? t('automation_instagram_aliases_scope_hint')
+                    : undefined
+                }
+                specificContent={
+                  <details className="mt-3 rounded-lg border border-newTableBorder p-3 text-sm">
+                    <summary className="cursor-pointer font-medium">
+                      {t('trigger_ad_ids_label')}
+                    </summary>
+                    <div className="pt-3">
+                      <AdAliasesField
+                        flowId={flowId}
+                        integrationId={
+                          flowSummary?.integrationId ?? integrationId ?? null
+                        }
+                      />
+                    </div>
+                  </details>
+                }
                 key={integrationId}
                 integrationId={integrationId}
                 mode={currentMode}
@@ -405,16 +431,6 @@ export const NodeConfigPanel: FC<NodeConfigPanelProps> = ({
               </div>
             )}
 
-            {/* Aliases de dark posts (anuncios) — apenas comment_on_post */}
-            {triggerType === 'comment_on_post' && (
-              <div className="mt-[16px]">
-                <AdAliasesField
-                  flowId={flowId}
-                  integrationId={flowSummary?.integrationId ?? null}
-                />
-              </div>
-            )}
-
             {/* Keywords */}
             <div className="mt-[16px]">
               <KeywordsField
@@ -453,245 +469,53 @@ export const NodeConfigPanel: FC<NodeConfigPanelProps> = ({
               </div>
             )}
 
-            {/* Follow gate — aplica a ambos os triggerTypes. Para comment_on_post
-                o gate usa fluxo de 2 etapas (DM inicial com botao postback).
-                Para story_reply o gate e reenviado junto com a resposta. */}
-            <div className="mt-[16px]">
-              <label className="flex items-center justify-between gap-[8px] p-[8px] rounded-[6px] border border-newTableBorder">
-                <span className="text-[12px] text-textColor">
-                  {t(
-                    'story_require_follow',
-                    'Pedir para seguir antes de enviar'
-                  )}
-                </span>
-                <input
-                  type="checkbox"
-                  checked={!!config.requireFollow}
-                  onChange={(e) =>
-                    setConfig({ ...config, requireFollow: e.target.checked })
-                  }
+            <div className="mt-4 space-y-3">
+              <AutomationPublicReplyToggle
+                disabled={disabled}
+                enabled={!!config.requireFollow}
+                label={t('story_require_follow')}
+                onChange={(enabled) =>
+                  setConfig({ ...config, requireFollow: enabled })
+                }
+              />
+              {!!config.requireFollow && (
+                <AutomationFollowGateFields
+                  story={triggerType === 'story_reply'}
+                  values={{
+                    openingDmMessage:
+                      config.openingDmMessage ?? OPENING_DM_DEFAULT_PT,
+                    openingDmButtonText:
+                      config.openingDmButtonText ?? OPENING_DM_BTN_DEFAULT_PT,
+                    followGateMessage:
+                      config.followGateMessage ?? FOLLOW_GATE_DEFAULT_PT,
+                    alreadyFollowedButtonText:
+                      config.alreadyFollowedButtonText ??
+                      ALREADY_FOLLOWED_BTN_DEFAULT_PT,
+                    gateExhaustedMessage:
+                      config.gateExhaustedMessage ?? GATE_EXHAUSTED_DEFAULT_PT,
+                    maxGateAttempts:
+                      config.maxGateAttempts ?? DEFAULT_MAX_GATE_ATTEMPTS,
+                  }}
+                  onChange={(patch) => {
+                    const attempts = patch.maxGateAttempts;
+                    setConfig({
+                      ...config,
+                      ...patch,
+                      ...(attempts === undefined
+                        ? {}
+                        : {
+                            maxGateAttempts:
+                              Number.isFinite(attempts) && attempts !== 0
+                                ? Math.max(
+                                    1,
+                                    Math.min(10, Math.floor(attempts))
+                                  )
+                                : DEFAULT_MAX_GATE_ATTEMPTS,
+                          }),
+                    });
+                  }}
+                  onFocusStage={() => {}}
                 />
-              </label>
-
-              {!!config.requireFollow && triggerType === 'comment_on_post' && (
-                <div className="mt-[10px] rounded-[6px] border border-fifth p-[10px] flex flex-col gap-[12px]">
-                  <div className="rounded-[6px] border border-yellow-500/40 bg-yellow-500/10 p-[10px] flex flex-col gap-[6px]">
-                    <div className="text-[12px] font-semibold text-textColor">
-                      ⚠️{' '}
-                      {t(
-                        'follow_gate_warning_title',
-                        'Atenção: gate de follow em 2 etapas'
-                      )}
-                    </div>
-                    <ol className="list-decimal list-inside text-[11px] text-customColor18 space-y-[2px]">
-                      <li>
-                        {t(
-                          'follow_gate_warning_step_1',
-                          'Resposta pública no comentário'
-                        )}
-                      </li>
-                      <li>
-                        {t(
-                          'follow_gate_warning_step_2',
-                          'DM inicial com botão (abre janela de mensagens)'
-                        )}
-                      </li>
-                      <li>
-                        {t(
-                          'follow_gate_warning_step_3',
-                          'Verificação de follow após o clique'
-                        )}
-                      </li>
-                      <li>
-                        {t(
-                          'follow_gate_warning_step_4',
-                          'Envia o link ou convida a seguir'
-                        )}
-                      </li>
-                    </ol>
-                  </div>
-
-                  <div className="flex flex-col gap-[6px]">
-                    <label className="text-[11px] text-customColor18">
-                      {t(
-                        'follow_gate_opening_dm_label',
-                        'DM inicial (antes de checar follow)'
-                      )}
-                    </label>
-                    <textarea
-                      value={config.openingDmMessage || ''}
-                      onChange={(e) =>
-                        setConfig({
-                          ...config,
-                          openingDmMessage: e.target.value,
-                        })
-                      }
-                      rows={2}
-                      placeholder={t(
-                        'follow_gate_opening_dm_placeholder',
-                        OPENING_DM_DEFAULT_PT
-                      )}
-                      className="w-full bg-newBgColorInner border border-newTableBorder rounded-[6px] text-[12px] text-textColor px-[10px] py-[8px] outline-none resize-none"
-                    />
-                  </div>
-
-                  <div className="flex flex-col gap-[6px]">
-                    <label className="text-[11px] text-customColor18">
-                      {t(
-                        'follow_gate_opening_btn_label',
-                        'Texto do botão inicial'
-                      )}
-                    </label>
-                    <input
-                      type="text"
-                      value={config.openingDmButtonText || ''}
-                      onChange={(e) =>
-                        setConfig({
-                          ...config,
-                          openingDmButtonText: e.target.value,
-                        })
-                      }
-                      placeholder={t(
-                        'follow_gate_opening_btn_placeholder',
-                        OPENING_DM_BTN_DEFAULT_PT
-                      )}
-                      maxLength={20}
-                      className="w-full bg-newBgColorInner border border-newTableBorder rounded-[6px] text-[12px] text-textColor px-[10px] py-[8px] outline-none"
-                    />
-                  </div>
-
-                  <div className="flex flex-col gap-[6px]">
-                    <label className="text-[11px] text-customColor18">
-                      {t(
-                        'story_follow_gate_label',
-                        'Mensagem enviada para quem ainda não segue'
-                      )}
-                    </label>
-                    <textarea
-                      value={config.followGateMessage || ''}
-                      onChange={(e) =>
-                        setConfig({
-                          ...config,
-                          followGateMessage: e.target.value,
-                        })
-                      }
-                      rows={3}
-                      placeholder={t(
-                        'story_follow_gate_placeholder',
-                        FOLLOW_GATE_DEFAULT_PT
-                      )}
-                      className="w-full bg-newBgColorInner border border-newTableBorder rounded-[6px] text-[12px] text-textColor px-[10px] py-[8px] outline-none resize-none"
-                    />
-                  </div>
-
-                  <div className="flex flex-col gap-[6px]">
-                    <label className="text-[11px] text-customColor18">
-                      {t(
-                        'follow_gate_already_btn_label',
-                        'Texto do botão "Já segui"'
-                      )}
-                    </label>
-                    <input
-                      type="text"
-                      value={config.alreadyFollowedButtonText || ''}
-                      onChange={(e) =>
-                        setConfig({
-                          ...config,
-                          alreadyFollowedButtonText: e.target.value,
-                        })
-                      }
-                      placeholder={t(
-                        'follow_gate_already_btn_placeholder',
-                        ALREADY_FOLLOWED_BTN_DEFAULT_PT
-                      )}
-                      maxLength={20}
-                      className="w-full bg-newBgColorInner border border-newTableBorder rounded-[6px] text-[12px] text-textColor px-[10px] py-[8px] outline-none"
-                    />
-                  </div>
-
-                  <div className="flex flex-col gap-[6px]">
-                    <label className="text-[11px] text-customColor18">
-                      {t(
-                        'follow_gate_exhausted_label',
-                        'Mensagem quando tentativas esgotam'
-                      )}
-                    </label>
-                    <textarea
-                      value={config.gateExhaustedMessage || ''}
-                      onChange={(e) =>
-                        setConfig({
-                          ...config,
-                          gateExhaustedMessage: e.target.value,
-                        })
-                      }
-                      rows={2}
-                      placeholder={t(
-                        'follow_gate_exhausted_placeholder',
-                        GATE_EXHAUSTED_DEFAULT_PT
-                      )}
-                      className="w-full bg-newBgColorInner border border-newTableBorder rounded-[6px] text-[12px] text-textColor px-[10px] py-[8px] outline-none resize-none"
-                    />
-                  </div>
-
-                  <div className="flex flex-col gap-[6px]">
-                    <label className="text-[11px] text-customColor18">
-                      {t(
-                        'follow_gate_max_attempts_label',
-                        'Máximo de tentativas após "Já segui"'
-                      )}
-                    </label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={10}
-                      value={
-                        config.maxGateAttempts ?? DEFAULT_MAX_GATE_ATTEMPTS
-                      }
-                      onChange={(e) => {
-                        const v = Number(e.target.value);
-                        setConfig({
-                          ...config,
-                          maxGateAttempts: Number.isFinite(v)
-                            ? Math.max(1, Math.min(10, Math.floor(v)))
-                            : DEFAULT_MAX_GATE_ATTEMPTS,
-                        });
-                      }}
-                      className="w-full bg-newBgColorInner border border-newTableBorder rounded-[6px] text-[12px] text-textColor px-[10px] py-[8px] outline-none"
-                    />
-                    <span className="text-[10px] text-customColor18">
-                      {t(
-                        'follow_gate_max_attempts_hint',
-                        'Evita loop infinito se a pessoa nunca seguir.'
-                      )}
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {!!config.requireFollow && triggerType === 'story_reply' && (
-                <div className="mt-[10px] rounded-[6px] border border-fifth p-[10px]">
-                  <label className="text-[11px] text-customColor18 block mb-[6px]">
-                    {t(
-                      'story_follow_gate_label',
-                      'Mensagem enviada para quem ainda não segue'
-                    )}
-                  </label>
-                  <textarea
-                    value={config.followGateMessage || ''}
-                    onChange={(e) =>
-                      setConfig({
-                        ...config,
-                        followGateMessage: e.target.value,
-                      })
-                    }
-                    rows={3}
-                    placeholder={t(
-                      'story_follow_gate_placeholder',
-                      FOLLOW_GATE_DEFAULT_PT
-                    )}
-                    className="w-full bg-newBgColorInner border border-newTableBorder rounded-[6px] text-[12px] text-textColor px-[10px] py-[8px] outline-none resize-none"
-                  />
-                </div>
               )}
             </div>
           </>
@@ -724,8 +548,9 @@ export const NodeConfigPanel: FC<NodeConfigPanelProps> = ({
             <div className={inputWrapperClass}>
               <textarea
                 id={messageId}
-                className={`${inputClass} min-h-[100px] resize-y`}
+                className={`${inputClass} min-h-[100px] pb-10 resize-y`}
                 rows={4}
+                maxLength={2200}
                 placeholder={t(
                   'reply_template_placeholder',
                   'Thanks {commenter_name} for your comment!'
@@ -747,28 +572,30 @@ export const NodeConfigPanel: FC<NodeConfigPanelProps> = ({
       case 'sendDm':
         return (
           <>
-            <label className="block text-[14px] text-textColor mb-[6px]">
-              {t('dm_template', 'DM Template')}
-            </label>
-            <div className={inputWrapperClass}>
-              <textarea
-                id={messageId}
-                className={`${inputClass} min-h-[120px] resize-y`}
-                rows={6}
-                placeholder={t(
-                  'dm_template_placeholder',
-                  'Hey {commenter_name}!\n\nHere is the link you requested...\n\nSee you soon!'
-                )}
-                value={config.message || ''}
-                onChange={(e) =>
-                  setConfig({ ...config, message: e.target.value })
-                }
-              />
-            </div>
-            <AutomationMessageVariables
-              textareaId={messageId}
+            <PrivateMessageVariations
               disabled={disabled}
-              onChange={(message) => setConfig({ ...config, message })}
+              messages={config.messages || [config.message || '']}
+              variants={config.variants}
+              buttonText={config.buttonText}
+              buttonUrl={config.buttonUrl}
+              onVariantsChange={(variants) =>
+                setConfig({
+                  ...config,
+                  variants,
+                  message: undefined,
+                  messages: undefined,
+                  buttonText: undefined,
+                  buttonUrl: undefined,
+                })
+              }
+              onChange={(messages) =>
+                setConfig({
+                  ...config,
+                  ...(messages.length > 1
+                    ? { message: undefined, messages }
+                    : { message: messages[0], messages: undefined }),
+                })
+              }
             />
             <p className="text-[11px] text-customColor18 mt-[4px]">
               {t(
@@ -776,60 +603,6 @@ export const NodeConfigPanel: FC<NodeConfigPanelProps> = ({
                 'Use quebras de linha para separar paragrafos. A Meta permite apenas 1 mensagem direta por comentario.'
               )}
             </p>
-
-            {/* Button CTA — mesmo contrato do wizard (buttonText + buttonUrl). */}
-            <div className="mt-[16px] pt-[12px] border-t border-fifth flex flex-col gap-[10px]">
-              <label className="text-[12px] font-semibold text-textColor">
-                {t('dm_button_section', 'Botão na mensagem (opcional)')}
-              </label>
-
-              <div>
-                <label className="block text-[11px] text-customColor18 mb-[4px]">
-                  {t('dm_button_text_label', 'Texto do botão')}
-                </label>
-                <div className={inputWrapperClass}>
-                  <input
-                    type="text"
-                    className={`${inputClass} h-[40px]`}
-                    value={config.buttonText || ''}
-                    onChange={(e) =>
-                      setConfig({ ...config, buttonText: e.target.value })
-                    }
-                    placeholder={t(
-                      'dm_button_text_placeholder',
-                      'Acessar o link'
-                    )}
-                    maxLength={20}
-                  />
-                </div>
-                <p className="text-[10px] text-customColor18 mt-[4px]">
-                  {t('dm_button_text_hint', 'Meta limita a 20 caracteres.')}
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-[11px] text-customColor18 mb-[4px]">
-                  {t('dm_button_url_label', 'URL do botão')}
-                </label>
-                <div className={inputWrapperClass}>
-                  <input
-                    type="url"
-                    className={`${inputClass} h-[40px]`}
-                    value={config.buttonUrl || ''}
-                    onChange={(e) =>
-                      setConfig({ ...config, buttonUrl: e.target.value })
-                    }
-                    placeholder="https://..."
-                  />
-                </div>
-                <p className="text-[10px] text-customColor18 mt-[4px]">
-                  {t(
-                    'dm_button_url_hint',
-                    'Preencha os dois campos para exibir o botão. Deixe vazio para enviar apenas texto.'
-                  )}
-                </p>
-              </div>
-            </div>
           </>
         );
 

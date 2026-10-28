@@ -82,6 +82,8 @@ export class AutomationManagementService {
       'keywords',
       'matchMode',
       'dmMessage',
+      'dmMessages',
+      'dmVariants',
       'dmButtonText',
       'dmButtonUrl',
     ];
@@ -210,7 +212,13 @@ export class AutomationManagementService {
           ],
           CONDITION: ['keywords', 'matchMode'],
           REPLY_COMMENT: ['message', 'messages'],
-          SEND_DM: ['message', 'buttonText', 'buttonUrl'],
+          SEND_DM: [
+            'variants',
+            'message',
+            'messages',
+            'buttonText',
+            'buttonUrl',
+          ],
           DELAY: ['duration', 'unit'],
         },
         delayUnits: ['seconds', 'minutes', 'hours'],
@@ -224,6 +232,13 @@ export class AutomationManagementService {
         scheduledTargets: 1,
         publicReplyVariants: 10,
         publicReplyLength: 2200,
+        privateReplyVariants: 10,
+        privateReplyVariantButton: true,
+        privateReplyVariantButtonTitleLength: 20,
+        privateReplyLength: 2000,
+        privateReplyVariantsWithButtonLength: 640,
+        facebookPrivateReplyWithButtonLength: 640,
+        facebookButtonTitleLength: 20,
       },
       controls: {
         create: ['activate'],
@@ -280,12 +295,22 @@ export class AutomationManagementService {
       matchMode: c.matchMode,
       priority: c.priority,
       message: c.dmMessage || '',
+      dmMessages: c.dmMessages,
+      dmVariants: c.dmVariants?.map((v) => ({
+        message: v.message,
+        ...(v.buttonText !== undefined ? { buttonText: v.buttonText } : {}),
+        ...(v.buttonUrl !== undefined ? { buttonUrl: v.buttonUrl } : {}),
+      })),
       reply: c.replyMessage,
       replyMessages: c.replyMessages,
       buttonText: c.dmButtonText,
       buttonUrl: c.dmButtonUrl,
     });
-    if (!c.dmMessage?.trim()) {
+    if (
+      !c.dmMessage?.trim() &&
+      !c.dmMessages?.length &&
+      !c.dmVariants?.length
+    ) {
       definition.nodes = definition.nodes.filter((n) => n.type !== 'SEND_DM');
       const ids = new Set(definition.nodes.map((n) => n.id));
       definition.edges = definition.edges.filter(
@@ -428,7 +453,11 @@ export class AutomationManagementService {
       ...(reply ? { replyMessages: r.messages || [r.message] } : {}),
       ...(dm
         ? {
-            dmMessage: d.message,
+            ...(d.variants
+              ? { dmVariants: d.variants }
+              : d.messages
+              ? { dmMessages: d.messages }
+              : { dmMessage: d.message }),
             dmButtonText: d.buttonText,
             dmButtonUrl: d.buttonUrl,
           }
@@ -451,8 +480,28 @@ export class AutomationManagementService {
       .safeParse(input.configuration);
     if (!patch.success || !Object.keys(patch.data).length)
       failAutomation('INVALID_AUTOMATION_PATCH');
+    if (
+      [
+        patch.data.dmMessage,
+        patch.data.dmMessages,
+        patch.data.dmVariants,
+      ].filter((v) => v !== undefined).length > 1 ||
+      (patch.data.dmVariants !== undefined &&
+        (patch.data.dmButtonText !== undefined ||
+          patch.data.dmButtonUrl !== undefined))
+    )
+      failAutomation('AMBIGUOUS_PRIVATE_REPLY');
     const old = await this.detail(scope, id, version);
     if (!old.configuration) failAutomation('CANVAS_EDIT_REQUIRED', 409);
+    if (
+      old.configuration.dmVariants &&
+      patch.data.dmVariants === undefined &&
+      patch.data.dmMessage === undefined &&
+      patch.data.dmMessages === undefined &&
+      (patch.data.dmButtonText !== undefined ||
+        patch.data.dmButtonUrl !== undefined)
+    )
+      failAutomation('AMBIGUOUS_PRIVATE_REPLY');
     if (
       patch.data.integrationId &&
       patch.data.integrationId !== old.configuration.integrationId
@@ -471,6 +520,18 @@ export class AutomationManagementService {
     const c = validateAutomationConfiguration({
       ...old.configuration,
       ...patch.data,
+      ...(patch.data.dmVariants !== undefined
+        ? {
+            dmMessage: undefined,
+            dmMessages: undefined,
+            dmButtonText: undefined,
+            dmButtonUrl: undefined,
+          }
+        : patch.data.dmMessages !== undefined
+        ? { dmMessage: undefined, dmVariants: undefined }
+        : patch.data.dmMessage !== undefined
+        ? { dmMessages: undefined, dmVariants: undefined }
+        : {}),
       activate: false,
     });
     if (version === 2) {

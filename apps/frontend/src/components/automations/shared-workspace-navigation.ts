@@ -101,7 +101,13 @@ const fields: Record<string, Set<string>> = {
     'maxGateAttempts',
   ]),
   REPLY_COMMENT: new Set(['message', 'messages']),
-  SEND_DM: new Set(['message', 'buttonText', 'buttonUrl']),
+  SEND_DM: new Set([
+    'variants',
+    'message',
+    'messages',
+    'buttonText',
+    'buttonUrl',
+  ]),
 };
 // A quick save rebuilds the linear graph. Reject anything it cannot represent.
 export function legacyQuickCompatible(flow: any): boolean {

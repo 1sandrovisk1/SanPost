@@ -1,13 +1,14 @@
 'use client';
-
-import { FC, useState, useMemo, useRef, useEffect } from 'react';
+import { useEffect, useRef, useState, type FC } from 'react';
 import {
   buildPreviewJourney,
-  PreviewJourneyContent,
+  type PreviewJourneyContent,
 } from './shared-preview-journey';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
-
 interface PhonePreviewProps {
+  platform?: 'instagram' | 'facebook';
+  postScope?: 'specific' | 'all' | 'next_publication' | 'scheduled';
+  postIsReel?: boolean;
   variant?: 'comment' | 'story';
   singleReply?: boolean;
   triggerType?: 'comment_on_post' | 'messenger_message';
@@ -30,928 +31,464 @@ interface PhonePreviewProps {
   onTabChange?: (tab: 'post' | 'comments' | 'dm' | 'story') => void;
 }
 
-function PublicationMedia({src,mediaType,selected,compact=false}:{src?:string;mediaType?:string;selected:boolean;compact?:boolean}) {
-  const t=useT();
-  const [failed,setFailed]=useState(false);
-  useEffect(()=>setFailed(false),[src]);
-  const style = {width:'100%',...(compact?{height:120}:{aspectRatio:'1/1'}),objectFit:'cover' as const,display:'block',flexShrink:0};
-  if(src && !failed) return mediaType==='VIDEO' ? <video src={`${src}#t=0.1`} muted playsInline preload="metadata" style={style} onError={()=>setFailed(true)} /> : <img src={src} alt="" style={style} onError={()=>setFailed(true)} />;
-  return <div style={{...style,background:'#1a1a1a',display:'flex',alignItems:'center',justifyContent:'center',padding:12}}><span style={{fontSize:12,color:'#aaa',textAlign:'center'}}>{t(selected?'automation_preview_media_unavailable':'preview_no_post')}</span></div>;
-}
-
 type Tab = 'post' | 'comments' | 'dm' | 'story';
-
-export const WizardPhonePreview: FC<PhonePreviewProps> = ({
-  variant = 'comment',
-  singleReply = false,
-  triggerType,
-  triggerText,
-  journey,
-  postThumb,
-  postSelected = false,
-  postMediaType,
-  postCaption,
-  replyMessage,
-  dmMessage,
-  dmButtonText,
-  dmButtonUrl,
-  storyThumb,
-  storyMode = 'all',
-  commenterName = 'usuario',
-  integrationPicture,
-  integrationName,
-  activeTab,
-  onTabChange,
-}) => {
+function Icon({ name, size = 20 }: { name: string; size?: number }) {
+  const paths: Record<string, string> = {
+    back: 'm15 5-7 7 7 7',
+    post: 'M3 3h18v18H3zM3 15l5-5 5 5 3-3 5 5',
+    comments: 'M21 11a9 9 0 0 1-9 9H4l-2 2 1-8a9 9 0 1 1 18-3Z',
+    dm: 'm22 2-7 20-4-9L2 9 22 2Zm0 0L11 13',
+    heart: 'M12 21S1 14 2 7c1-6 8-6 10-1 2-5 9-5 10 1 1 7-10 14-10 14Z',
+    like: 'M8 10 12 2c3 0 2 5 2 6h6l2 2-3 11H8Zm0 0H2v11h6',
+    share: 'm14 4 8 7-8 7v-5c-6 0-9 3-12 6 1-8 5-11 12-11V4Z',
+    phone: 'M5 2 2 5c0 8 9 17 17 17l3-3-6-4-2 2-7-7 2-2-4-6Z',
+    video: 'M2 5h14v14H2zM16 10l6-4v12l-6-4',
+    image: 'M3 3h18v18H3zM3 15l5-5 5 5 3-3 5 5',
+    camera: 'M2 6h5l2-3h6l2 3h5v15H2zM16 13a4 4 0 1 1-8 0 4 4 0 0 1 8 0',
+    plus: 'M12 3v18M3 12h18',
+    smile: 'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM7 14q5 6 10 0M8 8h.1M16 8h.1',
+    save: 'M5 3h14v19l-7-5-7 5V3Z',
+    story: 'M12 2a10 10 0 1 1-7 3M3 2v5h5',
+  };
+  return (
+    <svg
+      aria-hidden="true"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d={paths[name] || paths.comments} />
+    </svg>
+  );
+}
+export const WizardPhonePreview: FC<PhonePreviewProps> = (props) => {
+  const {
+    platform = 'instagram',
+    variant = 'comment',
+    singleReply = false,
+    triggerType,
+    triggerText,
+    journey,
+    postThumb,
+    postSelected = false,
+    postScope = 'specific',
+    postIsReel = false,
+    postMediaType,
+    postCaption,
+    replyMessage,
+    dmMessage,
+    dmButtonText,
+    dmButtonUrl,
+    storyThumb,
+    storyMode = 'all',
+    commenterName = 'usuario',
+    integrationPicture,
+    integrationName,
+    activeTab,
+    onTabChange,
+  } = props;
   const t = useT();
-  const defaultTab: Tab = singleReply
-    ? 'dm'
-    : variant === 'story'
-    ? 'story'
-    : 'comments';
-  const [internalTab, setInternalTab] = useState<Tab>(defaultTab);
+  const [internalTab, setInternalTab] = useState<Tab>(
+    singleReply ? 'dm' : variant === 'story' ? 'story' : 'comments'
+  );
   const tab = activeTab ?? internalTab;
   const setTab = (next: Tab) => {
     setInternalTab(next);
     onTabChange?.(next);
   };
-
-  const tabs: { key: Tab; label: string }[] =
+  const facebook = platform === 'facebook',
+    light = facebook && (tab === 'dm' || tab === 'comments');
+  const name = integrationName || t('preview_account_name');
+  const incoming = triggerText || t('preview_user_comment');
+  const renderText = (text: string) =>
+    interpolatePreview(text, commenterName, singleReply, incoming);
+  const messages = buildPreviewJourney({
+    message: dmMessage,
+    buttonText: dmButtonText,
+    buttonUrl: dmButtonUrl,
+    ...journey,
+  });
+  const conversation = useRef<HTMLDivElement>(null),
+    signature = JSON.stringify(messages);
+  useEffect(() => {
+    if (tab === 'dm' && conversation.current)
+      conversation.current.scrollTop = conversation.current.scrollHeight;
+  }, [tab, signature]);
+  const tabs: Array<{ key: Tab; label: string }> =
     triggerType === 'messenger_message'
-      ? [{ key: 'dm', label: t('shared_message') }]
+      ? [{ key: 'dm', label: t('preview_tab_dm') }]
       : variant === 'story'
       ? [
           { key: 'story', label: t('preview_tab_story') },
           { key: 'dm', label: t('preview_tab_dm') },
-        ]
-      : singleReply && !triggerType
-      ? [
-          { key: 'dm', label: t('shared_message') },
-          ...(replyMessage
-            ? [{ key: 'comments' as const, label: t('preview_tab_comments') }]
-            : []),
         ]
       : [
           { key: 'post', label: t('preview_tab_post') },
           { key: 'comments', label: t('preview_tab_comments') },
           { key: 'dm', label: t('preview_tab_dm') },
         ];
-  const messages = useMemo(
-    () =>
-      buildPreviewJourney({
-        message: dmMessage,
-        buttonText: dmButtonText,
-        buttonUrl: dmButtonUrl,
-        ...journey,
-      }),
-    [dmMessage, dmButtonText, dmButtonUrl, journey]
+  const avatar = (participant = false) => (
+    <span
+      className="shrink-0 overflow-hidden rounded-full flex items-center justify-center"
+      style={{
+        width: participant ? 25 : 30,
+        height: participant ? 25 : 30,
+        background: facebook ? '#9bd96b' : '#315e70',
+        color: '#205400',
+        fontSize: 16,
+        fontWeight: 600,
+      }}
+    >
+      <img
+        src={
+          participant
+            ? '/icons/automation-participant.svg'
+            : integrationPicture || '/icons/automation-participant.svg'
+        }
+        alt=""
+        className="w-full h-full object-cover"
+      />
+    </span>
   );
-  const conversationRef = useRef<HTMLDivElement>(null);
-  const conversationSignature = JSON.stringify(messages);
-  useEffect(() => {
-    if (tab === 'dm' && conversationRef.current)
-      conversationRef.current.scrollTop = conversationRef.current.scrollHeight;
-  }, [tab, conversationSignature]);
-
+  const scopeText =
+    variant === 'story'
+      ? t(
+          storyMode === 'all'
+            ? 'story_preview_all_hint'
+            : storyMode === 'next_publication'
+            ? 'story_preview_next_hint'
+            : 'story_preview_specific_hint'
+        )
+      : postScope === 'all'
+      ? t('automation_preview_all_posts')
+      : postScope === 'next_publication'
+      ? t('wizard_next_publication')
+      : postSelected
+      ? t('automation_preview_media_unavailable')
+      : t('preview_no_post');
+  const media = (compact = false) => (
+    <PublicationMedia
+      src={tab === 'story' ? storyThumb : postThumb}
+      mediaType={postMediaType}
+      compact={compact}
+      fallback={scopeText}
+    />
+  );
   return (
-    <div className="flex flex-col items-center select-none">
-      {/* Phone frame */}
+    <div className="flex flex-col items-center gap-4 select-none">
       <div
-        className="relative flex flex-col rounded-[44px] overflow-hidden"
+        data-phone
+        className="relative flex flex-col overflow-hidden rounded-[42px] border-[11px] border-[#191e26] shadow-xl"
         style={{
-          width: 290,
-          height: 580,
-          background: '#0a0a0a',
-          border: '3px solid #2a2a2a',
-          boxShadow: '0 0 0 1px #111, 0 24px 48px rgba(0,0,0,0.6)',
+          width: 304,
+          height: 620,
+          background: light ? '#fff' : '#111',
+          color: light ? '#151515' : '#fff',
         }}
       >
-        {/* Status bar + notch area */}
-        <div
-          className="relative flex-shrink-0 flex items-center justify-between px-[20px]"
-          style={{ height: 44, paddingTop: 10 }}
-        >
-          {/* Time */}
-          <span style={{ fontSize: 11, fontWeight: 600, color: '#fff' }}>
-            6:07
-          </span>
-
-          {/* Dynamic island / notch */}
-          <div
-            className="absolute left-1/2 -translate-x-1/2 top-[10px] rounded-full"
-            style={{ width: 100, height: 26, background: '#000', zIndex: 10 }}
+        <div className="h-11 shrink-0 flex items-center justify-between px-5 text-[11px] font-semibold">
+          <span>9:41</span>
+          <span
+            className="absolute left-1/2 -translate-x-1/2 top-3 w-12 h-2 rounded-full"
+            style={{ background: light ? '#ddd' : '#292929' }}
           />
-
-          {/* Signal icons */}
-          <div className="flex items-center gap-[5px]">
-            {/* Signal bars */}
-            <svg width="16" height="11" viewBox="0 0 16 11" fill="white">
-              <rect x="0" y="8" width="3" height="3" rx="0.5" />
-              <rect x="4" y="5.5" width="3" height="5.5" rx="0.5" />
-              <rect x="8" y="3" width="3" height="8" rx="0.5" />
-              <rect x="12" y="0" width="3" height="11" rx="0.5" />
+          <span aria-hidden="true">
+            <svg width="54" height="12" viewBox="0 0 54 12" fill="currentColor">
+              <path d="M0 9h2v3H0zm4-3h2v6H4zm4-3h2v9H8zm4-3h2v12h-2z" />
+              <path d="M18 3q7-6 14 0l-2 2q-5-4-10 0zm3 3q4-3 8 0l-4 5z" />
+              <rect x="36" y="2" width="15" height="8" rx="2" />
+              <path d="M52 4h2v4h-2z" />
             </svg>
-            {/* WiFi */}
-            <svg width="14" height="11" viewBox="0 0 14 11" fill="white">
-              <path d="M7 8.5a1 1 0 110 2 1 1 0 010-2z" />
-              <path
-                d="M3.5 6C4.8 4.7 6.3 4 7 4s2.2.7 3.5 2"
-                stroke="white"
-                strokeWidth="1.2"
-                fill="none"
-                strokeLinecap="round"
-              />
-              <path
-                d="M1 3.5C3 1.3 5 0 7 0s4 1.3 6 3.5"
-                stroke="white"
-                strokeWidth="1.2"
-                fill="none"
-                strokeLinecap="round"
-              />
-            </svg>
-            {/* Battery */}
+          </span>
+        </div>
+        {tab === 'dm' ? (
+          <>
             <div
-              className="relative flex items-center"
-              style={{ width: 24, height: 12 }}
+              className="flex items-center gap-2 px-3 pb-3 border-b"
+              style={{ borderColor: light ? '#eee' : '#292929' }}
             >
+              <span style={{ color: facebook ? '#0866ff' : 'inherit' }}>
+                <Icon name="back" />
+              </span>
+              {avatar()}
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-[12px] truncate">{name}</p>
+                {facebook && (
+                  <p className="text-[10px] text-[#777]">
+                    {t('automation_preview_business_chat')}
+                  </p>
+                )}
+              </div>
+              <Icon name="phone" size={17} />
+              <Icon name="video" size={19} />
+            </div>
+            <div
+              ref={conversation}
+              className="flex-1 min-h-0 overflow-auto p-3 space-y-3"
+            >
+              {messages.length ? (
+                messages.map((message, index) => (
+                  <div
+                    key={index}
+                    className={`flex items-end gap-1.5 ${
+                      message.role === 'user' ? 'justify-end' : ''
+                    }`}
+                  >
+                    {message.role === 'page' && avatar()}
+                    <div
+                      className="max-w-[218px] rounded-2xl px-3 py-2 text-[11px] whitespace-pre-wrap break-words"
+                      style={{
+                        background:
+                          message.role === 'user'
+                            ? facebook
+                              ? '#0866ff'
+                              : '#6945ed'
+                            : facebook
+                            ? '#f0f2f5'
+                            : '#282828',
+                        color: message.role === 'user' ? 'white' : 'inherit',
+                      }}
+                    >
+                      {renderText(message.text)}
+                      {message.button && (
+                        <div
+                          className="mt-2 rounded-lg px-3 py-2 text-center font-semibold"
+                          style={{ background: facebook ? '#fff' : '#3a3a3a' }}
+                        >
+                          {message.button.text}
+                          {message.button.kind === 'link' && (
+                            <span className="ml-1">↗</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-[11px] opacity-50 mt-2">
+                  {t('preview_message_placeholder')}
+                </p>
+              )}
+            </div>
+            <div
+              className="shrink-0 flex items-center gap-3 px-3 py-3"
+              style={{ color: facebook ? '#0866ff' : '#eee' }}
+            >
+              <Icon name="camera" />
+              <Icon name="image" />
               <div
+                className="flex-1 rounded-full py-2 px-3 text-[10px]"
                 style={{
-                  width: 21,
-                  height: 11,
-                  border: '1px solid rgba(255,255,255,0.5)',
-                  borderRadius: 3,
-                  padding: 1.5,
+                  background: facebook ? '#f0f2f5' : '#262626',
+                  color: '#888',
                 }}
               >
-                <div
-                  style={{
-                    width: '80%',
-                    height: '100%',
-                    background: '#fff',
-                    borderRadius: 1.5,
-                  }}
-                />
+                {t('preview_message_placeholder')}
               </div>
-              <div
-                style={{
-                  width: 2,
-                  height: 5,
-                  background: 'rgba(255,255,255,0.4)',
-                  borderRadius: '0 1px 1px 0',
-                  marginLeft: 1,
-                }}
-              />
+              <Icon name={facebook ? 'like' : 'plus'} />
             </div>
-          </div>
-        </div>
-
-        {/* Scrollable content area */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          {/* ── STORY TAB ── */}
-          {tab === 'story' && (
+          </>
+        ) : (
+          <>
             <div
-              className="flex-1 flex flex-col"
-              style={{
-                background: storyThumb
-                  ? `url(${storyThumb}) center/cover no-repeat`
-                  : '#1a1a1a',
-                position: 'relative',
-              }}
+              className="relative flex-1 min-h-0 overflow-hidden"
+              style={{ background: '#111', color: '#fff' }}
             >
-              {/* Progress bar */}
-              <div className="flex gap-[4px] px-[12px] pt-[8px]">
-                <div
-                  style={{
-                    flex: 1,
-                    height: 2,
-                    background: '#fff',
-                    borderRadius: 1,
-                  }}
-                />
-                <div
-                  style={{
-                    flex: 1,
-                    height: 2,
-                    background: 'rgba(255,255,255,0.3)',
-                    borderRadius: 1,
-                  }}
-                />
-                <div
-                  style={{
-                    flex: 1,
-                    height: 2,
-                    background: 'rgba(255,255,255,0.3)',
-                    borderRadius: 1,
-                  }}
-                />
-              </div>
-
-              {/* Story header */}
-              <div className="flex items-center justify-between px-[12px] py-[10px]">
-                <div className="flex items-center gap-[8px]">
-                  <div
-                    style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: '50%',
-                      flexShrink: 0,
-                      overflow: 'hidden',
-                      background:
-                        'linear-gradient(45deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888)',
-                      padding: 2,
-                    }}
-                  >
-                    {integrationPicture ? (
-                      <img
-                        src={integrationPicture}
-                        alt=""
-                        style={{
-                          width: '100%',
-                          height: '100%',
-                          borderRadius: '50%',
-                          objectFit: 'cover',
-                        }}
-                      />
-                    ) : (
-                      <div
-                        style={{
-                          width: '100%',
-                          height: '100%',
-                          borderRadius: '50%',
-                          background: '#222',
-                        }}
-                      />
-                    )}
-                  </div>
-                  <span
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color: '#fff',
-                      textShadow: '0 1px 2px rgba(0,0,0,0.6)',
-                    }}
-                  >
-                    {integrationName || commenterName}
-                  </span>
-                </div>
-                <span style={{ color: '#fff', fontSize: 18, lineHeight: 1 }}>
-                  ×
+              <div className="h-10 flex items-center px-3 gap-2">
+                <Icon name="back" />
+                <span className="flex-1 text-center font-semibold text-[12px]">
+                  {t(
+                    tab === 'story' ? 'preview_tab_story' : 'preview_tab_post'
+                  )}
                 </span>
+                <span>•••</span>
               </div>
-
-              {/* Body placeholder when no thumb */}
-              {!storyThumb && (
-                <div className="flex-1 flex items-center justify-center px-[20px] text-center">
-                  <p style={{ fontSize: 12, color: '#fff' }}>
-                    {storyMode === 'specific'
-                      ? t(
-                          'story_preview_specific_hint',
-                          'Sua automacao sera aplicada ao story selecionado'
-                        )
+              <div className="flex items-center gap-2 px-3 py-2 text-[11px]">
+                {avatar()}
+                <strong>{name}</strong>
+                <span className="ml-auto">•••</span>
+              </div>
+              {media(tab === 'comments')}
+              {tab === 'story' && (
+                <div className="absolute bottom-4 inset-x-3 rounded-full border border-white/40 px-3 py-2 text-[11px]">
+                  {t(
+                    storyMode === 'all'
+                      ? 'automation_preview_all_stories'
                       : storyMode === 'next_publication'
-                      ? t(
-                          'story_preview_next_hint',
-                          'Sua automacao sera aplicada ao proximo story publicado'
-                        )
-                      : t(
-                          'story_preview_all_hint',
-                          'Sua automacao funcionara em qualquer story'
-                        )}
+                      ? 'wizard_next_publication'
+                      : 'preview_story_reply_placeholder'
+                  )}
+                </div>
+              )}
+              {tab === 'post' && (
+                <div className="px-3 py-3 space-y-3 text-[11px]">
+                  <div className="flex gap-4">
+                    {facebook ? <Icon name="like" /> : <Icon name="heart" />}
+                    <Icon name="comments" />
+                    <Icon name={facebook ? 'share' : 'dm'} />
+                    <span className="ml-auto">
+                      <Icon name="save" />
+                    </span>
+                  </div>
+                  <p className="line-clamp-5">
+                    <strong>{name}</strong> {postCaption}
                   </p>
                 </div>
               )}
-
-              {/* Reply input */}
-              <div className="px-[12px] pb-[14px] mt-auto">
-                <div className="flex items-center gap-[8px]">
-                  <div
-                    style={{
-                      flex: 1,
-                      borderRadius: 24,
-                      border: '1px solid rgba(255,255,255,0.6)',
-                      background: 'rgba(0,0,0,0.2)',
-                      padding: '8px 14px',
-                    }}
-                  >
-                    <span
-                      style={{ fontSize: 11, color: 'rgba(255,255,255,0.85)' }}
-                    >
-                      {t(
-                        'preview_story_reply_placeholder',
-                        'Enviar mensagem...'
-                      )}
-                    </span>
-                  </div>
-                  <span style={{ fontSize: 18 }}>❤️</span>
-                  <span style={{ fontSize: 18 }}>✈️</span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ── POST TAB ── */}
-          {tab === 'post' && (
-            <div
-              className="flex-1 overflow-y-auto"
-              style={{ background: '#0a0a0a' }}
-            >
-              {/* Instagram post header */}
-              <div className="flex items-center justify-between px-[12px] py-[8px]">
-                <div className="flex items-center gap-[8px]">
-                  <div
-                    style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: '50%',
-                      flexShrink: 0,
-                      overflow: 'hidden',
-                      background:
-                        'linear-gradient(45deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888)',
-                      padding: 2,
-                    }}
-                  >
-                    {integrationPicture ? (
-                      <img
-                        src={integrationPicture}
-                        alt=""
-                        style={{
-                          width: '100%',
-                          height: '100%',
-                          borderRadius: '50%',
-                          objectFit: 'cover',
-                        }}
-                      />
-                    ) : (
-                      <div
-                        style={{
-                          width: '100%',
-                          height: '100%',
-                          borderRadius: '50%',
-                          background: '#222',
-                        }}
-                      />
-                    )}
-                  </div>
-                  <span
-                    style={{ fontSize: 11, fontWeight: 600, color: '#fff' }}
-                  >
-                    {integrationName || commenterName}
-                  </span>
-                </div>
-                <span style={{ color: '#fff', fontSize: 18, lineHeight: 1 }}>
-                  ···
-                </span>
-              </div>
-
-              {/* Post image */}
-              <PublicationMedia src={postThumb} mediaType={postMediaType} selected={postSelected || !!postThumb} />
-
-              {/* Actions */}
-              <div className="flex items-center justify-between px-[12px] py-[8px]">
-                <div className="flex items-center gap-[12px]">
-                  {/* Heart */}
-                  <svg
-                    width="22"
-                    height="22"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="white"
-                    strokeWidth="1.5"
-                  >
-                    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78z" />
-                  </svg>
-                  {/* Comment */}
-                  <svg
-                    width="22"
-                    height="22"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="white"
-                    strokeWidth="1.5"
-                  >
-                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                  </svg>
-                  {/* Share */}
-                  <svg
-                    width="22"
-                    height="22"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="white"
-                    strokeWidth="1.5"
-                  >
-                    <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
-                  </svg>
-                </div>
-                {/* Bookmark */}
-                <svg
-                  width="22"
-                  height="22"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="white"
-                  strokeWidth="1.5"
-                >
-                  <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-                </svg>
-              </div>
-
-              {/* Caption */}
-              <div className="px-[12px] pb-[12px]">
-                <span style={{ fontSize: 11, fontWeight: 600, color: '#fff' }}>
-                  {integrationName || commenterName}{' '}
-                </span>
-                <span style={{ fontSize: 11, color: '#ccc' }}>
-                  {postCaption || t('preview_no_caption', 'Nenhuma legenda')}
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* ── COMMENTS TAB ── */}
-          {tab === 'comments' && (
-            <div
-              className="flex flex-col"
-              style={{ flex: 1, background: '#0a0a0a', overflow: 'hidden' }}
-            >
-              {/* Post thumbnail mini */}
-              {(postThumb || postSelected) && <PublicationMedia src={postThumb} mediaType={postMediaType} selected={postSelected || !!postThumb} compact />}
-
-              {/* Comment drawer */}
-              <div
-                className="flex flex-col flex-1"
-                style={{
-                  background: '#111',
-                  borderRadius: '20px 20px 0 0',
-                  marginTop: postThumb ? -12 : 0,
-                  overflow: 'hidden',
-                }}
-              >
-                {/* Drawer handle */}
-                <div className="flex items-center justify-between px-[14px] pt-[14px] pb-[10px] flex-shrink-0">
-                  <div
-                    style={{
-                      width: 36,
-                      height: 4,
-                      background: '#333',
-                      borderRadius: 2,
-                      margin: '0 auto',
-                      marginBottom: 10,
-                    }}
-                  />
-                </div>
-                <div className="flex items-center justify-between px-[14px] pb-[10px] flex-shrink-0">
-                  <span
-                    style={{ fontSize: 12, fontWeight: 600, color: '#fff' }}
-                  >
-                    {t('preview_tab_comments', 'Comentarios')}
-                  </span>
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="#aaa"
-                    strokeWidth="2"
-                  >
-                    <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
-                  </svg>
-                </div>
-
-                {/* Comments list */}
-                <div className="flex-1 overflow-y-auto px-[14px] pb-[8px] space-y-[12px]">
-                  {/* User comment */}
-                  <div className="flex gap-[8px]">
-                    <div
-                      style={{
-                        width: 32,
-                        height: 32,
-                        borderRadius: '50%',
-                        background: '#333',
-                        flexShrink: 0,
-                      }}
-                    />
-                    <div>
-                      <div style={{ fontSize: 10, color: '#aaa' }}>
-                        {commenterName} · {t('preview_comment_now', 'Agora')}
-                      </div>
-                      <div
-                        style={{ fontSize: 11, color: '#fff', marginTop: 2 }}
-                      >
-                        {triggerText ||
-                          t('preview_user_comment', 'Incrivel! Eu quero!')}
-                      </div>
-                      <div
-                        style={{ fontSize: 10, color: '#666', marginTop: 4 }}
-                      >
-                        {t('preview_reply_action', 'Responder')}
-                      </div>
-
-                      {/* Auto reply */}
-                      {replyMessage && (
-                        <div className="flex gap-[6px] mt-[8px]">
-                          <div
-                            style={{
-                              width: 24,
-                              height: 24,
-                              borderRadius: '50%',
-                              flexShrink: 0,
-                              overflow: 'hidden',
-                              background: integrationPicture
-                                ? 'transparent'
-                                : '#6366f1',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                            }}
-                          >
-                            {integrationPicture ? (
-                              <img
-                                src={integrationPicture}
-                                alt=""
-                                style={{
-                                  width: '100%',
-                                  height: '100%',
-                                  objectFit: 'cover',
-                                }}
-                              />
-                            ) : (
-                              <svg
-                                width="10"
-                                height="10"
-                                viewBox="0 0 24 24"
-                                fill="white"
-                              >
-                                <path d="M13 2L3 14H12L11 22L21 10H12L13 2Z" />
-                              </svg>
-                            )}
-                          </div>
-                          <div>
-                            <div style={{ fontSize: 10, color: '#aaa' }}>
-                              {integrationName ||
-                                t('preview_your_page', 'Sua Página')}{' '}
-                              · {t('preview_comment_now', 'Agora')}
-                            </div>
-                            <div
-                              style={{
-                                fontSize: 11,
-                                color: '#fff',
-                                marginTop: 2,
-                                whiteSpace: 'pre-wrap',
-                                overflowWrap: 'anywhere',
-                              }}
-                            >
-                              {interpolatePreview(
-                                replyMessage,
-                                commenterName,
-                                singleReply,
-                                triggerText || t('preview_user_comment')
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Emoji row */}
+              {tab === 'comments' && (
                 <div
-                  className="flex items-center gap-[8px] px-[14px] py-[8px] flex-shrink-0"
-                  style={{ borderTop: '1px solid #222' }}
-                >
-                  {['❤️', '🙌', '🔥', '👏', '😍', '🥲', '😮', '😂'].map((e) => (
-                    <span key={e} style={{ fontSize: 16 }}>
-                      {e}
-                    </span>
-                  ))}
-                </div>
-
-                {/* Comment input */}
-                <div
-                  className="flex items-center gap-[8px] px-[14px] py-[10px] flex-shrink-0"
-                  style={{ borderTop: '1px solid #222' }}
-                >
-                  <div
-                    style={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: '50%',
-                      background: '#333',
-                      flexShrink: 0,
-                    }}
-                  />
-                  <div
-                    style={{
-                      flex: 1,
-                      background: '#222',
-                      borderRadius: 18,
-                      padding: '7px 12px',
-                    }}
-                  >
-                    <span style={{ fontSize: 10, color: '#666' }}>
-                      {t(
-                        'preview_comment_placeholder',
-                        'Insira um comentario para o nome de usuario...'
-                      )}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ── DM TAB ── */}
-          {tab === 'dm' && (
-            <div
-              className="flex flex-col flex-1"
-              style={{ background: '#0a0a0a', overflow: 'hidden' }}
-            >
-              {/* DM header */}
-              <div
-                className="flex items-center gap-[8px] px-[12px] py-[10px] flex-shrink-0"
-                style={{ borderBottom: '1px solid #1a1a1a' }}
-              >
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="#fff"
-                  strokeWidth="2"
-                >
-                  <path d="M15 18l-6-6 6-6" />
-                </svg>
-                <div
+                  className="absolute bottom-0 inset-x-0 top-[155px] rounded-t-[24px] flex flex-col"
                   style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: '50%',
-                    flexShrink: 0,
-                    overflow: 'hidden',
-                    background: integrationPicture
-                      ? 'transparent'
-                      : 'linear-gradient(45deg,#6366f1,#8b5cf6)',
+                    background: facebook ? '#fff' : '#252525',
+                    color: facebook ? '#151515' : '#fff',
                   }}
                 >
-                  {integrationPicture && (
-                    <img
-                      src={integrationPicture}
-                      alt=""
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'cover',
-                      }}
-                    />
-                  )}
-                </div>
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: '#fff' }}>
-                    {integrationName || commenterName}
+                  <div className="w-8 h-1 rounded-full mx-auto my-2 bg-[#999]" />
+                  <div
+                    className="px-4 pb-3 text-[12px] font-semibold border-b"
+                    style={{ borderColor: facebook ? '#eee' : '#444' }}
+                  >
+                    {t(
+                      facebook
+                        ? 'automation_preview_relevant_comments'
+                        : 'preview_tab_comments'
+                    )}
                   </div>
-                </div>
-                <div className="ml-auto flex items-center gap-[12px]">
-                  <svg
-                    width="18"
-                    height="18"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="white"
-                    strokeWidth="1.5"
-                  >
-                    <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" />
-                  </svg>
-                  <svg
-                    width="18"
-                    height="18"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="white"
-                    strokeWidth="1.5"
-                  >
-                    <rect x="2" y="3" width="20" height="14" rx="2" />
-                    <path d="M8 21h8M12 17v4" />
-                  </svg>
-                </div>
-              </div>
-
-              {/* Messages area */}
-              <div
-                ref={conversationRef}
-                className="flex-1 overflow-y-auto px-[12px] py-[12px] flex flex-col gap-[10px]"
-              >
-                {messages.length ? (
-                  messages.map((message, index) => (
-                    <div
-                      key={index}
-                      className={`flex items-end gap-[6px] ${
-                        message.role === 'user' ? 'justify-end' : ''
-                      }`}
-                    >
-                      {message.role === 'page' && (
-                        <div
-                          style={{
-                            width: 24,
-                            height: 24,
-                            borderRadius: '50%',
-                            flexShrink: 0,
-                            overflow: 'hidden',
-                            background: '#6366f1',
-                          }}
-                        >
-                          {integrationPicture && (
-                            <img
-                              src={integrationPicture}
-                              alt=""
-                              style={{
-                                width: '100%',
-                                height: '100%',
-                                objectFit: 'cover',
-                              }}
-                            />
-                          )}
-                        </div>
-                      )}
-                      <div
-                        style={{
-                          background:
-                            message.role === 'user' ? '#3d3d9a' : '#262626',
-                          borderRadius:
-                            message.role === 'user'
-                              ? '18px 18px 4px 18px'
-                              : '18px 18px 18px 4px',
-                          padding: '8px 12px',
-                          maxWidth: '78%',
-                        }}
-                      >
-                        <p
-                          style={{
-                            fontSize: 11,
-                            color: '#fff',
-                            whiteSpace: 'pre-wrap',
-                            overflowWrap: 'anywhere',
-                            lineHeight: 1.4,
-                          }}
-                        >
-                          {interpolatePreview(
-                            message.text,
-                            commenterName,
-                            singleReply,
-                            triggerText || t('preview_user_comment')
-                          )}
+                  <div className="flex-1 overflow-auto p-3 text-[11px] space-y-4">
+                    <div className="flex gap-2">
+                      {avatar(true)}
+                      <div className="flex-1">
+                        <strong>{commenterName}</strong>
+                        <p className="mt-1">{incoming}</p>
+                        <p className="mt-2 text-[9px] opacity-50">
+                          {t('preview_reply_action')}
                         </p>
-                        {message.button && (
-                          <div
-                            role="img"
-                            aria-label={`${t(
-                              message.button.kind === 'link'
-                                ? 'automation_link_button'
-                                : 'automation_reply_button'
-                            )}: ${message.button.text}`}
-                            style={{
-                              marginTop: 8,
-                              background: '#3d3d9a',
-                              borderRadius: 12,
-                              padding: '6px 10px',
-                              fontSize: 10,
-                              color: '#fff',
-                              textAlign: 'center',
-                            }}
-                          >
-                            {interpolatePreview(
-                              message.button.text,
-                              commenterName,
-                              singleReply,
-                              triggerText || t('preview_user_comment')
-                            )}
-                            {message.button.kind === 'link' && (
-                              <span aria-hidden="true"> ↗</span>
-                            )}
+                        {replyMessage && (
+                          <div className="flex gap-2 mt-4">
+                            {avatar()}
+                            <div>
+                              <strong>{name}</strong>
+                              <p className="mt-1 whitespace-pre-wrap">
+                                {renderText(replyMessage)}
+                              </p>
+                              <p className="mt-2 text-[9px] opacity-50">
+                                {t('preview_reply_action')}
+                              </p>
+                            </div>
                           </div>
                         )}
                       </div>
+                      <span className="opacity-60">
+                        <Icon name={facebook ? 'like' : 'heart'} size={15} />
+                      </span>
                     </div>
-                  ))
-                ) : (
-                  <div className="flex-1 flex items-center justify-center">
-                    <p style={{ fontSize: 11, color: '#888' }}>
-                      {t('preview_no_dm')}
-                    </p>
                   </div>
-                )}
-              </div>
-
-              {/* Input bar */}
-              <div
-                className="flex items-center gap-[8px] px-[12px] py-[10px] flex-shrink-0"
-                style={{ borderTop: '1px solid #1a1a1a' }}
-              >
-                <svg
-                  width="22"
-                  height="22"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="#aaa"
-                  strokeWidth="1.5"
-                >
-                  <circle cx="12" cy="12" r="10" />
-                  <path d="M8 12a4 4 0 118 0" />
-                  <line x1="12" y1="16" x2="12" y2="16.01" />
-                </svg>
-                <div
-                  style={{
-                    flex: 1,
-                    background: '#1a1a1a',
-                    borderRadius: 20,
-                    padding: '7px 12px',
-                    border: '1px solid #333',
-                  }}
-                >
-                  <span style={{ fontSize: 10, color: '#555' }}>
-                    {t('preview_message_input', 'Mensagem...')}
-                  </span>
+                  {!facebook && (
+                    <div className="px-3 pb-3 flex justify-between text-base">
+                      <span>❤️</span>
+                      <span>🙌</span>
+                      <span>🔥</span>
+                      <span>👏</span>
+                      <span>😍</span>
+                      <span>😂</span>
+                    </div>
+                  )}
+                  <div
+                    className="px-3 py-3 flex gap-2 items-center border-t"
+                    style={{ borderColor: facebook ? '#eee' : '#444' }}
+                  >
+                    {avatar(true)}
+                    <div
+                      className="flex-1 rounded-full border px-3 py-2 text-[9px] opacity-50"
+                      style={{ borderColor: facebook ? '#ddd' : '#666' }}
+                    >
+                      {t('preview_comment_placeholder')}
+                    </div>
+                    <Icon name="smile" size={19} />
+                  </div>
                 </div>
-                <svg
-                  width="22"
-                  height="22"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="#aaa"
-                  strokeWidth="1.5"
-                >
-                  <rect x="3" y="3" width="18" height="18" rx="3" />
-                  <circle cx="8.5" cy="8.5" r="1.5" />
-                  <path d="M21 15l-5-5L5 21" />
-                </svg>
-                <svg
-                  width="22"
-                  height="22"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="#aaa"
-                  strokeWidth="1.5"
-                >
-                  <rect x="2" y="3" width="20" height="14" rx="2" />
-                  <path d="M8 21h8M12 17v4" />
-                </svg>
-                <svg
-                  width="22"
-                  height="22"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="#aaa"
-                  strokeWidth="1.5"
-                >
-                  <circle cx="12" cy="12" r="10" />
-                  <line x1="12" y1="8" x2="12" y2="16" />
-                  <line x1="8" y1="12" x2="16" y2="12" />
-                </svg>
-              </div>
+              )}
+              {postIsReel && tab === 'post' && (
+                <div className="absolute right-3 bottom-28 flex flex-col gap-5">
+                  <Icon name="like" />
+                  <Icon name="comments" />
+                  <Icon name="share" />
+                </div>
+              )}
             </div>
-          )}
-        </div>
-
-        {/* Bottom tabs (ManyChat style) */}
-        <div
-          className="flex-shrink-0 flex items-center"
-          style={{
-            background: '#111',
-            borderTop: '1px solid #1e1e1e',
-            padding: '8px 12px 12px',
-          }}
-        >
-          {tabs.map((tabItem) => (
-            <button
-              key={tabItem.key}
-              type="button"
-              aria-pressed={tabItem.key === tab}
-              onClick={() => setTab(tabItem.key)}
-              style={{
-                flex: 1,
-                padding: '6px 4px',
-                borderRadius: 20,
-                fontSize: 11,
-                fontWeight: tab === tabItem.key ? 600 : 400,
-                color: tab === tabItem.key ? '#fff' : '#666',
-                background: tab === tabItem.key ? '#2a2a2a' : 'transparent',
-                border:
-                  tab === tabItem.key
-                    ? '1px solid #333'
-                    : '1px solid transparent',
-                transition: 'all 0.15s',
-                cursor: 'pointer',
-              }}
-            >
-              {tabItem.label}
-            </button>
-          ))}
-        </div>
+          </>
+        )}
+      </div>
+      <div
+        className="flex gap-1 rounded-full bg-newTextColor/5 p-1"
+        aria-label={t('shared_preview')}
+      >
+        {tabs.map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            aria-label={item.label}
+            title={item.label}
+            aria-pressed={item.key === tab}
+            onClick={() => setTab(item.key)}
+            className={`rounded-full px-4 py-2 transition-colors focus-visible:ring-2 focus-visible:ring-btnPrimary ${
+              item.key === tab
+                ? 'bg-newBgColorInner shadow-sm text-newTextColor'
+                : 'text-newTextColor/50 hover:bg-boxHover'
+            }`}
+          >
+            <Icon name={item.key} />
+          </button>
+        ))}
       </div>
     </div>
   );
 };
-
+function PublicationMedia({
+  src,
+  mediaType,
+  compact,
+  fallback,
+}: {
+  src?: string;
+  mediaType?: string;
+  compact: boolean;
+  fallback: string;
+}) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [src]);
+  const style = {
+    width: '100%',
+    height: compact ? 155 : 280,
+    objectFit: 'cover' as const,
+  };
+  if (src && !failed)
+    return mediaType === 'VIDEO' ? (
+      <video
+        src={`${src}#t=0.1`}
+        muted
+        playsInline
+        preload="metadata"
+        style={style}
+        onError={() => setFailed(true)}
+      />
+    ) : (
+      <img src={src} alt="" style={style} onError={() => setFailed(true)} />
+    );
+  return (
+    <div
+      className="flex items-center justify-center bg-[#1b1b1b] px-5 text-center text-[12px] text-[#aaa]"
+      style={style}
+    >
+      {fallback}
+    </div>
+  );
+}
 function interpolatePreview(
   template: string,
   commenterName: string,

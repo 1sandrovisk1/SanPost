@@ -1,6 +1,8 @@
 'use client';
+import { AutomationEditorStage } from './shared-editor-stage.component';
+import { PrivateMessageVariations } from './shared-private-variations.component';
+import { AutomationConnectionIndicator } from './shared-connection-indicator.component';
 import { AutomationContextHelp } from './shared-context-help.component';
-import { AutomationMessageVariables } from './shared-message-variables.component';
 import { PublicationPreviewControls } from './shared-response-controls.component';
 import type { PublicationPreview } from './shared-publication-selector.component';
 
@@ -18,7 +20,6 @@ import {
 import {
   AutomationFollowGateFields,
   JourneyPreviewControls,
-  ReplyPreviewControls,
 } from './shared-response-controls.component';
 import type { PreviewJourneyStage } from './shared-preview-journey';
 import { AutomationPublicReplyToggle } from './shared-public-reply-toggle.component';
@@ -31,20 +32,9 @@ import {
   AutomationPhoneFrame,
 } from './shared-editor-preview.component';
 import { AutomationAccountSelect } from './shared-account-select.component';
-import {
-  InstagramEditorConnection,
-  useInstagramEditorConnection,
-} from './shared-instagram-connection.component';
+import { useInstagramEditorConnection } from './shared-instagram-connection.component';
 import { useAliases } from './hooks/use-unmatched-comments';
-import {
-  FC,
-  useCallback,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import { useIntegrationList } from '@gitroom/frontend/components/launches/helpers/use.integration.list';
@@ -52,7 +42,10 @@ import { useIntegrationPosts } from '@gitroom/frontend/components/automations/ho
 import { useRouter } from 'next/navigation';
 import { useToaster } from '@gitroom/react/toaster/toaster';
 import { WizardPhonePreview } from '@gitroom/frontend/components/automations/wizard-phone-preview.component';
-import { AddLinkModal } from '@gitroom/frontend/components/automations/add-link-modal.component';
+import {
+  validatePrivateButtonVariants,
+  type PrivateMessageVariant,
+} from '@gitroom/nestjs-libraries/database/prisma/flows/private-message-variants';
 import { AdAliasesField } from '@gitroom/frontend/components/automations/ad-aliases-field.component';
 
 const OPENING_DM_DEFAULT_PT =
@@ -84,7 +77,6 @@ export const AutomationWizardComponent: FC<Props> = ({
   workspace,
 }) => {
   const t = useT();
-  const privateMessageId = useId();
   const fetchApi = useFetch();
   const router = useRouter();
   const toaster = useToaster();
@@ -119,9 +111,13 @@ export const AutomationWizardComponent: FC<Props> = ({
   const [enableReply, setEnableReply] = useState(false);
   const [replyMessages, setReplyMessages] = useState<string[]>(['']);
   const [dmMessage, setDmMessage] = useState('');
+  const [dmMessages, setDmMessages] = useState<string[]>(['']);
+  const [dmVariants, setDmVariants] = useState<
+    PrivateMessageVariant[] | undefined
+  >();
+  const [dmPreviewIndex, setDmPreviewIndex] = useState(0);
   const [dmButtonText, setDmButtonText] = useState('');
   const [dmButtonUrl, setDmButtonUrl] = useState('');
-  const [showAddLink, setShowAddLink] = useState(false);
   const [requireFollow, setRequireFollow] = useState(false);
   const [followGateMessage, setFollowGateMessage] = useState(
     t('automation_follow_comment_default')
@@ -180,6 +176,8 @@ export const AutomationWizardComponent: FC<Props> = ({
     enableReply,
     replyMessages,
     dmMessage,
+    dmMessages,
+    dmVariants,
     dmButtonText,
     dmButtonUrl,
     requireFollow,
@@ -256,7 +254,14 @@ export const AutomationWizardComponent: FC<Props> = ({
       : [];
     setEnableReply(msgs.length > 0);
     setReplyMessages(msgs.length ? msgs : ['']);
-    setDmMessage(dmCfg.message || '');
+    setDmVariants(dmCfg.variants);
+    setDmMessage(
+      dmCfg.variants?.[0]?.message || dmCfg.messages?.[0] || dmCfg.message || ''
+    );
+    setDmMessages(
+      dmCfg.variants?.map((v: PrivateMessageVariant) => v.message) ||
+        dmCfg.messages || [dmCfg.message || '']
+    );
     setDmButtonText(dmCfg.buttonText || '');
     setDmButtonUrl(dmCfg.buttonUrl || '');
     setRequireFollow(!!triggerCfg.requireFollow);
@@ -355,6 +360,15 @@ export const AutomationWizardComponent: FC<Props> = ({
     publicationPreviews.find((p) => p.id === previewPublicationId) ||
     publicationPreviews[0];
 
+  const invalidDmVariants = (() => {
+    if (!dmVariants) return false;
+    try {
+      validatePrivateButtonVariants(dmVariants);
+      return false;
+    } catch {
+      return true;
+    }
+  })();
   const formProblems = [
     ...(!name.trim() ? [t('automation_name_required')] : []),
     ...(!integrationId ? [t('automation_account_required')] : []),
@@ -372,6 +386,11 @@ export const AutomationWizardComponent: FC<Props> = ({
       : []),
     ...(!(enableReply && replyMessages.some((m) => m.trim())) &&
     !dmMessage.trim()
+      ? [t('automation_response_required')]
+      : []),
+    ...(invalidDmVariants ||
+    dmMessages.some((m) => m.length > (dmButtonText ? 640 : 2000)) ||
+    (dmMessages.length > 1 && dmMessages.some((m) => !m.trim()))
       ? [t('automation_response_required')]
       : []),
     ...(requireFollow && !dmMessage.trim()
@@ -429,8 +448,10 @@ export const AutomationWizardComponent: FC<Props> = ({
           if (msgs.length) body.replyMessages = msgs;
         }
         if (dmMessage.trim()) {
-          body.dmMessage = dmMessage.trim();
-          if (dmButtonText.trim() && dmButtonUrl.trim()) {
+          if (dmVariants) body.dmVariants = dmVariants;
+          else if (dmMessages.length > 1) body.dmMessages = dmMessages;
+          else body.dmMessage = dmMessage.trim();
+          if (!dmVariants && dmButtonText.trim() && dmButtonUrl.trim()) {
             body.dmButtonText = dmButtonText.trim();
             body.dmButtonUrl = dmButtonUrl.trim();
           }
@@ -476,7 +497,7 @@ export const AutomationWizardComponent: FC<Props> = ({
           }
         );
         toaster.show(t(isEditing ? 'flow_updated' : 'flow_created'), 'success');
-        if (!flowId) router.push(`/automacoes/${flow.id}/wizard`);
+        if (!flowId) router.push(`/automations/instagram/${flow.id}`);
       } catch (error) {
         const reason = t(
           `shared_error_${
@@ -491,7 +512,7 @@ export const AutomationWizardComponent: FC<Props> = ({
         setActionError(message);
         toaster.show(message, 'warning');
         if (configurationSaved && !flowId && latestFlow.current)
-          router.push(`/automacoes/${latestFlow.current.id}/wizard`);
+          router.push(`/automations/instagram/${latestFlow.current.id}`);
       } finally {
         setSaving(false);
       }
@@ -510,6 +531,8 @@ export const AutomationWizardComponent: FC<Props> = ({
       enableReply,
       replyMessages,
       dmMessage,
+      dmMessages,
+      dmVariants,
       dmButtonText,
       dmButtonUrl,
       requireFollow,
@@ -592,16 +615,12 @@ export const AutomationWizardComponent: FC<Props> = ({
     }
   };
 
-  const inputClass =
-    'w-full bg-transparent outline-none text-[14px] text-textColor px-[16px] py-[10px]';
-  const inputWrapperClass =
-    'bg-newBgColorInner border border-newTableBorder rounded-[8px]';
-
   return (
     <AutomationWorkspace
       name={name}
       nameLabel={t('wizard_name')}
       onNameChange={setName}
+      picture={(selectedIntegration as any)?.picture}
       subtitle={`${(selectedIntegration as any)?.name || ''} · ${t(
         'automation_instagram_comment_type'
       )}`}
@@ -631,17 +650,30 @@ export const AutomationWizardComponent: FC<Props> = ({
               workspace?.readOnly ||
               editorStatus === 'ARCHIVED'
             }
-            className="min-w-0 border-0 p-6 lg:flex-1 lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain"
+            className="min-w-0 border-0 p-4 space-y-3 lg:flex-1 lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain"
           >
-            <section className="mb-5 space-y-3">
-              <h2 className="text-base font-semibold">
-                {t('automation_section_account')}
-              </h2>
+            <AutomationEditorStage
+              kind="account"
+              step={1}
+              title={t('automation_section_account')}
+              summary={(selectedIntegration as any)?.name}
+            >
               <AutomationAccountSelect
+                connection={
+                  integrationId && (
+                    <AutomationConnectionIndicator
+                      integrationId={integrationId}
+                      provider="instagram"
+                      ready={connection.ready}
+                      loading={connection.loading}
+                    />
+                  )
+                }
                 label={t('wizard_account')}
                 value={integrationId}
                 accounts={instagramIntegrations.map((ig: any) => ({
                   id: ig.id,
+                  picture: ig.picture,
                   name: ig.name || ig.display || ig.id,
                 }))}
                 disabled={!!effectiveFlowId || preparingDraft || saving}
@@ -663,20 +695,79 @@ export const AutomationWizardComponent: FC<Props> = ({
                   {t('shared_connect_channel')}
                 </a>
               )}
-              {integrationId && (
-                <InstagramEditorConnection connection={connection} />
-              )}
-            </section>
+            </AutomationEditorStage>
 
             {/* Step 1: When someone comments */}
             {integrationId && (
               <>
-                <div className="border-t border-fifth pt-[20px] mb-[20px]">
-                  <h2 className="text-[16px] font-semibold text-textColor mb-[12px]">
-                    {t('automation_section_origin')}
-                  </h2>
-
+                <AutomationEditorStage
+                  kind="origin"
+                  step={2}
+                  title={t('automation_section_origin')}
+                  summary={
+                    postMode === 'all'
+                      ? t('wizard_all_posts')
+                      : postMode === 'next_publication'
+                      ? t('wizard_next_publication')
+                      : t(
+                          scheduledPostId || selectedPostIds.length === 1
+                            ? 'automation_stage_selected_one'
+                            : 'automation_stage_selected_count'
+                        ).replace(
+                          '{count}',
+                          String(scheduledPostId ? 1 : selectedPostIds.length)
+                        )
+                  }
+                >
                   <AutomationPublicationSelector
+                    showSpecificContentWhenScheduled
+                    scopeNote={
+                      aliases?.length
+                        ? t('automation_instagram_aliases_scope_hint')
+                        : undefined
+                    }
+                    specificContent={
+                      <>
+                        {/* Aliases de dark posts (anuncios) — aditivo a qualquer modo */}
+                        <details className="mt-4 rounded-lg border border-newTableBorder p-3 text-sm">
+                          <summary className="cursor-pointer font-medium">
+                            {t('trigger_ad_ids_label')}
+                          </summary>
+                          <div className="pt-3 space-y-3">
+                            {!effectiveFlowId && (
+                              <>
+                                <p className="text-xs text-newTextColor/60">
+                                  {t('automation_prepare_draft_hint')}
+                                </p>
+                                <button
+                                  type="button"
+                                  disabled={
+                                    preparingDraft ||
+                                    saving ||
+                                    !name.trim() ||
+                                    !connection.ready
+                                  }
+                                  onClick={prepareDraft}
+                                  className="rounded-lg border border-newTableBorder px-3 py-2 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-btnPrimary"
+                                >
+                                  {t(
+                                    preparingDraft
+                                      ? 'automation_preparing_draft'
+                                      : 'automation_prepare_draft'
+                                  )}
+                                </button>
+                              </>
+                            )}
+                            {effectiveFlowId && (
+                              <AdAliasesField
+                                flowId={effectiveFlowId}
+                                integrationId={integrationId || null}
+                              />
+                            )}
+                          </div>
+                        </details>
+                      </>
+                    }
                     onPreviewChange={setPublicationPreviews}
                     key={integrationId}
                     integrationId={integrationId}
@@ -702,56 +793,19 @@ export const AutomationWizardComponent: FC<Props> = ({
                       setActivePreviewTab('post');
                     }}
                   />
-
-                  {/* Aliases de dark posts (anuncios) — aditivo a qualquer modo */}
-                  <details className="mt-4 rounded-lg border border-newTableBorder p-3 text-sm">
-                    <summary className="cursor-pointer font-medium">
-                      {t('trigger_ad_ids_label')}
-                    </summary>
-                    <div className="pt-3 space-y-3">
-                      {!effectiveFlowId && (
-                        <>
-                          <p className="text-xs text-newTextColor/60">
-                            {t('automation_prepare_draft_hint')}
-                          </p>
-                          <button
-                            type="button"
-                            disabled={
-                              preparingDraft ||
-                              saving ||
-                              !name.trim() ||
-                              !connection.ready
-                            }
-                            onClick={prepareDraft}
-                            className="rounded-lg border border-newTableBorder px-3 py-2 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-btnPrimary"
-                          >
-                            {t(
-                              preparingDraft
-                                ? 'automation_preparing_draft'
-                                : 'automation_prepare_draft'
-                            )}
-                          </button>
-                        </>
-                      )}
-                      {effectiveFlowId && (
-                        <AdAliasesField
-                          flowId={effectiveFlowId}
-                          integrationId={integrationId || null}
-                        />
-                      )}
-                    </div>
-                  </details>
-                </div>
+                </AutomationEditorStage>
 
                 {/* Section: E esse comentário possui (ManyChat style) */}
-                <div className="border-t border-fifth pt-[20px] mb-[20px]">
-                  <h2 className="text-[16px] font-semibold text-textColor mb-[12px]">
-                    {t(
-                      'automation_section_conditions',
-                      'E esse comentário possui'
-                    )}
-                  </h2>
-
+                <AutomationEditorStage
+                  kind="conditions"
+                  step={3}
+                  title={t('automation_section_conditions')}
+                  summary={
+                    keywordMode === 'specific'
+                      ? keywords.join(', ')
+                      : t('automation_any_comment')
+                  }
+                >
                   <AutomationKeywordConditions
                     specific={keywordMode === 'specific'}
                     keywords={keywords}
@@ -763,13 +817,23 @@ export const AutomationWizardComponent: FC<Props> = ({
                     onMatchModeChange={setMatchMode}
                     onFocus={() => setActivePreviewTab('comments')}
                   />
-                </div>
+                </AutomationEditorStage>
 
                 {/* DM section */}
-                <section className="border-t border-fifth pt-[20px] mb-[20px]">
-                  <h2 className="text-[16px] font-semibold text-textColor mb-[12px]">
-                    {t('automation_section_response')}
-                  </h2>
+                <AutomationEditorStage
+                  kind="public"
+                  step={4}
+                  title={t('automation_stage_public_title')}
+                  summary={
+                    enableReply
+                      ? t(
+                          replyMessages.length === 1
+                            ? 'automation_stage_variations_one'
+                            : 'automation_stage_variations_count'
+                        ).replace('{count}', String(replyMessages.length))
+                      : t('automation_stage_disabled')
+                  }
+                >
                   <div className="mt-3">
                     <AutomationPublicReplyToggle
                       enabled={enableReply}
@@ -778,11 +842,9 @@ export const AutomationWizardComponent: FC<Props> = ({
                         setActivePreviewTab('comments');
                       }}
                       label={t('shared_add_public_reply')}
-                    />
-                  </div>
-                  {enableReply && (
-                    <div className="mt-3">
+                    >
                       <SharedReplyVariations
+                        engine="legacy"
                         messages={replyMessages}
                         onChange={setReplyMessages}
                         maxVariants={null}
@@ -791,9 +853,19 @@ export const AutomationWizardComponent: FC<Props> = ({
                           setActivePreviewTab('comments');
                         }}
                       />
-                    </div>
-                  )}
-
+                    </AutomationPublicReplyToggle>
+                  </div>
+                </AutomationEditorStage>
+                <AutomationEditorStage
+                  kind="private"
+                  step={5}
+                  title={t('automation_stage_private_title')}
+                  summary={t(
+                    dmMessages.length === 1
+                      ? 'automation_stage_variations_one'
+                      : 'automation_stage_variations_count'
+                  ).replace('{count}', String(dmMessages.length))}
+                >
                   <div className="mt-5 mb-3 flex items-center justify-between text-xs text-newTextColor/70">
                     <span>
                       {t(
@@ -812,90 +884,61 @@ export const AutomationWizardComponent: FC<Props> = ({
                       )}
                     </AutomationContextHelp>
                   </div>
-                  <label
-                    htmlFor={privateMessageId}
-                    className="block text-sm mb-2"
-                  >
-                    {t('shared_message')}
-                  </label>
-                  <div className={inputWrapperClass}>
-                    <textarea
-                      id={privateMessageId}
-                      className={`${inputClass} min-h-[100px] resize-y`}
-                      rows={4}
-                      placeholder={t('automation_private_message_placeholder')}
-                      value={dmMessage}
-                      onFocus={() => {
-                        setActivePreviewTab('dm');
-                        setJourneyStage('delivery');
-                      }}
-                      onChange={(e) => setDmMessage(e.target.value)}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between gap-2">
-                    <AutomationMessageVariables
-                      textareaId={privateMessageId}
-                      onChange={setDmMessage}
-                    />
-                    <AutomationContextHelp label={t('automation_link_help')}>
-                      {t('shared_link_hint')}
-                    </AutomationContextHelp>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
+                  <PrivateMessageVariations
+                    maxLength={dmButtonText ? 640 : 2000}
+                    messages={dmMessages}
+                    variants={dmVariants}
+                    buttonText={dmButtonText}
+                    buttonUrl={dmButtonUrl}
+                    onVariantsChange={(variants) => {
+                      setDmVariants(variants);
+                      setDmMessages(variants.map((v) => v.message));
+                      setDmMessage(variants[0]?.message || '');
+                      setDmButtonText('');
+                      setDmButtonUrl('');
+                    }}
+                    onChange={(messages) => {
+                      setDmMessages(messages);
+                      setDmMessage(messages[0]);
+                    }}
+                    onFocus={(index) => {
+                      setDmPreviewIndex(index);
                       setActivePreviewTab('dm');
                       setJourneyStage('delivery');
-                      setShowAddLink(true);
                     }}
-                    className="mt-[10px] rounded-[4px] border border-dashed border-fifth text-[12px] text-textColor px-[14px] py-[8px] hover:bg-boxHover"
-                  >
-                    {dmButtonText && dmButtonUrl
-                      ? `${dmButtonText} · ${dmButtonUrl}`
-                      : `+ ${t('story_add_link', 'Adicionar um link')}`}
-                  </button>
-                </section>
+                  />
+                </AutomationEditorStage>
 
                 {/* Extras — follow gate */}
-                <div className="border-t border-fifth pt-[20px] mb-[20px]">
-                  <h2 className="text-[16px] font-semibold text-textColor mb-[12px]">
-                    {t(
-                      'story_section_extras',
-                      'Outros recursos para automatizar'
-                    )}
-                  </h2>
-                  <div className="rounded-[6px] border border-fifth">
-                    <div className="flex items-center gap-1 pr-3">
-                      <label className="flex flex-1 items-center justify-between gap-[12px] p-[10px] cursor-pointer">
-                        <div>
-                          <div className="text-[13px] text-textColor">
-                            {t(
-                              'story_require_follow',
-                              'Pedir para seguir antes de enviar'
-                            )}
-                          </div>
-                        </div>
-                        <input
-                          type="checkbox"
-                          checked={requireFollow}
-                          onChange={(e) => {
-                            setRequireFollow(e.target.checked);
-                            setJourneyStage(
-                              e.target.checked ? 'opening' : 'delivery'
-                            );
-                            setActivePreviewTab('dm');
-                          }}
-                          className="h-[18px] w-[18px] accent-btnPrimary cursor-pointer"
-                        />
-                      </label>
-                      <AutomationContextHelp
-                        label={t('automation_follow_help')}
-                      >
-                        {t('story_require_follow_hint')}
-                      </AutomationContextHelp>
-                    </div>
+                <AutomationEditorStage
+                  kind="followers"
+                  step={6}
+                  title={t('automation_stage_followers_title')}
+                  summary={t(
+                    requireFollow
+                      ? 'automation_stage_enabled'
+                      : 'automation_stage_disabled'
+                  )}
+                >
+                  <div className="space-y-3">
+                    <AutomationPublicReplyToggle
+                      enabled={requireFollow}
+                      label={t('story_require_follow')}
+                      help={
+                        <AutomationContextHelp
+                          label={t('automation_follow_help')}
+                        >
+                          {t('story_require_follow_hint')}
+                        </AutomationContextHelp>
+                      }
+                      onChange={(enabled) => {
+                        setRequireFollow(enabled);
+                        setJourneyStage(enabled ? 'opening' : 'delivery');
+                        setActivePreviewTab('dm');
+                      }}
+                    />
                     {requireFollow && (
-                      <div className="border-t border-newTableBorder p-3">
+                      <div className="space-y-3">
                         <AutomationFollowGateFields
                           values={{
                             openingDmMessage,
@@ -931,7 +974,7 @@ export const AutomationWizardComponent: FC<Props> = ({
                       </div>
                     )}
                   </div>
-                </div>
+                </AutomationEditorStage>
               </>
             )}
           </fieldset>
@@ -946,13 +989,7 @@ export const AutomationWizardComponent: FC<Props> = ({
               onChange={setPreviewPublicationId}
             />
           )}
-          {activePreviewTab === 'comments' && enableReply && (
-            <ReplyPreviewControls
-              messages={replyMessages}
-              index={replyPreviewIndex}
-              onChange={setReplyPreviewIndex}
-            />
-          )}
+
           {activePreviewTab === 'dm' && requireFollow && (
             <JourneyPreviewControls
               stage={journeyStage}
@@ -961,6 +998,8 @@ export const AutomationWizardComponent: FC<Props> = ({
           )}
           <AutomationPhoneFrame>
             <WizardPhonePreview
+              postScope={postMode}
+              postIsReel={selectedPost?.permalink?.includes('/reel/')}
               postSelected={!!selectedPost}
               postMediaType={
                 selectedPost?.thumbnailUrl ? undefined : selectedPost?.mediaType
@@ -985,9 +1024,22 @@ export const AutomationWizardComponent: FC<Props> = ({
                 gateButton: alreadyFollowedButtonText,
                 exhaustedMessage: gateExhaustedMessage,
               }}
-              dmMessage={dmMessage || undefined}
-              dmButtonText={dmButtonText || undefined}
-              dmButtonUrl={dmButtonUrl || undefined}
+              dmMessage={
+                dmMessages[Math.min(dmPreviewIndex, dmMessages.length - 1)] ||
+                undefined
+              }
+              dmButtonText={
+                dmVariants
+                  ? dmVariants[Math.min(dmPreviewIndex, dmVariants.length - 1)]
+                      ?.buttonText
+                  : dmButtonText || undefined
+              }
+              dmButtonUrl={
+                dmVariants
+                  ? dmVariants[Math.min(dmPreviewIndex, dmVariants.length - 1)]
+                      ?.buttonUrl
+                  : dmButtonUrl || undefined
+              }
               integrationPicture={(selectedIntegration as any)?.picture}
               integrationName={
                 (selectedIntegration as any)?.name ||
@@ -1002,17 +1054,6 @@ export const AutomationWizardComponent: FC<Props> = ({
             />
           </AutomationPhoneFrame>
         </AutomationPreviewPanel>
-
-        <AddLinkModal
-          open={showAddLink}
-          initialText={dmButtonText}
-          initialUrl={dmButtonUrl}
-          onClose={() => setShowAddLink(false)}
-          onSave={(text, url) => {
-            setDmButtonText(text);
-            setDmButtonUrl(url);
-          }}
-        />
       </AutomationEditorLayout>
     </AutomationWorkspace>
   );

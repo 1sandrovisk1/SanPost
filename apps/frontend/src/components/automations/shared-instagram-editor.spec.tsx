@@ -110,7 +110,7 @@ describe('entrada direta Instagram', () => {
   it('usa as mesmas labels e exemplos na ordem palavras chave, resposta publica e privada', async () => {
     render(<AutomationWizardComponent />);
     choose();
-    await screen.findByText('automation_webhook_configured');
+    await screen.findByLabelText('automation_webhook_configured');
     const toggle = screen.getByRole('switch', {
       name: 'shared_add_public_reply',
     });
@@ -134,9 +134,13 @@ describe('entrada direta Instagram', () => {
     expect(
       screen.getByPlaceholderText('automation_private_message_placeholder')
     ).toBe(message);
+    fireEvent.focus(screen.getByRole('textbox', { name: 'shared_message' }));
     expect(
-      screen.getByRole('combobox', { name: 'automation_insert_variable' })
+      screen.getByRole('button', { name: 'automation_insert_variable' })
     ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'automation_link_help' })
+    );
     expect(screen.getByText('shared_link_hint')).toBeTruthy();
   });
   it('prepara um unico rascunho para aliases e finaliza no mesmo ID sem perder a mensagem', async () => {
@@ -145,7 +149,7 @@ describe('entrada direta Instagram', () => {
       (screen.getByLabelText('wizard_name') as HTMLInputElement).value
     ).toBe('automation_name_instagram_comment');
     choose();
-    await screen.findByText('automation_webhook_configured');
+    await screen.findByLabelText('automation_webhook_configured');
     fireEvent.change(
       screen.getByPlaceholderText('automation_private_message_placeholder'),
       {
@@ -198,7 +202,7 @@ describe('entrada direta Instagram', () => {
     }));
     render(<AutomationWizardComponent />);
     choose();
-    await screen.findByText('automation_webhook_configured');
+    await screen.findByLabelText('automation_webhook_configured');
     fireEvent.change(
       screen.getByPlaceholderText('automation_private_message_placeholder'),
       {
@@ -284,7 +288,7 @@ describe('entrada direta Instagram', () => {
     fireEvent.change(screen.getByLabelText('wizard_account'), {
       target: { value: 'ig2' },
     });
-    await screen.findByText('automation_webhook_configured');
+    await screen.findByLabelText('automation_webhook_configured');
     expect(screen.getByRole('switch', { name: 'activate_flow' })).toBeTruthy();
     expect(state.fetch.mock.calls.some(([url]) => url === '/flows')).toBe(
       false
@@ -406,14 +410,14 @@ describe('jornada no editor Instagram', () => {
     }));
     render(<AutomationWizardComponent />);
     choose();
-    await screen.findByText('automation_webhook_configured');
+    await screen.findByLabelText('automation_webhook_configured');
     fireEvent.click(screen.getByRole('radio', { name: 'wizard_all_posts' }));
     fireEvent.change(screen.getByLabelText('shared_message'), {
       target: { value: 'Entrega' },
     });
     fireEvent.click(screen.getByRole('switch', { name: 'activate_flow' }));
     await screen.findByText(/automation_activation_failed_saved/);
-    expect(state.push).toHaveBeenCalledWith('/automacoes/prepared/wizard');
+    expect(state.push).toHaveBeenCalledWith('/automations/instagram/prepared');
     fireEvent.click(screen.getByRole('switch', { name: 'activate_flow' }));
     await waitFor(() =>
       expect(
@@ -432,9 +436,9 @@ describe('jornada no editor Instagram', () => {
   it('resposta publica pertence a Resposta e a previa acompanha cada variacao', async () => {
     render(<AutomationWizardComponent />);
     choose();
-    await screen.findByText('automation_webhook_configured');
+    await screen.findByLabelText('automation_webhook_configured');
     const section = screen
-      .getByRole('heading', { name: 'automation_section_response' })
+      .getByRole('switch', { name: 'shared_add_public_reply' })
       .closest('section')!;
     fireEvent.click(
       within(section).getByRole('switch', { name: 'shared_add_public_reply' })
@@ -443,7 +447,7 @@ describe('jornada no editor Instagram', () => {
       target: { value: 'Primeira' },
     });
     fireEvent.click(
-      screen.getByRole('button', { name: 'wizard_add_reply_variant' })
+      screen.getAllByRole('button', { name: 'wizard_add_reply_variant' })[0]
     );
     fireEvent.change(screen.getByLabelText('shared_reply_variant 2'), {
       target: { value: 'Segunda' },
@@ -464,9 +468,9 @@ describe('jornada no editor Instagram', () => {
   it('gate nao permite ativar sem mensagem final e organiza tres etapas', async () => {
     render(<AutomationWizardComponent />);
     choose();
-    await screen.findByText('automation_webhook_configured');
+    await screen.findByLabelText('automation_webhook_configured');
     fireEvent.click(
-      screen.getByRole('checkbox', { name: /story_require_follow/ })
+      screen.getByRole('switch', { name: /story_require_follow/ })
     );
     expect(screen.getByText('automation_gate_opening')).toBeTruthy();
     expect(screen.getByText('automation_final_message_required')).toBeTruthy();
@@ -484,12 +488,12 @@ describe('jornada no editor Instagram', () => {
     } exige texto do gate para a previa corresponder ao envio`, async () => {
       render(<Editor />);
       choose();
-      await screen.findByText('automation_webhook_configured');
+      await screen.findByLabelText('automation_webhook_configured');
       fireEvent.change(screen.getByLabelText('shared_message'), {
         target: { value: 'Final' },
       });
       fireEvent.click(
-        screen.getByRole('checkbox', { name: /story_require_follow/ })
+        screen.getByRole('switch', { name: /story_require_follow/ })
       );
       fireEvent.change(screen.getByLabelText('story_follow_gate_label'), {
         target: { value: '' },
@@ -506,7 +510,7 @@ describe('jornada no editor Instagram', () => {
 it('previa usa agendamento selecionado e limpa ao trocar conta sem gravar', async () => {
   render(<AutomationWizardComponent />);
   choose();
-  await screen.findByText('automation_webhook_configured');
+  await screen.findByLabelText('automation_webhook_configured');
   fireEvent.click(
     screen.getByRole('button', { name: 'automation_select_publications' })
   );
@@ -528,4 +532,16 @@ it('previa usa agendamento selecionado e limpa ao trocar conta sem gravar', asyn
     ).toBeNull()
   );
   expect(state.fetch.mock.calls.some(([url]) => url === '/flows')).toBe(false);
+});
+it('aninha os IDs de Dark Posts no escopo de publicacoes especificas', async () => {
+  render(<AutomationWizardComponent />);
+  choose();
+  await screen.findByLabelText('automation_webhook_configured');
+  fireEvent.click(screen.getByRole('radio', { name: 'wizard_specific_post' }));
+  const radio = screen.getByRole('radio', { name: 'wizard_specific_post' });
+  expect(
+    radio
+      .closest('div')
+      ?.parentElement?.contains(screen.getByText('trigger_ad_ids_label'))
+  ).toBe(true);
 });

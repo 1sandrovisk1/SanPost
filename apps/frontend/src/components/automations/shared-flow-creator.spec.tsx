@@ -172,6 +172,9 @@ describe('criador compartilhado', () => {
     expect(screen.queryByLabelText('shared_posts')).toBeNull();
     expect(screen.queryByText('shared_add_public_reply')).toBeNull();
     expect(screen.queryByText('shared_link_hint')).toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'automation_link_help' })
+    );
     expect(screen.getByText('messenger_message_hint')).toBeTruthy();
     fireEvent.change(screen.getByLabelText('shared_message'), {
       target: { value: 'Link de teste' },
@@ -294,15 +297,13 @@ describe('criador compartilhado', () => {
       target: { value: 'Atualizada' },
     });
     fireEvent.click(
-      screen.getByRole('button', { name: 'wizard_add_reply_variant' })
+      screen.getAllByRole('button', { name: 'wizard_add_reply_variant' })[0]
     );
     fireEvent.change(screen.getByLabelText('shared_reply_variant 3'), {
       target: { value: 'Terceira' },
     });
     fireEvent.focus(screen.getByLabelText('shared_reply_variant 3'));
-    fireEvent.change(screen.getByLabelText('shared_reply_preview'), {
-      target: { value: '2' },
-    });
+    expect(screen.queryByLabelText('shared_reply_preview')).toBeNull();
     expect(
       within(screen.getByRole('complementary')).getByText('Terceira')
     ).toBeTruthy();
@@ -335,7 +336,7 @@ describe('criador compartilhado', () => {
     };
     render(<SharedFlowCreator id="flow" />);
     fireEvent.click(
-      screen.getByRole('button', { name: 'wizard_add_reply_variant' })
+      screen.getAllByRole('button', { name: 'wizard_add_reply_variant' })[0]
     );
     fireEvent.click(
       screen.getByRole('button', {
@@ -344,7 +345,9 @@ describe('criador compartilhado', () => {
     );
     expect(screen.getByText('shared_error_invalid_message')).toBeTruthy();
     expect(state.fetchApi).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByLabelText('shared_add_public_reply'));
+    fireEvent.click(
+      screen.getByRole('switch', { name: 'shared_add_public_reply' })
+    );
     fireEvent.click(
       screen.getByRole('button', {
         name: /^(save_flow|automation_save_draft|wizard_update)$/,
@@ -588,9 +591,7 @@ describe('criador compartilhado', () => {
       })
     );
     await waitFor(() =>
-      expect(state.replace).toHaveBeenCalledWith(
-        '/automacoes/compartilhada/created'
-      )
+      expect(state.replace).toHaveBeenCalledWith('/automations/created')
     );
     const body = JSON.parse(state.fetchApi.mock.calls[0][1].body);
     expect(body.channels).toEqual([
@@ -755,7 +756,7 @@ describe('respostas e estado do Facebook', () => {
       target: { value: 'fb' },
     });
     const section = screen
-      .getByRole('heading', { name: 'automation_section_response' })
+      .getByRole('switch', { name: 'shared_add_public_reply' })
       .closest('section')!;
     fireEvent.click(
       within(section).getByRole('switch', { name: 'shared_add_public_reply' })
@@ -831,7 +832,7 @@ it('falha de ativacao apos salvar preserva origem do atalho e retry nao cria nem
   });
   fireEvent.click(screen.getByRole('switch', { name: 'activate_flow' }));
   await screen.findByText(/automation_activation_failed_saved/);
-  expect(state.replace).toHaveBeenCalledWith('/automacoes/compartilhada/saved');
+  expect(state.replace).toHaveBeenCalledWith('/automations/saved');
   expect(
     screen
       .getByRole('button', { name: 'Post fixture' })
@@ -878,4 +879,62 @@ it('Facebook passa a publicacao selecionada para a previa e a navegacao ilustrat
   );
   expect(screen.queryByText('preview_no_post')).toBeNull();
   expect(state.fetchApi).not.toHaveBeenCalled();
+});
+
+it('preserva botoes proprios no rapido, na previa e ao salvar', async () => {
+  const variants = [
+    { message: 'A', buttonText: 'Link A', buttonUrl: 'https://example.com/a' },
+    { message: 'B', buttonText: 'Link B', buttonUrl: 'https://example.com/b' },
+  ];
+  state.flow = {
+    id: 'flow',
+    name: 'Pares',
+    status: 'PAUSED',
+    revision: 3,
+    definition: simpleDefinition({ message: '', dmVariants: variants }),
+    channels: [
+      {
+        integrationId: 'fb',
+        platform: 'facebook',
+        postMode: 'all',
+        postIds: [],
+      },
+    ],
+  };
+  render(<SharedFlowCreator id="flow" />);
+  expect(screen.queryByText('canvas')).toBeNull();
+  fireEvent.focus(
+    screen.getByRole('textbox', { name: 'automation_private_variant 2' })
+  );
+  const preview = within(screen.getByRole('complementary'));
+  expect(preview.getByText('B')).toBeTruthy();
+  expect(preview.getByText(/Link B/)).toBeTruthy();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Link A · https://example.com/a' })
+  );
+  fireEvent.click(within(screen.getByRole('dialog')).getByText('remove'));
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: /^(save_flow|automation_save_draft|wizard_update)$/,
+    })
+  );
+  await waitFor(() => expect(state.fetchApi).toHaveBeenCalled());
+  const body = JSON.parse(state.fetchApi.mock.calls[0][1].body);
+  expect(JSON.parse(body.definition.nodes[1].data)).toEqual({
+    variants: [{ message: 'A' }, variants[1]],
+  });
+});
+it('resume Messenger como palavra chave pendente e omite etapas incompatíveis', () => {
+  state.query = 'trigger=messenger_message&channel=fb';
+  render(<SharedFlowCreator />);
+  expect(screen.queryByText('automation_any_comment')).toBeNull();
+  expect(
+    screen.queryByRole('region', { name: 'automation_section_origin' })
+  ).toBeNull();
+  expect(
+    screen.queryByRole('region', { name: 'automation_stage_public_title' })
+  ).toBeNull();
+  expect(
+    screen.queryByRole('region', { name: 'automation_stage_followers_title' })
+  ).toBeNull();
 });

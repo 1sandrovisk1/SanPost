@@ -1,9 +1,13 @@
-import { facebookPostReference } from './facebook-post-reference';
+import {
+  facebookPostReference,
+  facebookPostPreview,
+} from './facebook-post-reference';
 
 describe('referencia de publicacao do Facebook', () => {
   it.each([
     '123_456',
     '456',
+    'https://www.facebook.com/reel/456/',
     ' 123_456 ',
     'https://www.facebook.com/123/posts/456/',
     'https://www.facebook.com/789/posts/456/',
@@ -25,6 +29,9 @@ describe('referencia de publicacao do Facebook', () => {
   });
   it.each([
     '',
+    'https://facebook.com/reel/456?id=789',
+    'https://facebook.com/reel/456/comments',
+    'https://facebook.com/reel/pfbidExample',
     'me',
     '../me',
     '123_456/comments',
@@ -45,4 +52,23 @@ describe('referencia de publicacao do Facebook', () => {
       'INVALID_POST_REFERENCE'
     );
   });
+});
+
+describe('estado publicado da previa', () => {
+  it.each([false, true])(
+    'expoe apenas o booleano confirmado %s',
+    (is_published) => {
+      expect(facebookPostPreview({ is_published }, '123_456').isPublished).toBe(
+        is_published
+      );
+    }
+  );
+  it.each([undefined, null, 'false', 0])(
+    'nao inventa estado para %s',
+    (is_published) => {
+      expect(
+        facebookPostPreview({ is_published }, '123_456')
+      ).not.toHaveProperty('isPublished');
+    }
+  );
 });

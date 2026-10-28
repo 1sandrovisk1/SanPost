@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -177,4 +178,56 @@ describe('historico compacto', () => {
       within(drawer).getByText('history_technical').closest('details')?.open
     ).toBe(false);
   });
+});
+
+describe('feedback da atualizacao manual', () => {
+  it('mostra progresso e confirma consulta concluida', async () => {
+    let done!: (v: any) => void;
+    state.mutate.mockReturnValueOnce(
+      new Promise((r) => {
+        done = r;
+      })
+    );
+    render(<AutomationExecutionHistory engine="shared" flowId="f" />);
+    fireEvent.click(screen.getByRole('button', { name: 'history_refresh' }));
+    expect(
+      screen
+        .getByRole('button', { name: 'history_refresh' })
+        .getAttribute('aria-busy')
+    ).toBe('true');
+    await act(async () => done({ items: [item], nextCursor: null }));
+    expect(screen.getByText('history_refreshed')).toBeTruthy();
+  });
+  it('mostra erro mesmo com resultados anteriores e permite tentar novamente', async () => {
+    state.mutate.mockRejectedValueOnce(new Error('raw secret'));
+    render(<AutomationExecutionHistory engine="shared" flowId="f" />);
+    fireEvent.click(screen.getByRole('button', { name: 'history_refresh' }));
+    await screen.findByText('history_refresh_failed');
+    expect(screen.queryByText('raw secret')).toBeNull();
+    expect(screen.getByText('quero')).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'history_refresh' })
+    ).toHaveProperty('disabled', false);
+  });
+  it('mantem fuso somente na ajuda do cabecalho Inicio', () => {
+    render(<AutomationExecutionHistory engine="shared" flowId="f" />);
+    expect(
+      screen
+        .getByRole('button', { name: 'history_timezone_help' })
+        .closest('th')
+    ).toBeTruthy();
+  });
+});
+it('drawer confirma atualizacao manual com detalhe em cache', async () => {
+  let done!: (v: any) => void;
+  state.mutate.mockReturnValueOnce(new Promise((r) => (done = r)));
+  render(<AutomationExecutionHistory engine="shared" flowId="f" />);
+  fireEvent.click(screen.getByRole('button', { name: /history_view_details/ }));
+  const drawer = screen.getByRole('dialog'),
+    button = within(drawer).getByRole('button', { name: 'history_refresh' });
+  fireEvent.click(button);
+  expect(button.getAttribute('aria-busy')).toBe('true');
+  expect(button).toHaveProperty('disabled', true);
+  await act(async () => done(state.detail));
+  expect(within(drawer).getByText('history_refreshed')).toBeTruthy();
 });

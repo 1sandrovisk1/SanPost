@@ -1,4 +1,5 @@
 'use client';
+import { AutomationMessageVariables } from './shared-message-variables.component';
 import { useId } from 'react';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import type { PreviewJourneyStage } from './shared-preview-journey';
@@ -16,7 +17,9 @@ export function AutomationFollowGateFields({
   values,
   onChange,
   onFocusStage,
+  story = false,
 }: {
+  story?: boolean;
   values: FollowGateValues;
   onChange: (patch: Partial<FollowGateValues>) => void;
   onFocusStage: (stage: PreviewJourneyStage) => void;
@@ -29,8 +32,10 @@ export function AutomationFollowGateFields({
     stage: PreviewJourneyStage,
     button = false
   ) => (
-    <label className="block space-y-1 text-xs" htmlFor={`${id}-${field}`}>
-      <span>{t(label)}</span>
+    <div className="space-y-1 text-xs">
+      <label className="block" htmlFor={`${id}-${field}`}>
+        {t(label)}
+      </label>
       {button ? (
         <input
           id={`${id}-${field}`}
@@ -45,91 +50,109 @@ export function AutomationFollowGateFields({
           id={`${id}-${field}`}
           value={values[field]}
           rows={3}
-          className={inputClass}
+          maxLength={2000}
+          className={`${inputClass} pb-10`}
           onFocus={() => onFocusStage(stage)}
           onChange={(e) => onChange({ [field]: e.target.value })}
         />
       )}
-    </label>
+      {!button && (
+        <AutomationMessageVariables
+          textareaId={`${id}-${field}`}
+          variables={false}
+          onChange={(value) => onChange({ [field]: value })}
+        />
+      )}
+    </div>
   );
   return (
     <div className="space-y-2">
-      <p className="text-xs text-newTextColor/70">
-        {t('automation_gate_sequence')}
-      </p>
-      <details className="rounded-lg border border-newTableBorder p-3">
-        <summary className="cursor-pointer text-sm font-medium">
-          <span>{t('automation_gate_opening')}</span>
-          <span className="block truncate text-xs font-normal text-newTextColor/60 mt-1">
-            {values.openingDmMessage || t('automation_not_configured')} ·{' '}
-            {values.openingDmButtonText}
-          </span>
-        </summary>
-        <div className="pt-3 space-y-3">
-          {textField(
-            'openingDmMessage',
-            'follow_gate_opening_dm_label',
-            'opening'
-          )}
-          {textField(
-            'openingDmButtonText',
-            'follow_gate_opening_btn_label',
-            'opening',
-            true
-          )}
-        </div>
-      </details>
+      {!story && (
+        <p className="text-xs text-newTextColor/70">
+          {t('automation_gate_sequence')}
+        </p>
+      )}
+      {!story && (
+        <details className="rounded-lg border border-newTableBorder p-3">
+          <summary className="cursor-pointer text-sm font-medium">
+            <span>{t('automation_gate_opening')}</span>
+            <span className="block truncate text-xs font-normal text-newTextColor/60 mt-1">
+              {values.openingDmMessage || t('automation_not_configured')} ·{' '}
+              {values.openingDmButtonText}
+            </span>
+          </summary>
+          <div className="pt-3 space-y-3">
+            {textField(
+              'openingDmMessage',
+              'follow_gate_opening_dm_label',
+              'opening'
+            )}
+            {textField(
+              'openingDmButtonText',
+              'follow_gate_opening_btn_label',
+              'opening',
+              true
+            )}
+          </div>
+        </details>
+      )}
       <details className="rounded-lg border border-newTableBorder p-3">
         <summary className="cursor-pointer text-sm font-medium">
           <span>{t('automation_gate_check')}</span>
           <span className="block truncate text-xs font-normal text-newTextColor/60 mt-1">
-            {values.followGateMessage || t('automation_not_configured')} ·{' '}
-            {values.alreadyFollowedButtonText}
+            {values.followGateMessage || t('automation_not_configured')}
+            {!story && <> · {values.alreadyFollowedButtonText}</>}
           </span>
         </summary>
         <div className="pt-3 space-y-3">
           {textField('followGateMessage', 'story_follow_gate_label', 'gate')}
-          {textField(
-            'alreadyFollowedButtonText',
-            'follow_gate_already_btn_label',
-            'gate',
-            true
-          )}
+          {!story &&
+            textField(
+              'alreadyFollowedButtonText',
+              'follow_gate_already_btn_label',
+              'gate',
+              true
+            )}
         </div>
       </details>
-      <details className="rounded-lg border border-newTableBorder p-3">
-        <summary className="cursor-pointer text-sm font-medium">
-          <span>{t('automation_gate_attempts')}</span>
-          <span className="block text-xs font-normal text-newTextColor/60 mt-1">
-            {values.maxGateAttempts} {t('automation_attempts')} ·{' '}
-            {values.gateExhaustedMessage
-              ? t('automation_custom_message')
-              : t('automation_not_configured')}
-          </span>
-        </summary>
-        <div className="pt-3 space-y-3">
-          {textField(
-            'gateExhaustedMessage',
-            'follow_gate_exhausted_label',
-            'exhausted'
-          )}
-          <label className="block text-xs space-y-1" htmlFor={`${id}-attempts`}>
-            <span>{t('follow_gate_max_attempts_label')}</span>
-            <input
-              id={`${id}-attempts`}
-              type="number"
-              min={1}
-              max={10}
-              value={values.maxGateAttempts}
-              className={inputClass}
-              onFocus={() => onFocusStage('exhausted')}
-              onChange={(e) =>
-                onChange({ maxGateAttempts: Number(e.target.value) })
-              }
-            />
-          </label>
-        </div>
-      </details>
+      {!story && (
+        <details className="rounded-lg border border-newTableBorder p-3">
+          <summary className="cursor-pointer text-sm font-medium">
+            <span>{t('automation_gate_attempts')}</span>
+            <span className="block text-xs font-normal text-newTextColor/60 mt-1">
+              {values.maxGateAttempts} {t('automation_attempts')} ·{' '}
+              {values.gateExhaustedMessage
+                ? t('automation_custom_message')
+                : t('automation_not_configured')}
+            </span>
+          </summary>
+          <div className="pt-3 space-y-3">
+            {textField(
+              'gateExhaustedMessage',
+              'follow_gate_exhausted_label',
+              'exhausted'
+            )}
+            <label
+              className="block text-xs space-y-1"
+              htmlFor={`${id}-attempts`}
+            >
+              <span>{t('follow_gate_max_attempts_label')}</span>
+              <input
+                id={`${id}-attempts`}
+                type="number"
+                min={1}
+                max={10}
+                value={values.maxGateAttempts}
+                className={inputClass}
+                onFocus={() => onFocusStage('exhausted')}
+                onChange={(e) =>
+                  onChange({ maxGateAttempts: Number(e.target.value) })
+                }
+              />
+            </label>
+          </div>
+        </details>
+      )}
     </div>
   );
 }

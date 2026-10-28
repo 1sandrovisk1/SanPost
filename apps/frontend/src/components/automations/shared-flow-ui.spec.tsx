@@ -81,3 +81,24 @@ it('previa Instagram usa palavra do gatilho e placeholders reais do motor', () =
   );
   expect(screen.getByText('Oi Ana 12345: COMPRA / 67890')).toBeTruthy();
 });
+it('mostra escopo amplo e navegacao fora do telefone', () => {
+  const { container } = render(
+    <WizardPhonePreview platform="facebook" postScope="all" activeTab="post" />
+  );
+  expect(screen.getByText('automation_preview_all_posts')).toBeTruthy();
+  expect(screen.queryByText('preview_no_post')).toBeNull();
+  expect(
+    container
+      .querySelector('[data-phone]')
+      ?.contains(screen.getByRole('button', { name: 'preview_tab_comments' }))
+  ).toBe(false);
+});
+it.each(['all', 'next_publication', 'specific'] as const)(
+  'Story %s sem miniatura nao pede publicacao',
+  (mode) => {
+    render(
+      <WizardPhonePreview variant="story" activeTab="story" storyMode={mode} />
+    );
+    expect(screen.queryByText('preview_no_post')).toBeNull();
+  }
+);

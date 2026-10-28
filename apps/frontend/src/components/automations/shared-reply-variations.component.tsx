@@ -1,4 +1,6 @@
 'use client';
+import { useId } from 'react';
+import { AutomationMessageVariables } from './shared-message-variables.component';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 
 /** Both V2 editors write the same messages[] contract. Empty entries stay visible for validation. */
@@ -8,42 +10,62 @@ export function SharedReplyVariations({
   disabled = false,
   onFocus,
   maxVariants = 10,
+  engine = 'shared',
 }: {
   messages: string[];
   onChange: (messages: string[]) => void;
   disabled?: boolean;
   onFocus?: (index: number) => void;
   maxVariants?: number | null;
+  engine?: 'legacy' | 'shared';
 }) {
-  const t = useT();
+  const t = useT(),
+    id = useId();
   const entries = messages.length ? messages : [''];
   return (
     <div className="space-y-2">
       {entries.map((message, index) => (
         <div key={index} className="flex items-center gap-2">
-          <label className="block flex-1 min-w-0 text-sm space-y-1">
-            <span className="sr-only">
-              {index === 0
-                ? t('shared_public_reply')
-                : `${t('shared_reply_variant')} ${index + 1}`}
-            </span>
-            <input
-              type="text"
-              disabled={disabled}
-              className="w-full h-[42px] border border-newTableBorder rounded-lg px-[14px] bg-newBgColorInner text-[13px] text-textColor"
-              placeholder={t('automation_public_reply_placeholder')}
-              maxLength={2200}
-              value={message}
-              onFocus={() => onFocus?.(index)}
-              onChange={(event) =>
-                onChange(
-                  entries.map((entry, i) =>
-                    i === index ? event.target.value : entry
+          <div className="flex-1 min-w-0">
+            <label
+              htmlFor={`${id}-${index}`}
+              className="block text-sm space-y-1"
+            >
+              <span className="sr-only">
+                {index === 0
+                  ? t('shared_public_reply')
+                  : `${t('shared_reply_variant')} ${index + 1}`}
+              </span>
+              <input
+                id={`${id}-${index}`}
+                type="text"
+                disabled={disabled}
+                className="w-full h-[42px] border border-newTableBorder rounded-lg pl-[14px] pr-20 bg-newBgColorInner text-[13px] text-textColor"
+                placeholder={t('automation_public_reply_placeholder')}
+                maxLength={2200}
+                value={message}
+                onFocus={() => onFocus?.(index)}
+                onChange={(event) =>
+                  onChange(
+                    entries.map((entry, i) =>
+                      i === index ? event.target.value : entry
+                    )
                   )
+                }
+              />
+            </label>
+            <AutomationMessageVariables
+              textareaId={`${id}-${index}`}
+              engine={engine}
+              disabled={disabled}
+              resetKey={entries.length}
+              onChange={(value) =>
+                onChange(
+                  entries.map((entry, i) => (i === index ? value : entry))
                 )
               }
             />
-          </label>
+          </div>
           {entries.length > 1 && (
             <button
               type="button"

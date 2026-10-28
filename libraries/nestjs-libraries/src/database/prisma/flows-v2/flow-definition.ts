@@ -1,3 +1,7 @@
+import {
+  assertPrivateVariantRepresentation,
+  type PrivateMessageVariant,
+} from '../flows/private-message-variants';
 /** Pure canonical graph used by the shared wizard, canvas and workflow. No IO or credentials. */
 export type CommentNodeType =
   | 'TRIGGER'
@@ -37,6 +41,7 @@ type Config = {
   matchMode?: string;
   message?: string;
   messages?: string[];
+  variants?: PrivateMessageVariant[];
   buttonText?: string;
   buttonUrl?: string;
   duration?: number;
@@ -46,7 +51,7 @@ const allowed: Record<CommentNodeType, string[]> = {
   TRIGGER: ['triggerType', 'keywords', 'matchMode', 'priority'],
   CONDITION: ['keywords', 'matchMode'],
   DELAY: ['duration', 'unit'],
-  SEND_DM: ['message', 'buttonText', 'buttonUrl'],
+  SEND_DM: ['variants', 'message', 'messages', 'buttonText', 'buttonUrl'],
   REPLY_COMMENT: ['message', 'messages'],
 };
 function config(node: CommentNode): Config {
@@ -100,14 +105,19 @@ function config(node: CommentNode): Config {
       !value.messages.length ||
       value.messages.length > 10 ||
       value.messages.some(
-        (m) => typeof m !== 'string' || !m.trim() || m.length > 2200
+        (m) =>
+          typeof m !== 'string' ||
+          !m.trim() ||
+          m.length > (node.type === 'SEND_DM' ? 2000 : 2200)
       ))
   )
     throw new Error('INVALID_MESSAGE');
+  if (node.type === 'SEND_DM') assertPrivateVariantRepresentation(value);
   if (
     ['SEND_DM', 'REPLY_COMMENT'].includes(node.type) &&
     !value.message?.trim() &&
-    !value.messages?.some((message) => message.trim())
+    !value.messages?.some((message) => message.trim()) &&
+    !value.variants?.length
   )
     throw new Error('INVALID_MESSAGE');
   if (
@@ -227,38 +237,48 @@ export function normalizeDefinition(
     const node = input.nodes.find((n) => n.id === id)!;
     const cfg = config(node);
     for (const prior of states.get(id)?.values() || []) {
-      const state = { ...prior };
-      if (node.type === 'SEND_DM') {
-        if (state.dm && state.gap) throw new Error('PRIVATE_REPLY_ORDER');
-        state.length += (cfg.message || '').length + (state.dm ? 2 : 0);
-        state.dm = true;
-        state.button ||= !!cfg.buttonUrl;
-      }
-      if (['DELAY', 'REPLY_COMMENT'].includes(node.type) && state.dm)
-        state.gap = true;
-      if (node.type === 'DELAY')
-        state.delay +=
-          cfg.duration *
-          { seconds: 1, minutes: 60, hours: 3600 }[cfg.unit || 'seconds'];
-      if (state.length > (state.button ? 640 : 2000))
-        throw new Error('MESSAGE_TOO_LONG');
-      if (state.delay > 86400) throw new Error('INVALID_DELAY');
-      if (
-        config(triggers[0]).triggerType === 'messenger_message' &&
-        state.delay >= 86400
-      )
-        throw new Error('MESSENGER_DELAY_TOO_LONG');
-      for (const edge of input.edges.filter((e) => e.sourceNodeId === id)) {
-        const target =
-          states.get(edge.targetNodeId) || new Map<string, Bounds>();
-        const key = `${state.dm}:${state.gap}:${state.button}`;
-        const old = target.get(key);
-        target.set(key, {
-          ...state,
-          length: Math.max(state.length, old?.length || 0),
-          delay: Math.max(state.delay, old?.delay || 0),
-        });
-        states.set(edge.targetNodeId, target);
+      const alternatives =
+        node.type === 'SEND_DM'
+          ? cfg.variants ||
+            (cfg.messages || [cfg.message || '']).map((message) => ({
+              message,
+              buttonUrl: cfg.buttonUrl,
+            }))
+          : [undefined];
+      for (const alternative of alternatives) {
+        const state = { ...prior };
+        if (node.type === 'SEND_DM') {
+          if (state.dm && state.gap) throw new Error('PRIVATE_REPLY_ORDER');
+          state.length += alternative.message.length + (state.dm ? 2 : 0);
+          state.dm = true;
+          state.button ||= !!alternative.buttonUrl;
+        }
+        if (['DELAY', 'REPLY_COMMENT'].includes(node.type) && state.dm)
+          state.gap = true;
+        if (node.type === 'DELAY')
+          state.delay +=
+            cfg.duration *
+            { seconds: 1, minutes: 60, hours: 3600 }[cfg.unit || 'seconds'];
+        if (state.length > (state.button ? 640 : 2000))
+          throw new Error('MESSAGE_TOO_LONG');
+        if (state.delay > 86400) throw new Error('INVALID_DELAY');
+        if (
+          config(triggers[0]).triggerType === 'messenger_message' &&
+          state.delay >= 86400
+        )
+          throw new Error('MESSENGER_DELAY_TOO_LONG');
+        for (const edge of input.edges.filter((e) => e.sourceNodeId === id)) {
+          const target =
+            states.get(edge.targetNodeId) || new Map<string, Bounds>();
+          const key = `${state.dm}:${state.gap}:${state.button}`;
+          const old = target.get(key);
+          target.set(key, {
+            ...state,
+            length: Math.max(state.length, old?.length || 0),
+            delay: Math.max(state.delay, old?.delay || 0),
+          });
+          states.set(edge.targetNodeId, target);
+        }
       }
     }
   }
@@ -333,8 +353,20 @@ export function planCommentActions(
         cfg.duration *
         { seconds: 1, minutes: 60, hours: 3600 }[cfg.unit || 'seconds'];
     if (node.type === 'SEND_DM') {
-      if (cfg.message?.trim()) {
-        messages.push(render(cfg.message));
+      const alternatives =
+        cfg.variants ||
+        (cfg.messages || [cfg.message || '']).map((message) => ({
+          message,
+          buttonText: cfg.buttonText,
+          buttonUrl: cfg.buttonUrl,
+        }));
+      const index =
+        alternatives.length > 1 ? chooseReplyIndex(alternatives.length) : 0;
+      if (!Number.isInteger(index) || index < 0 || index >= alternatives.length)
+        throw new Error('INVALID_MESSAGE');
+      const selected = alternatives[index];
+      if (selected?.message.trim()) {
+        messages.push(render(selected.message));
         if (!privateAction) {
           privateAction = {
             key: messenger ? 'messenger_reply' : 'private_reply',
@@ -345,7 +377,8 @@ export function planCommentActions(
           actions.push(privateAction);
         }
       }
-      if (cfg.buttonUrl) button = { title: cfg.buttonText, url: cfg.buttonUrl };
+      if (selected.buttonUrl)
+        button = { title: selected.buttonText, url: selected.buttonUrl };
     }
     if (node.type === 'REPLY_COMMENT') {
       const alternatives = cfg.messages || [cfg.message || ''];
@@ -402,6 +435,8 @@ export function simpleDefinition(input: {
   keywords?: string[];
   matchMode?: string;
   message: string;
+  dmMessages?: string[];
+  dmVariants?: PrivateMessageVariant[];
   reply?: string;
   replyMessages?: string[];
   buttonText?: string;
@@ -441,8 +476,12 @@ export function simpleDefinition(input: {
     id: 'dm',
     type: 'SEND_DM',
     data: JSON.stringify({
-      message: input.message,
-      ...(input.buttonUrl
+      ...(input.dmVariants !== undefined
+        ? { variants: input.dmVariants }
+        : input.dmMessages?.length
+        ? { messages: input.dmMessages }
+        : { message: input.message }),
+      ...(!input.dmVariants && input.buttonUrl
         ? { buttonText: input.buttonText, buttonUrl: input.buttonUrl }
         : {}),
     }),

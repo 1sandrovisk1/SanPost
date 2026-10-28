@@ -230,7 +230,7 @@ export const ProblemsComponent: FC = () => {
                         {a.error}
                       </span>
                     )}
-                    <DebugLink href={`/automacoes/${a.flowId}`}>
+                    <DebugLink href={`/automations/instagram/${a.flowId}`}>
                       {t('status_view_automation', 'Ver automação')} ↗
                     </DebugLink>
                   </div>

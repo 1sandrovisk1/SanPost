@@ -13,7 +13,7 @@ export const RepostWizardComponent: FC = () => {
       <div className="flex items-center gap-[12px]">
         <button
           type="button"
-          onClick={() => router.push('/automacoes')}
+          onClick={() => router.push('/automations')}
           aria-label={t('back', 'Voltar')}
           className="text-customColor18 hover:text-textColor text-[18px]"
         >
@@ -25,8 +25,8 @@ export const RepostWizardComponent: FC = () => {
       </div>
       <RepostRuleForm
         mode="create"
-        onSaved={(rule) => router.push(`/automacoes/repost/${rule.id}`)}
-        onCancel={() => router.push('/automacoes')}
+        onSaved={(rule) => router.push(`/automations/reposts/${rule.id}`)}
+        onCancel={() => router.push('/automations')}
       />
     </div>
   );

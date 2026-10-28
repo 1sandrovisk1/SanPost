@@ -1,4 +1,7 @@
 'use client';
+import { AutomationEditorStage } from './shared-editor-stage.component';
+import { PrivateMessageVariations } from './shared-private-variations.component';
+import { SharedConnectionIndicator } from './shared-connection-indicator.component';
 import { AutomationContextHelp } from './shared-context-help.component';
 import { PublicationPreviewControls } from './shared-response-controls.component';
 import type { PublicationPreview } from './shared-publication-selector.component';
@@ -11,7 +14,6 @@ import {
 } from './shared-editor-actions';
 import { AutomationWorkspace } from './shared-workspace.component';
 import { useWorkspaceMode } from './shared-workspace-navigation';
-import { ReplyPreviewControls } from './shared-response-controls.component';
 import {
   AutomationPreviewPanel,
   AutomationEditorLayout,
@@ -38,7 +40,7 @@ import { SharedReplyVariations } from './shared-reply-variations.component';
 import { WizardPhonePreview } from './wizard-phone-preview.component';
 import { AutomationPublicReplyToggle } from './shared-public-reply-toggle.component';
 import { AutomationKeywordConditions } from './shared-keyword-conditions.component';
-import { AddLinkModal } from './add-link-modal.component';
+import type { PrivateMessageVariant } from '@gitroom/nestjs-libraries/database/prisma/flows/private-message-variants';
 import {
   sharedFailureCode,
   validateSharedDraft,
@@ -75,6 +77,8 @@ function simpleValues(definition: CommentDefinition) {
     keywords: cfg.keywords || [],
     matchMode: cfg.matchMode || 'any',
     message: dmCfg.message || '',
+    dmMessages: dmCfg.messages as string[] | undefined,
+    dmVariants: dmCfg.variants as PrivateMessageVariant[] | undefined,
     reply: replyCfg.message || '',
     replyMessages: replyCfg.messages as string[] | undefined,
     buttonText: dmCfg.buttonText || '',
@@ -170,7 +174,6 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
   const [problems, setProblems] = useState<DraftProblem[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
   const [keywordSpecific, setKeywordSpecific] = useState(false);
-  const [showAddLink, setShowAddLink] = useState(false);
   const [publicReply, setPublicReply] = useState(false);
   const [focusNode, setFocusNode] = useState<string | undefined>();
   const [previewChannel, setPreviewChannel] = useState('');
@@ -227,6 +230,9 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
   if (workspaceMode !== 'history') editorOwner.current = workspaceMode;
   const advanced = editorOwner.current === 'flow';
   const messenger = values.triggerType === 'messenger_message';
+  const [dmPreviewIndex, setDmPreviewIndex] = useState(0);
+  const privateMessages = values.dmVariants?.map((v) => v.message) ||
+    values.dmMessages || [values.message];
   const replyMessages = values.replyMessages || [values.reply];
   const hasPublicReply =
     publicReply || definition.nodes.some((n) => n.type === 'REPLY_COMMENT');
@@ -323,7 +329,7 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
       );
       if (!id)
         router.replace(
-          `/automacoes/compartilhada/${saved.id}${
+          `/automations/${saved.id}${
             workspaceMode === 'flow' ? '?view=flow' : ''
           }`
         );
@@ -337,7 +343,7 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
         if (!id && currentRecord.current) {
           toaster.show(message, 'warning');
           router.replace(
-            `/automacoes/compartilhada/${currentRecord.current.id}${
+            `/automations/${currentRecord.current.id}${
               workspaceMode === 'flow' ? '?view=flow' : ''
             }`
           );
@@ -367,7 +373,7 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
       );
       if (!id)
         router.replace(
-          `/automacoes/compartilhada/${updated.id}${
+          `/automations/${updated.id}${
             workspaceMode === 'flow' ? '?view=flow' : ''
           }`
         );
@@ -434,11 +440,12 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
                 ? 'facebook'
                 : 'instagram') === platform
           )
-          .map((c) => ({ id: c.id, name: c.name }));
+          .map((c) => ({ id: c.id, name: c.name, picture: c.picture }));
         if (selected && !accounts.some((a) => a.id === selected.integrationId))
           accounts.push({
             id: selected.integrationId,
             name: selected.name || t('automation_account_unavailable'),
+            picture: undefined,
           });
         return (
           <AutomationAccountSelect
@@ -450,6 +457,15 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
             )}
             value={selected?.integrationId || ''}
             accounts={accounts}
+            connection={
+              selected && (
+                <SharedConnectionIndicator
+                  integrationId={selected.integrationId}
+                  provider={platform}
+                  messenger={messenger}
+                />
+              )
+            }
             disabled={disabled}
             onChange={(integrationId) => {
               const others = channels.filter(
@@ -473,11 +489,10 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
           />
         );
       })}
-      {id && facebookOnly && (
-        <p className="text-xs text-newTextColor/60">
-          {t('automation_page_change_hint')}
-        </p>
-      )}
+    </section>
+  );
+  const publicationEditor = (
+    <>
       {channelViews.map((channel) => (
         <div key={channel.integrationId} className="space-y-3">
           <SharedChannelPosts
@@ -505,7 +520,7 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
           />
         </div>
       ))}
-    </section>
+    </>
   );
   const visibleProblems = validateSharedDraft(name, channels, definition);
   const quickEditor = !advanced;
@@ -593,13 +608,57 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
   );
   const quickFields = (
     <div className="space-y-6 min-w-0">
-      <section className="space-y-4">
-        <h2 className="font-semibold">{t('automation_section_account')}</h2>
+      <AutomationEditorStage
+        kind="account"
+        step={1}
+        title={t('automation_section_account')}
+        summary={channelViews
+          .map((c) => c.name)
+          .filter(Boolean)
+          .join(', ')}
+      >
         {triggerField}
         {channelEditor}
-      </section>
-      <section className="border-t border-newTableBorder pt-6 space-y-3">
-        <h2 className="font-semibold">{t('automation_section_conditions')}</h2>
+      </AutomationEditorStage>
+      {!messenger && (
+        <AutomationEditorStage
+          kind="origin"
+          step={2}
+          title={t('automation_section_origin')}
+          summary={channelViews
+            .map((c) =>
+              c.postMode === 'all'
+                ? t('wizard_all_posts')
+                : c.postMode === 'next_publication'
+                ? t('wizard_next_publication')
+                : t(
+                    c.scheduledPostId || c.postIds.length === 1
+                      ? 'automation_stage_selected_one'
+                      : 'automation_stage_selected_count'
+                  ).replace(
+                    '{count}',
+                    String(c.scheduledPostId ? 1 : c.postIds.length)
+                  )
+            )
+            .join(', ')}
+        >
+          {publicationEditor}
+        </AutomationEditorStage>
+      )}
+      <AutomationEditorStage
+        kind="conditions"
+        step={messenger ? 2 : 3}
+        title={t('automation_section_conditions')}
+        summary={
+          values.keywords.length
+            ? values.keywords.join(', ')
+            : t(
+                messenger
+                  ? 'automation_stage_keywords_pending'
+                  : 'automation_any_comment'
+              )
+        }
+      >
         <AutomationKeywordConditions
           specific={keywordSpecific || values.keywords.length > 0}
           keywords={values.keywords}
@@ -611,112 +670,115 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
           onMatchModeChange={(matchMode) => editSimple({ matchMode })}
           onFocus={() => setPreviewTab(messenger ? 'dm' : 'comments')}
         />
-        {messenger && (
-          <details className="rounded-lg border border-newTableBorder p-3 text-sm">
-            <summary className="cursor-pointer font-medium">
-              {t('automation_advanced')}
-            </summary>
-            <div className="pt-3">
-              <MessengerPriority
-                disabled={disabled}
-                value={values.priority}
-                onChange={(priority) => editSimple({ priority })}
-              />
-            </div>
-          </details>
-        )}
-      </section>
-      <section className="border-t border-newTableBorder pt-6 space-y-4">
-        <h2 className="font-semibold">{t('automation_section_response')}</h2>
+      </AutomationEditorStage>
+      <>
         {!messenger && (
-          <AutomationPublicReplyToggle
-            enabled={hasPublicReply}
-            disabled={disabled}
-            label={t('shared_add_public_reply')}
-            onChange={(enabled) => {
-              setPublicReply(enabled);
-              setPreviewTab('comments');
-              if (!enabled) {
-                editSimple({ reply: '', replyMessages: undefined });
-                setPreviewTab('dm');
-              }
-            }}
-          />
-        )}
-        {!messenger && hasPublicReply && (
-          <SharedReplyVariations
-            disabled={disabled}
-            messages={replyMessages}
-            onChange={(messages) =>
-              editSimple({ reply: '', replyMessages: messages })
+          <AutomationEditorStage
+            kind="public"
+            step={4}
+            title={t('automation_stage_public_title')}
+            summary={
+              hasPublicReply
+                ? t(
+                    replyMessages.length === 1
+                      ? 'automation_stage_variations_one'
+                      : 'automation_stage_variations_count'
+                  ).replace('{count}', String(replyMessages.length))
+                : t('automation_stage_disabled')
             }
-            onFocus={(index) => {
-              setReplyPreviewIndex(index);
-              setPreviewTab('comments');
-            }}
-          />
-        )}
-        {!messenger && (
-          <div className="flex items-center justify-between text-xs text-newTextColor/70">
-            <span>{t('automation_direct_delivery')}</span>
-            <AutomationContextHelp label={t('automation_delivery_help')}>
-              {t('automation_direct_delivery_hint')}
-            </AutomationContextHelp>
-          </div>
-        )}
-
-        <label className="block text-sm space-y-2">
-          {t('shared_message')}
-          <textarea
-            disabled={disabled}
-            className={inputClass}
-            rows={5}
-            maxLength={values.buttonText ? 640 : 2000}
-            placeholder={t('automation_private_message_placeholder')}
-            value={values.message}
-            onFocus={() => setPreviewTab('dm')}
-            onChange={(e) => editSimple({ message: e.target.value })}
-          />
-        </label>
-        <div className="flex justify-between gap-3 text-xs text-newTextColor/60">
-          <AutomationContextHelp
-            align="start"
-            label={t('automation_link_help')}
           >
-            {t(messenger ? 'messenger_message_hint' : 'shared_link_hint')}
-          </AutomationContextHelp>
-          <span className="shrink-0">
-            {values.message.length}/{values.buttonText ? 640 : 2000}
-          </span>
-        </div>
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={() => {
-            setPreviewTab('dm');
-            setShowAddLink(true);
-          }}
-          className="rounded border border-dashed border-newTableBorder text-[12px] text-textColor px-3.5 py-2 hover:bg-boxHover disabled:opacity-50"
+            <AutomationPublicReplyToggle
+              enabled={hasPublicReply}
+              disabled={disabled}
+              label={t('shared_add_public_reply')}
+              onChange={(enabled) => {
+                setPublicReply(enabled);
+                setPreviewTab('comments');
+                if (!enabled) {
+                  editSimple({ reply: '', replyMessages: undefined });
+                  setPreviewTab('dm');
+                }
+              }}
+            >
+              <SharedReplyVariations
+                disabled={disabled}
+                messages={replyMessages}
+                onChange={(messages) =>
+                  editSimple({ reply: '', replyMessages: messages })
+                }
+                onFocus={(index) => {
+                  setReplyPreviewIndex(index);
+                  setPreviewTab('comments');
+                }}
+              />
+            </AutomationPublicReplyToggle>
+          </AutomationEditorStage>
+        )}
+        <AutomationEditorStage
+          kind="private"
+          step={messenger ? 3 : 5}
+          title={t('automation_stage_private_title')}
+          summary={t(
+            privateMessages.length === 1
+              ? 'automation_stage_variations_one'
+              : 'automation_stage_variations_count'
+          ).replace('{count}', String(privateMessages.length))}
         >
-          {values.buttonText && values.buttonUrl
-            ? `${values.buttonText} · ${values.buttonUrl}`
-            : `+ ${t('story_add_link')}`}
-        </button>
-        <AddLinkModal
-          open={showAddLink}
-          initialText={values.buttonText}
-          initialUrl={values.buttonUrl}
-          maxTextLength={20}
-          onSave={(buttonText, buttonUrl) =>
-            editSimple({ buttonText, buttonUrl })
-          }
-          onClose={() => setShowAddLink(false)}
-          onRemove={() => {
-            editSimple({ buttonText: '', buttonUrl: '' });
-            setShowAddLink(false);
-          }}
-        />
-      </section>
+          {!messenger && (
+            <div className="flex items-center justify-between text-xs text-newTextColor/70">
+              <span>{t('automation_direct_delivery')}</span>
+              <AutomationContextHelp label={t('automation_delivery_help')}>
+                {t('automation_direct_delivery_hint')}
+              </AutomationContextHelp>
+            </div>
+          )}
+
+          <PrivateMessageVariations
+            engine="shared"
+            messenger={messenger}
+            messages={privateMessages}
+            variants={values.dmVariants}
+            buttonText={values.buttonText}
+            buttonUrl={values.buttonUrl}
+            onVariantsChange={(dmVariants) =>
+              editSimple({
+                dmVariants,
+                message: '',
+                dmMessages: undefined,
+                buttonText: '',
+                buttonUrl: '',
+              })
+            }
+            disabled={disabled}
+            maxLength={values.buttonText ? 640 : 2000}
+            onFocus={(index) => {
+              setDmPreviewIndex(index);
+              setPreviewTab('dm');
+            }}
+            onChange={(messages) =>
+              editSimple(
+                messages.length > 1
+                  ? { message: '', dmMessages: messages }
+                  : { message: messages[0], dmMessages: undefined }
+              )
+            }
+          />
+        </AutomationEditorStage>
+        {messenger && (
+          <AutomationEditorStage
+            kind="extras"
+            step={4}
+            title={t('automation_advanced')}
+            summary={String(values.priority ?? 10)}
+          >
+            <MessengerPriority
+              disabled={disabled}
+              value={values.priority}
+              onChange={(priority) => editSimple({ priority })}
+            />
+          </AutomationEditorStage>
+        )}
+      </>
     </div>
   );
   const wrap = (content: React.ReactNode) => (
@@ -728,6 +790,10 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
         setDirty(true);
         setProblems([]);
       }}
+      picture={
+        available?.find((a) => a.id === channels[0]?.integrationId)?.picture ||
+        undefined
+      }
       subtitle={`${channelViews.map((c) => c.name).join(' / ')} · ${t(
         messenger
           ? 'automation_name_message'
@@ -762,8 +828,7 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
           aria-label={t('shared_configuration')}
           className="flex flex-col min-w-0 w-full lg:w-[600px] lg:max-w-[55%] lg:shrink-0 lg:min-h-0 bg-newBgColorInner"
         >
-          <div className="p-6 space-y-6 lg:flex-1 lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain">
-            {editorHeader}
+          <div className="p-4 space-y-3 lg:flex-1 lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain">
             {quickFields}
           </div>
         </section>
@@ -791,25 +856,14 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
               ))}
             </select>
           )}
-          <span className="text-xs text-newTextColor/60">
-            {preview?.platform === 'facebook'
-              ? 'Messenger'
-              : preview
-              ? 'Instagram'
-              : t('shared_message')}
-          </span>
-          {previewTab === 'comments' && hasPublicReply && (
-            <ReplyPreviewControls
-              messages={replyMessages}
-              index={currentReplyIndex}
-              onChange={(index) => {
-                setReplyPreviewIndex(index);
-                setPreviewTab('comments');
-              }}
-            />
-          )}
+
           <AutomationPhoneFrame>
             <WizardPhonePreview
+              platform={
+                preview?.platform === 'facebook' ? 'facebook' : 'instagram'
+              }
+              postScope={preview?.postMode}
+              postIsReel={selectedPost?.permalink?.includes('/reel/')}
               postSelected={!!selectedPost && !messenger}
               postThumb={selectedPost?.thumbnailUrl || selectedPost?.mediaUrl}
               postCaption={selectedPost?.caption}
@@ -832,9 +886,25 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
                   : undefined
               }
               onTabChange={setPreviewTab}
-              dmMessage={values.message}
-              dmButtonText={values.buttonText}
-              dmButtonUrl={values.buttonUrl}
+              dmMessage={
+                privateMessages[
+                  Math.min(dmPreviewIndex, privateMessages.length - 1)
+                ]
+              }
+              dmButtonText={
+                values.dmVariants
+                  ? values.dmVariants[
+                      Math.min(dmPreviewIndex, values.dmVariants.length - 1)
+                    ]?.buttonText || ''
+                  : values.buttonText
+              }
+              dmButtonUrl={
+                values.dmVariants
+                  ? values.dmVariants[
+                      Math.min(dmPreviewIndex, values.dmVariants.length - 1)
+                    ]?.buttonUrl || ''
+                  : values.buttonUrl
+              }
               integrationName={preview?.name}
               integrationPicture={preview?.picture || undefined}
             />
@@ -854,10 +924,16 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
               {t('shared_channels')} ·{' '}
               {channelViews.map((c) => c.name).join(' / ')}
             </summary>
-            <div className="mt-4">{channelEditor}</div>
+            <div className="mt-4">
+              {channelEditor}
+              {publicationEditor}
+            </div>
           </details>
         ) : (
-          channelEditor
+          <>
+            {channelEditor}
+            {publicationEditor}
+          </>
         )}
         {!compatible && (
           <p className="text-sm text-newTextColor/60">

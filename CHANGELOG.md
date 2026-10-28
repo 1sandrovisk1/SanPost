@@ -7,6 +7,19 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 
 ## [Unreleased]
 
+### Melhorado — ferramentas de texto das automações (28/10/2026)
+
+- Resposta pública usa diretamente a etapa verde; pedido para seguir vira switch com apenas suas subetapas expansíveis. Alternativas privadas ganham boxes próprios para texto e botão/link.
+- Mensagens oferecem emojis, variáveis compatíveis e contador ao receber foco, com inserção no cursor, respeito ao limite e fechamento por Escape ou clique fora. Textos do gate oferecem apenas emojis; rápido e construtor visual compartilham as ferramentas. Ajuda do link fica à direita da linha do botão.
+
+### Melhorado — revisão visual e alternativas privadas (28/10/2026)
+
+- Histórico com retorno de atualização manual, ajuda flutuante sem deslocar o layout e fuso no cabeçalho Início; setas dos seletores com espaço adequado.
+- Conta/Página com avatar e acesso compacto a Credenciais, pendências fora do cabeçalho e expansão da galeria por ícone. IDs selecionados ficam na área de Dark Post.
+- Prévia específica de Instagram, Facebook e Messenger, com navegação por ícones fora do telefone e escopo de qualquer/próxima publicação.
+- Até dez alternativas privadas no rápido, canvas, API e MCP; uma mensagem escolhida por execução, com botão comum e preservação em retries. Variáveis disponíveis conforme motor e gatilho.
+- URLs da interface padronizadas em inglês, com redirecionamento compatível das rotas antigas e preservação dos parâmetros.
+
 ### Melhorado — interface de automações (28/10/2026)
 
 - Inspetor do construtor visual à esquerda em Instagram e Facebook/Messenger; aplicação local do nó diferenciada do salvamento global e drop ajustado à viewport.
@@ -15,6 +28,12 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 
 
 ### Corrigido
+- **Separação visual das automações:** editor rápido agrupa etapas com cores, ícones, numeração e resumos recolhíveis, preservando os valores e os recursos de cada gatilho. Pendências obrigatórias ficam abaixo da prévia, sem dicas genéricas ou duplicação; o telefone se ajusta para manter o card visível. Alerta de autorização no seletor usa ícone de aviso e ajuda flutuante por mouse/teclado, mantendo o acesso a Credenciais em outra aba.
+- **Agrupamento e variações no editor de automações:** IDs de Dark Posts Instagram dentro de Publicações específicas, sem remover vínculos ao alternar escopo; campos de resposta pública no mesmo box cinza do toggle. Alternativas privadas podem ter texto e botão próprios, com prévia, limites e paridade rápido/construtor/API/MCP. V1 preserva replays e congela o par no gate; V2 congela a alternativa na ingestão, sem novo sorteio em retry.
+
+- **Seleção combinada de posts e anúncios:** localização por ID/link passa para dentro de Publicações específicas; badges distinguem Dark Post confirmado e recuperação por ID. Alternar modos e voltar durante a edição preserva seleção e miniaturas, sem gravar IDs inativos nem misturar agendamento com posts normais.
+
+- **Dark Post de vídeo do Facebook:** localização por vídeo/Reel comprova o Page Post usado no webhook, evitando regras ativas com ID que nunca corresponde aos comentários. Ativação e edição ativa recusam referência não canônica; miniaturas selecionadas ausentes da galeria são recuperadas ao reabrir o editor, sem alterar a seleção nem reprocessar comentários.
 
 - Stories do Instagram com palavras-chave e reações combinadas permanecem no construtor visual, evitando que um salvamento no editor rápido desative reações que ele não representa.
 - **Miniatura de Reel agendado no Facebook:** após publicar, a galeria deixa de repetir o mesmo Reel quando o ID de vídeo do agendamento difere do ID composto do post. Deduplicação visual pelo permalink validado preserva a seleção, o vínculo e as regras de execução, sem consultas extras à Meta.

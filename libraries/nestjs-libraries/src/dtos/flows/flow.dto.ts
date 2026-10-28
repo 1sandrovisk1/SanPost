@@ -5,6 +5,8 @@ import {
   IsArray,
   ArrayNotEmpty,
   ArrayMaxSize,
+  ArrayMinSize,
+  MinLength,
   ValidateNested,
   ValidateIf,
   IsNumber,
@@ -82,7 +84,10 @@ export class FlowNodeDto {
 
   @IsOptional()
   @IsString()
-  @ApiPropertyOptional({ description: 'JSON string da configuração do tipo de nó; consulte /public/v1/automations/capabilities para campos e sintaxe por canal.' })
+  @ApiPropertyOptional({
+    description:
+      'JSON string da configuração do tipo de nó; consulte /public/v1/automations/capabilities para campos e sintaxe por canal.',
+  })
   data?: string;
 
   @ApiProperty()
@@ -110,16 +115,45 @@ export class FlowEdgeDto {
 
   @IsOptional()
   @IsString()
-  @ApiPropertyOptional({ enum: ['match','no_match'] })
+  @ApiPropertyOptional({ enum: ['match', 'no_match'] })
   sourceHandle?: string;
 }
 
+export class PrivateMessageVariantDto {
+  @ApiProperty({ maxLength: 2000 })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(2000)
+  message: string;
+
+  @ApiPropertyOptional({ maxLength: 20 })
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(20)
+  buttonText?: string;
+
+  @ApiPropertyOptional({ maxLength: 2000 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  @IsPublicHttpsUrl()
+  buttonUrl?: string;
+}
+
 export class QuickCreateFlowDto {
-  @ApiPropertyOptional({ description: 'Controle de concorrência na edição: updatedAt obtido no detalhe. Não usar na criação.' })
+  @ApiPropertyOptional({
+    description:
+      'Controle de concorrência na edição: updatedAt obtido no detalhe. Não usar na criação.',
+  })
   @IsOptional()
   @IsDateString()
   expectedUpdatedAt?: string;
-  @ApiPropertyOptional({ default: true, description: 'Ativa ao criar/salvar um rascunho. false mantém o rascunho para revisão antes da ativação explícita.' })
+  @ApiPropertyOptional({
+    default: true,
+    description:
+      'Ativa ao criar/salvar um rascunho. false mantém o rascunho para revisão antes da ativação explícita.',
+  })
   @IsOptional()
   @IsBoolean()
   activate?: boolean;
@@ -164,7 +198,10 @@ export class QuickCreateFlowDto {
   @IsIn(['all', 'specific', 'next_publication', 'scheduled'])
   postMode?: 'all' | 'specific' | 'next_publication' | 'scheduled';
 
-  @ApiPropertyOptional({ description: 'ID interno Post.id retornado ao agendar no MultiPost. Obrigatório no modo scheduled; comentários de Feed/Reels apenas.' })
+  @ApiPropertyOptional({
+    description:
+      'ID interno Post.id retornado ao agendar no MultiPost. Obrigatório no modo scheduled; comentários de Feed/Reels apenas.',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(80)
@@ -198,7 +235,9 @@ export class QuickCreateFlowDto {
     description:
       'IDs de story do Instagram. OBRIGATÓRIO (não-vazio) quando postMode=specific e triggerType=story_reply.',
   })
-  @ValidateIf((o) => o.postMode === 'specific' && o.triggerType === 'story_reply')
+  @ValidateIf(
+    (o) => o.postMode === 'specific' && o.triggerType === 'story_reply'
+  )
   @IsArray()
   @ArrayNotEmpty()
   @ArrayMaxSize(100)
@@ -251,7 +290,8 @@ export class QuickCreateFlowDto {
 
   @ApiPropertyOptional({
     maxLength: 2000,
-    description: 'Mensagem enviada quando o usuário ainda não segue (usado com requireFollow=true).',
+    description:
+      'Mensagem enviada quando o usuário ainda não segue (usado com requireFollow=true).',
   })
   @IsOptional()
   @IsString()
@@ -283,13 +323,45 @@ export class QuickCreateFlowDto {
 
   @ApiPropertyOptional({
     maxLength: 2000,
-    description: 'Texto da mensagem direta (DM) enviada ao autor do comentário.',
+    description:
+      'Texto da mensagem direta (DM) enviada ao autor do comentário.',
     example: 'Aqui está a receita completa 👇',
   })
   @IsOptional()
   @IsString()
   @MaxLength(2000)
   dmMessage?: string;
+
+  @ApiPropertyOptional({
+    type: [String],
+    minItems: 1,
+    maxItems: 10,
+    description:
+      'Alternativas para uma unica DM. Uma e escolhida por execucao; botao comum.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(10)
+  @IsString({ each: true })
+  @MinLength(1, { each: true })
+  @MaxLength(2000, { each: true })
+  dmMessages?: string[];
+
+  @ApiPropertyOptional({
+    type: [PrivateMessageVariantDto],
+    minItems: 1,
+    maxItems: 10,
+    description:
+      'Alternativas de uma única mensagem privada, cada uma com texto e botão próprios. Não combinar com dmMessage, dmMessages ou botão comum.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(10)
+  @ValidateNested({ each: true })
+  @Type(() => PrivateMessageVariantDto)
+  dmVariants?: PrivateMessageVariantDto[];
 
   @ApiPropertyOptional({
     maxLength: 80,
@@ -328,19 +400,29 @@ export class QuickCreateFlowDto {
   @MaxLength(2000)
   openingDmMessage?: string;
 
-  @ApiPropertyOptional({ maxLength: 80, description: 'Follow-gate 2 etapas: texto do botão da DM inicial.' })
+  @ApiPropertyOptional({
+    maxLength: 80,
+    description: 'Follow-gate 2 etapas: texto do botão da DM inicial.',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(80)
   openingDmButtonText?: string;
 
-  @ApiPropertyOptional({ maxLength: 80, description: 'Follow-gate 2 etapas: texto do botão "já sigo".' })
+  @ApiPropertyOptional({
+    maxLength: 80,
+    description: 'Follow-gate 2 etapas: texto do botão "já sigo".',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(80)
   alreadyFollowedButtonText?: string;
 
-  @ApiPropertyOptional({ maxLength: 2000, description: 'Follow-gate: mensagem quando esgotam as tentativas (maxGateAttempts).' })
+  @ApiPropertyOptional({
+    maxLength: 2000,
+    description:
+      'Follow-gate: mensagem quando esgotam as tentativas (maxGateAttempts).',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(2000)

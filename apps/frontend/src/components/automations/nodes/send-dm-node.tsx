@@ -6,12 +6,27 @@ import { useT } from '@gitroom/react/translation/get.transation.service.client';
 
 export const SendDmNode: FC<NodeProps> = memo(({ data, selected }) => {
   const t = useT();
-  const config = typeof data?.config === 'string'
-    ? (() => { try { return JSON.parse(data.config as string); } catch { return {}; } })()
-    : (data?.config || {});
-  const message = config.message || config.template || '';
-  const buttonText: string = config.buttonText || '';
-  const buttonUrl: string = config.buttonUrl || '';
+  const config =
+    typeof data?.config === 'string'
+      ? (() => {
+          try {
+            return JSON.parse(data.config as string);
+          } catch {
+            return {};
+          }
+        })()
+      : data?.config || {};
+  const message =
+    config.variants?.[0]?.message ||
+    config.messages?.[0] ||
+    config.message ||
+    config.template ||
+    '';
+  const buttonText: string =
+    (config.variants ? config.variants[0]?.buttonText : config.buttonText) ||
+    '';
+  const buttonUrl: string =
+    (config.variants ? config.variants[0]?.buttonUrl : config.buttonUrl) || '';
   const hasButton = !!buttonText && !!buttonUrl;
 
   return (
@@ -21,7 +36,11 @@ export const SendDmNode: FC<NodeProps> = memo(({ data, selected }) => {
       }`}
       style={{ background: 'rgba(168, 85, 247, 0.15)' }}
     >
-      <Handle type="target" position={Position.Top} className="!bg-purple-400" />
+      <Handle
+        type="target"
+        position={Position.Top}
+        className="!bg-purple-400"
+      />
       <div className="flex items-center gap-[8px] mb-[4px]">
         <svg
           width="16"
@@ -39,7 +58,9 @@ export const SendDmNode: FC<NodeProps> = memo(({ data, selected }) => {
         </span>
       </div>
       {message && (
-        <p className="text-[12px] text-customColor18 truncate max-w-[180px]">{message}</p>
+        <p className="text-[12px] text-customColor18 truncate max-w-[180px]">
+          {message}
+        </p>
       )}
       {hasButton && (
         <span
@@ -49,7 +70,11 @@ export const SendDmNode: FC<NodeProps> = memo(({ data, selected }) => {
           🔗 {buttonText}
         </span>
       )}
-      <Handle type="source" position={Position.Bottom} className="!bg-purple-400" />
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        className="!bg-purple-400"
+      />
     </div>
   );
 });
