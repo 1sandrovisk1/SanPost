@@ -1,9 +1,38 @@
 'use client';
+import { AutomationContextHelp } from './shared-context-help.component';
 
-import { AutomationPreviewPanel, AutomationPhoneFrame } from './shared-editor-preview.component';
+import { EditorPendingAction } from './shared-editor-footer.component';
+import { AutomationWorkspace } from './shared-workspace.component';
+import type { WorkspaceNavigation } from './shared-workspace-navigation';
+import { FlowExecutionsComponent } from './flow-executions.component';
+import { useEditorDirty } from './shared-editor-dirty';
+import {
+  saveEditorChanges,
+  setEditorStatus,
+  EditorRecord,
+  EditorStatus,
+} from './shared-editor-actions';
+import { JourneyPreviewControls } from './shared-response-controls.component';
+import type { PreviewJourneyStage } from './shared-preview-journey';
+import {
+  AutomationPreviewPanel,
+  AutomationEditorLayout,
+  AutomationPhoneFrame,
+} from './shared-editor-preview.component';
 import { AutomationAccountSelect } from './shared-account-select.component';
-import { InstagramEditorConnection, useInstagramEditorConnection } from './shared-instagram-connection.component';
-import { FC, useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  InstagramEditorConnection,
+  useInstagramEditorConnection,
+} from './shared-instagram-connection.component';
+import {
+  FC,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useState,
+  useRef,
+} from 'react';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import { useIntegrationList } from '@gitroom/frontend/components/launches/helpers/use.integration.list';
@@ -16,6 +45,7 @@ import { AddLinkModal } from '@gitroom/frontend/components/automations/add-link-
 interface Props {
   flowId?: string;
   initialFlow?: any;
+  workspace?: WorkspaceNavigation;
 }
 
 const FOLLOW_GATE_DEFAULT_PT =
@@ -40,20 +70,31 @@ const RadioDot: FC<{ active: boolean }> = ({ active }) => (
   </div>
 );
 
-export const StoryWizardComponent: FC<Props> = ({ flowId, initialFlow }) => {
+export const StoryWizardComponent: FC<Props> = ({
+  flowId,
+  initialFlow,
+  workspace,
+}) => {
   const t = useT();
+  const messageId = useId();
   const fetchApi = useFetch();
   const router = useRouter();
   const toaster = useToaster();
   const { data: integrations } = useIntegrationList();
   const isEditing = !!flowId;
 
-  const [name, setName] = useState(() => flowId ? '' : t('automation_name_instagram_story'));
+  const [name, setName] = useState(() =>
+    flowId ? '' : t('automation_name_instagram_story')
+  );
   const [integrationId, setIntegrationId] = useState('');
   const connection = useInstagramEditorConnection(integrationId);
-  const [storyMode, setStoryMode] = useState<'all' | 'specific' | 'next_publication'>('all');
+  const [storyMode, setStoryMode] = useState<
+    'all' | 'specific' | 'next_publication'
+  >('all');
   const [selectedStoryIds, setSelectedStoryIds] = useState<string[]>([]);
-  const [keywordMode, setKeywordMode] = useState<'any_word_or_reaction' | 'specific'>('any_word_or_reaction');
+  const [keywordMode, setKeywordMode] = useState<
+    'any_word_or_reaction' | 'specific'
+  >('any_word_or_reaction');
   const [keywords, setKeywords] = useState<string[]>([]);
   const [keywordInput, setKeywordInput] = useState('');
   const [requireFollow, setRequireFollow] = useState(false);
@@ -65,6 +106,43 @@ export const StoryWizardComponent: FC<Props> = ({ flowId, initialFlow }) => {
   const [dmButtonUrl, setDmButtonUrl] = useState('');
   const [showAddLink, setShowAddLink] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [pendingAction, setPendingAction] =
+    useState<EditorPendingAction>('save');
+
+  const [hydrated, setHydrated] = useState(!flowId);
+  const hydratedId = useRef<string | undefined>(undefined);
+  const latestFlow = useRef<EditorRecord | undefined>(
+    initialFlow
+      ? { ...initialFlow, id: initialFlow.id || flowId }
+      : flowId
+      ? { id: flowId }
+      : undefined
+  );
+  const [draftId, setDraftId] = useState<string | undefined>();
+  const [editorStatus, setEditorStatusValue] = useState<EditorStatus>(
+    initialFlow?.status || 'DRAFT'
+  );
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [journeyStage, setJourneyStage] =
+    useState<PreviewJourneyStage>('delivery');
+  const signature = JSON.stringify({
+    name,
+    integrationId,
+    storyMode,
+    selectedStoryIds,
+    keywordMode,
+    keywords,
+    requireFollow,
+    followGateMessage,
+    dmMessage,
+    dmButtonText,
+    dmButtonUrl,
+  });
+  const { dirty, markSaved, resetBaseline } = useEditorDirty(
+    signature,
+    hydrated
+  );
+  useEffect(() => setActionError(null), [signature]);
   const [activePreviewTab, setActivePreviewTab] = useState<
     'post' | 'comments' | 'dm' | 'story'
   >('story');
@@ -98,44 +176,60 @@ export const StoryWizardComponent: FC<Props> = ({ flowId, initialFlow }) => {
   }, [fetchApi]);
 
   useEffect(() => {
+    const initialId = initialFlow?.id || flowId;
     if (!initialFlow) return;
+    const sameRecord = hydratedId.current === initialId;
+    if (
+      sameRecord &&
+      (dirty || initialFlow.updatedAt === latestFlow.current?.updatedAt)
+    )
+      return;
+    if (
+      sameRecord &&
+      latestFlow.current?.updatedAt &&
+      (!initialFlow.updatedAt ||
+        new Date(initialFlow.updatedAt).getTime() <=
+          new Date(latestFlow.current.updatedAt).getTime())
+    )
+      return;
+    resetBaseline();
+    hydratedId.current = initialId;
+    latestFlow.current = { ...initialFlow, id: initialId };
+    setEditorStatusValue(initialFlow.status || 'DRAFT');
+    setHydrated(true);
     setName(initialFlow.name || '');
-    setIntegrationId(initialFlow.integrationId || initialFlow.integration?.id || '');
-    const triggerNode = initialFlow.nodes?.find((n: any) => n.type === 'TRIGGER');
+    setIntegrationId(
+      initialFlow.integrationId || initialFlow.integration?.id || ''
+    );
+    const triggerNode = initialFlow.nodes?.find(
+      (n: any) => n.type === 'TRIGGER'
+    );
     const dmNode = initialFlow.nodes?.find((n: any) => n.type === 'SEND_DM');
     const triggerCfg = safeJson(triggerNode?.data);
     const dmCfg = safeJson(dmNode?.data);
 
-    if (triggerCfg.mode === 'next_publication') {
-      setStoryMode('next_publication');
-    } else if (triggerCfg.storyIds?.length) {
-      setStoryMode('specific');
-      setSelectedStoryIds(triggerCfg.storyIds);
-    } else {
-      setStoryMode('all');
-    }
-    if (triggerCfg.keywords?.length) {
-      setKeywordMode('specific');
-      setKeywords(triggerCfg.keywords);
-    }
-    if (typeof triggerCfg.requireFollow === 'boolean') {
-      setRequireFollow(triggerCfg.requireFollow);
-    }
-    if (typeof triggerCfg.followGateMessage === 'string') {
-      setFollowGateMessage(triggerCfg.followGateMessage);
-    }
-    if (dmCfg.message) setDmMessage(dmCfg.message);
-    if (dmCfg.buttonText) setDmButtonText(dmCfg.buttonText);
-    if (dmCfg.buttonUrl) setDmButtonUrl(dmCfg.buttonUrl);
-  }, [initialFlow]);
-
-  useEffect(() => {
-    if (dmMessage) {
-      setActivePreviewTab('dm');
-    } else {
-      setActivePreviewTab('story');
-    }
-  }, [dmMessage]);
+    setStoryMode(
+      triggerCfg.mode === 'next_publication' && !triggerCfg.storyIds?.length
+        ? 'next_publication'
+        : triggerCfg.storyIds?.length
+        ? 'specific'
+        : 'all'
+    );
+    setSelectedStoryIds(triggerCfg.storyIds || []);
+    setKeywordMode(
+      triggerCfg.keywords?.length ? 'specific' : 'any_word_or_reaction'
+    );
+    setKeywords(triggerCfg.keywords || []);
+    setRequireFollow(!!triggerCfg.requireFollow);
+    setFollowGateMessage(
+      typeof triggerCfg.followGateMessage === 'string'
+        ? triggerCfg.followGateMessage
+        : FOLLOW_GATE_DEFAULT_PT
+    );
+    setDmMessage(dmCfg.message || '');
+    setDmButtonText(dmCfg.buttonText || '');
+    setDmButtonUrl(dmCfg.buttonUrl || '');
+  }, [initialFlow, flowId, resetBaseline, dirty]);
 
   const instagramIntegrations = useMemo(() => {
     if (!Array.isArray(integrations)) return [];
@@ -143,7 +237,8 @@ export const StoryWizardComponent: FC<Props> = ({ flowId, initialFlow }) => {
   }, [integrations]);
 
   const selectedIntegration = useMemo(
-    () => instagramIntegrations.find((ig: any) => ig.id === integrationId) || null,
+    () =>
+      instagramIntegrations.find((ig: any) => ig.id === integrationId) || null,
     [instagramIntegrations, integrationId]
   );
 
@@ -169,89 +264,156 @@ export const StoryWizardComponent: FC<Props> = ({ flowId, initialFlow }) => {
     setKeywordInput('');
   };
 
-  const removeKeyword = (k: string) => setKeywords(keywords.filter((x) => x !== k));
+  const removeKeyword = (k: string) =>
+    setKeywords(keywords.filter((x) => x !== k));
 
+  const formProblems = [
+    ...(!name.trim() ? [t('automation_name_required')] : []),
+    ...(!integrationId ? [t('automation_account_required')] : []),
+    ...(!isEditing && integrationId && !connection.ready
+      ? [t('automation_connection_required')]
+      : []),
+    ...(storyMode === 'specific' && !selectedStoryIds.length
+      ? [t('automation_choose_story_required')]
+      : []),
+    ...(keywordMode === 'specific' && !keywords.length
+      ? [t('automation_keywords_required')]
+      : []),
+    ...(!dmMessage.trim() ? [t('automation_response_required')] : []),
+    ...(requireFollow && !followGateMessage.trim()
+      ? [t('automation_follow_messages_required')]
+      : []),
+  ];
   const canSave =
-    !!name.trim() && !!integrationId && (isEditing || connection.ready) && dmMessage.trim().length > 0 && (storyMode !== 'specific' || selectedStoryIds.length > 0);
+    !workspace?.readOnly &&
+    !workspace?.switching &&
+    hydrated &&
+    !formProblems.length &&
+    editorStatus !== 'ARCHIVED';
 
-  const handleSave = useCallback(async () => {
-    if (!canSave) return;
-    setSaving(true);
-    try {
-      const body: Record<string, any> = {
-        name: name.trim(),
-        integrationId,
-        triggerType: 'story_reply',
-        postMode: storyMode,
-        matchReactions: keywordMode === 'any_word_or_reaction',
-        requireFollow,
-      };
-      if (requireFollow && followGateMessage.trim()) {
-        body.followGateMessage = followGateMessage.trim();
-      }
-      if (storyMode === 'specific' && selectedStoryIds.length > 0) {
-        body.storyIds = selectedStoryIds;
-      }
-      if (keywordMode === 'specific' && keywords.length > 0) {
-        body.keywords = keywords;
-      }
-      if (dmMessage.trim()) {
-        body.dmMessage = dmMessage.trim();
-        if (dmButtonText.trim() && dmButtonUrl.trim()) {
-          body.dmButtonText = dmButtonText.trim();
-          body.dmButtonUrl = dmButtonUrl.trim();
+  const handleSave = useCallback(
+    async (activate = false) => {
+      if (!canSave || saving) return;
+      setActionError(null);
+      let configurationSaved = false;
+      setPendingAction(activate ? 'activate' : 'save');
+      setSaving(true);
+      try {
+        const body: Record<string, any> = {
+          name: name.trim(),
+          integrationId,
+          triggerType: 'story_reply',
+          postMode: storyMode,
+          matchReactions: keywordMode === 'any_word_or_reaction',
+          requireFollow,
+        };
+        if (requireFollow && followGateMessage.trim()) {
+          body.followGateMessage = followGateMessage.trim();
         }
-      }
+        if (storyMode === 'specific' && selectedStoryIds.length > 0) {
+          body.storyIds = selectedStoryIds;
+        }
+        if (keywordMode === 'specific' && keywords.length > 0) {
+          body.keywords = keywords;
+        }
+        if (dmMessage.trim()) {
+          body.dmMessage = dmMessage.trim();
+          if (dmButtonText.trim() && dmButtonUrl.trim()) {
+            body.dmButtonText = dmButtonText.trim();
+            body.dmButtonUrl = dmButtonUrl.trim();
+          }
+        }
 
-      const url = isEditing
-        ? `/flows/${flowId}/quick-update`
-        : '/flows/quick-create';
-      const method = isEditing ? 'PUT' : 'POST';
-      const res = await fetchApi(url, { method, body: JSON.stringify(body) });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        toaster.show(
-          data.message || t('failed_to_create_flow', 'Falha ao criar automacao'),
-          'warning'
+        const flow = await saveEditorChanges(
+          fetchApi,
+          { engine: 'instagram', current: latestFlow.current, body, activate },
+          (record, phase) => {
+            latestFlow.current = record;
+            setDraftId(record.id);
+            setEditorStatusValue(record.status || 'DRAFT');
+            if (phase === 'saved') {
+              configurationSaved = true;
+              markSaved(signature);
+            }
+          }
         );
-        return;
+        toaster.show(t(isEditing ? 'flow_updated' : 'flow_created'), 'success');
+        if (!flowId) router.push(`/automacoes/${flow.id}/wizard`);
+      } catch (error) {
+        const reason = t(
+          `shared_error_${
+            error instanceof Error ? error.message.toLowerCase() : ''
+          }`,
+          t('shared_save_failed')
+        );
+        const message =
+          configurationSaved && activate
+            ? `${t('automation_activation_failed_saved')} ${reason}`
+            : reason;
+        setActionError(message);
+        toaster.show(message, 'warning');
+        if (configurationSaved && !flowId && latestFlow.current)
+          router.push(`/automacoes/${latestFlow.current.id}/wizard`);
+      } finally {
+        setSaving(false);
       }
-      const flow = await res.json();
-      toaster.show(
-        isEditing
-          ? t('flow_updated', 'Automacao atualizada com sucesso')
-          : t('flow_created', 'Automacao criada com sucesso'),
-        'success'
+    },
+    [
+      canSave,
+      saving,
+      name,
+      integrationId,
+      storyMode,
+      selectedStoryIds,
+      keywordMode,
+      keywords,
+      requireFollow,
+      followGateMessage,
+      dmMessage,
+      dmButtonText,
+      dmButtonUrl,
+      fetchApi,
+      signature,
+      markSaved,
+      toaster,
+      t,
+      isEditing,
+      flowId,
+      router,
+    ]
+  );
+  const changeStatus = async (status: EditorStatus) => {
+    if (saving) return;
+    if (status === 'ACTIVE' && (dirty || !latestFlow.current))
+      return handleSave(true);
+    if (!latestFlow.current) return;
+    setPendingAction(status === 'ACTIVE' ? 'activate' : 'pause');
+    setSaving(true);
+    setActionError(null);
+    try {
+      await setEditorStatus(
+        fetchApi,
+        'instagram',
+        latestFlow.current,
+        status,
+        (record) => {
+          latestFlow.current = record;
+          setEditorStatusValue(record.status || status);
+        }
       );
-      router.push(`/automacoes/${flow.id}`);
-    } catch {
-      toaster.show(
-        t('failed_to_create_flow', 'Falha ao criar automacao'),
-        'warning'
+    } catch (error) {
+      setActionError(
+        t(
+          `shared_error_${
+            error instanceof Error ? error.message.toLowerCase() : ''
+          }`,
+          t('shared_save_failed')
+        )
       );
     } finally {
       setSaving(false);
     }
-  }, [
-    canSave,
-    name,
-    integrationId,
-    storyMode,
-    selectedStoryIds,
-    keywordMode,
-    keywords,
-    requireFollow,
-    followGateMessage,
-    dmMessage,
-    dmButtonText,
-    dmButtonUrl,
-    isEditing,
-    flowId,
-    fetchApi,
-    router,
-    toaster,
-    t,
-  ]);
+  };
 
   const sectionClass = 'flex flex-col gap-[12px]';
   const sectionTitleClass = 'text-[13px] font-semibold text-textColor';
@@ -273,430 +435,485 @@ export const StoryWizardComponent: FC<Props> = ({ flowId, initialFlow }) => {
   })();
 
   return (
-    <div className="automation-editor flex flex-1 min-h-0">
-      {/* Left: form (internal scroll) */}
-      <div className="flex-1 overflow-y-auto p-[24px] max-w-[600px] flex flex-col gap-[24px]">
-        {/* Header */}
-        <div>
-          <h1 className="text-[20px] font-semibold text-textColor">
-            {isEditing
-              ? t('story_wizard_title_edit', 'Editar automacao de story')
-              : t('story_wizard_title', 'Nova automacao de story')}
-          </h1>
-          <p className="text-[12px] text-customColor18 mt-[4px]">
-            {t(
-              'story_wizard_subtitle',
-              'Responda automaticamente via DM quando alguem responder seu story'
+    <AutomationWorkspace
+      name={name}
+      nameLabel={t('flow_name')}
+      onNameChange={setName}
+      subtitle={`${(selectedIntegration as any)?.name || ''} · ${t(
+        'automation_name_instagram_story'
+      )}`}
+      status={editorStatus}
+      dirty={dirty}
+      busy={saving}
+      pendingAction={pendingAction}
+      valid={canSave}
+      problems={formProblems}
+      impact={t('automation_save_impact_instagram')}
+      error={actionError}
+      onSave={() => void handleSave(false)}
+      onStatusChange={(next) => void changeStatus(next)}
+      navigation={workspace}
+      history={flowId ? <FlowExecutionsComponent flowId={flowId} /> : undefined}
+    >
+      <AutomationEditorLayout>
+        {/* Left: form (internal scroll) */}
+        <section
+          aria-label={t('shared_configuration')}
+          className="flex flex-col min-w-0 w-full lg:w-[600px] lg:max-w-[55%] lg:shrink-0 lg:min-h-0 bg-newBgColorInner"
+        >
+          <fieldset
+            disabled={
+              saving ||
+              workspace?.switching ||
+              workspace?.readOnly ||
+              editorStatus === 'ARCHIVED'
+            }
+            className="min-w-0 border-0 p-6 space-y-5 lg:flex-1 lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain"
+          >
+            {/* Messaging token banner */}
+            {needsMessagingConfig && (
+              <div className="flex items-start gap-[10px] rounded-[6px] border border-customColor13/40 bg-customColor13/10 px-[14px] py-[12px]">
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  className="text-customColor13 flex-shrink-0 mt-[1px]"
+                >
+                  <path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                </svg>
+                <div className="flex-1">
+                  <div className="text-[12px] text-textColor font-[500]">
+                    {t(
+                      'story_wizard_messaging_banner',
+                      'Para responder via DM a stories, configure um token de messaging em Settings > Credenciais.'
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => window.open('/settings', '_blank')}
+                    className="mt-[6px] text-[11px] text-btnPrimary hover:opacity-80"
+                  >
+                    {t(
+                      'story_wizard_messaging_configure',
+                      'Configurar agora →'
+                    )}
+                  </button>
+                </div>
+              </div>
             )}
-          </p>
-        </div>
 
-        {/* Messaging token banner */}
-        {needsMessagingConfig && (
-          <div className="flex items-start gap-[10px] rounded-[6px] border border-customColor13/40 bg-customColor13/10 px-[14px] py-[12px]">
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              className="text-customColor13 flex-shrink-0 mt-[1px]"
-            >
-              <path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-            </svg>
-            <div className="flex-1">
-              <div className="text-[12px] text-textColor font-[500]">
-                {t(
-                  'story_wizard_messaging_banner',
-                  'Para responder via DM a stories, configure um token de messaging em Settings > Credenciais.'
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={() => window.open('/settings', '_blank')}
-                className="mt-[6px] text-[11px] text-btnPrimary hover:opacity-80"
-              >
-                {t('story_wizard_messaging_configure', 'Configurar agora →')}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Name + integration */}
-        <div className={sectionClass}>
-          <label htmlFor="story-automation-name" className="text-[12px] text-customColor18">
-            {t('flow_name', 'Nome')}
-          </label>
-          <div className="bg-newBgColorInner h-[42px] border-newTableBorder border rounded-[8px] flex items-center">
-            <input
-              id="story-automation-name"
-              type="text"
-              className="h-full bg-transparent outline-none flex-1 text-[14px] text-textColor px-[16px]"
-              placeholder={t(
-                'story_flow_name_placeholder',
-                'Minha automacao de story'
+            {/* Name + integration */}
+            <div className={sectionClass}>
+              <h2 className="mt-3 text-base font-semibold">
+                {t('automation_section_account')}
+              </h2>
+              <AutomationAccountSelect
+                label={t('wizard_account')}
+                value={integrationId}
+                accounts={instagramIntegrations.map((ig: any) => ({
+                  id: ig.id,
+                  name: ig.name || ig.display || ig.id,
+                }))}
+                disabled={isEditing || !!draftId || saving}
+                onChange={(id) => {
+                  setIntegrationId(id);
+                  setSelectedStoryIds([]);
+                }}
+              />
+              {instagramIntegrations.length === 0 && (
+                <a
+                  className="text-sm underline"
+                  href="/launches"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {t('shared_connect_channel')}
+                </a>
               )}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </div>
-
-          <h2 className="mt-3 text-base font-semibold">{t('automation_section_account')}</h2>
-          <AutomationAccountSelect label={t('wizard_account')} value={integrationId}
-            accounts={instagramIntegrations.map((ig: any) => ({ id: ig.id, name: ig.name || ig.display || ig.id }))}
-            disabled={isEditing || saving} onChange={(id) => { setIntegrationId(id); setSelectedStoryIds([]); }} />
-          {instagramIntegrations.length === 0 && <a className="text-sm underline" href="/launches" target="_blank" rel="noreferrer">{t('shared_connect_channel')}</a>}
-          {integrationId && <InstagramEditorConnection connection={connection} />}
-        </div>
-
-        {/* Story mode */}
-        <div className={sectionClass}>
-          <h3 className={sectionTitleClass}>
-            {t('automation_section_origin')}
-          </h3>
-          <label
-            className={radioRowClass}
-            onClick={() => setStoryMode('all')}
-          >
-            <RadioDot active={storyMode === 'all'} />
-            <div>
-              <div className="text-[13px] text-textColor">
-                {t('story_mode_all', 'Qualquer story')}
-              </div>
-              <div className="text-[11px] text-customColor18 mt-[2px]">
-                {t(
-                  'story_mode_all_hint',
-                  'A automacao vai reagir a qualquer story publicado'
-                )}
-              </div>
+              {integrationId && (
+                <InstagramEditorConnection connection={connection} />
+              )}
             </div>
-          </label>
-          <label
-            className={radioRowClass}
-            onClick={() => setStoryMode('next_publication')}
-          >
-            <RadioDot active={storyMode === 'next_publication'} />
-            <div>
-              <div className="text-[13px] text-textColor">
-                {t('story_mode_next', 'Proximo story')}
-              </div>
-              <div className="text-[11px] text-customColor18 mt-[2px]">
-                {t(
-                  'story_mode_next_hint',
-                  'Vincula ao proximo story publicado nesta conta'
-                )}
-              </div>
-            </div>
-          </label>
-          <label
-            className={radioRowClass}
-            onClick={() => setStoryMode('specific')}
-          >
-            <RadioDot active={storyMode === 'specific'} />
-            <div>
-              <div className="text-[13px] text-textColor">
-                {t('story_mode_specific', 'Story especifico')}
-              </div>
-              <div className="text-[11px] text-customColor18 mt-[2px]">
-                {t(
-                  'story_mode_specific_hint',
-                  'Informe o ID do story (visivel no Meta Business Suite)'
-                )}
-              </div>
-              {storyMode === 'specific' && (
-                <div onClick={(e) => e.stopPropagation()} className="mt-[10px]">
-                  {!integrationId ? (
-                    <p className="text-[11px] text-customColor18">
-                      {t(
-                        'story_select_account_first',
-                        'Selecione uma conta do Instagram primeiro'
-                      )}
-                    </p>
-                  ) : storiesLoading ? (
-                    <p className="text-[11px] text-customColor18">
-                      {t('loading_stories', 'Carregando stories...')}
-                    </p>
-                  ) : !stories?.length ? (
-                    <p className="text-[11px] text-customColor18">
-                      {t(
-                        'no_active_stories',
-                        'Nenhum story ativo nas ultimas 24h nesta conta.'
-                      )}
-                    </p>
-                  ) : (
-                    <div className="grid grid-cols-4 gap-[6px]">
-                      {(stories as any[]).map((s: any) => {
-                        const isSelected = selectedStoryIds.includes(s.id);
-                        const thumb = s.thumbnailUrl || s.mediaUrl;
-                        return (
-                          <div
-                            key={s.id}
-                            onClick={() => toggleStory(s.id)}
-                            className={`relative aspect-[9/16] rounded-[6px] overflow-hidden cursor-pointer border-2 ${
-                              isSelected ? 'border-btnPrimary' : 'border-transparent'
-                            }`}
-                          >
-                            {thumb ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={thumb}
-                                alt=""
-                                className="w-full h-full object-cover"
-                              />
-                            ) : (
-                              <div className="w-full h-full bg-sixth" />
-                            )}
-                            {s.mediaType === 'VIDEO' && (
-                              <div className="absolute top-[4px] right-[4px]">
-                                <svg
-                                  width="12"
-                                  height="12"
-                                  viewBox="0 0 24 24"
-                                  fill="white"
-                                >
-                                  <rect x="2" y="2" width="20" height="20" rx="3" />
-                                  <polygon
-                                    points="10,8 16,12 10,16"
-                                    fill="#000"
+
+            {/* Story mode */}
+            <div className={sectionClass}>
+              <h3 className={sectionTitleClass}>
+                {t('automation_section_origin')}
+              </h3>
+              <label
+                className={radioRowClass}
+                onClick={() => setStoryMode('all')}
+              >
+                <RadioDot active={storyMode === 'all'} />
+                <div>
+                  <div className="text-[13px] text-textColor">
+                    {t('story_mode_all', 'Qualquer story')}
+                  </div>
+                  <div className="text-[11px] text-customColor18 mt-[2px]">
+                    {t(
+                      'story_mode_all_hint',
+                      'A automacao vai reagir a qualquer story publicado'
+                    )}
+                  </div>
+                </div>
+              </label>
+              <label
+                className={radioRowClass}
+                onClick={() => setStoryMode('next_publication')}
+              >
+                <RadioDot active={storyMode === 'next_publication'} />
+                <div>
+                  <div className="text-[13px] text-textColor">
+                    {t('story_mode_next', 'Proximo story')}
+                  </div>
+                  <div className="text-[11px] text-customColor18 mt-[2px]">
+                    {t(
+                      'story_mode_next_hint',
+                      'Vincula ao proximo story publicado nesta conta'
+                    )}
+                  </div>
+                </div>
+              </label>
+              <label
+                className={radioRowClass}
+                onClick={() => setStoryMode('specific')}
+              >
+                <RadioDot active={storyMode === 'specific'} />
+                <div>
+                  <div className="text-[13px] text-textColor">
+                    {t('story_mode_specific', 'Story especifico')}
+                  </div>
+                  <div className="text-[11px] text-customColor18 mt-[2px]">
+                    {t(
+                      'story_mode_specific_hint',
+                      'Informe o ID do story (visivel no Meta Business Suite)'
+                    )}
+                  </div>
+                  {storyMode === 'specific' && (
+                    <div
+                      onClick={(e) => e.stopPropagation()}
+                      className="mt-[10px]"
+                    >
+                      {!integrationId ? (
+                        <p className="text-[11px] text-customColor18">
+                          {t(
+                            'story_select_account_first',
+                            'Selecione uma conta do Instagram primeiro'
+                          )}
+                        </p>
+                      ) : storiesLoading ? (
+                        <p className="text-[11px] text-customColor18">
+                          {t('loading_stories', 'Carregando stories...')}
+                        </p>
+                      ) : !stories?.length ? (
+                        <p className="text-[11px] text-customColor18">
+                          {t(
+                            'no_active_stories',
+                            'Nenhum story ativo nas ultimas 24h nesta conta.'
+                          )}
+                        </p>
+                      ) : (
+                        <div className="grid grid-cols-4 gap-[6px]">
+                          {(stories as any[]).map((s: any) => {
+                            const isSelected = selectedStoryIds.includes(s.id);
+                            const thumb = s.thumbnailUrl || s.mediaUrl;
+                            return (
+                              <div
+                                key={s.id}
+                                onClick={() => toggleStory(s.id)}
+                                className={`relative aspect-[9/16] rounded-[6px] overflow-hidden cursor-pointer border-2 ${
+                                  isSelected
+                                    ? 'border-btnPrimary'
+                                    : 'border-transparent'
+                                }`}
+                              >
+                                {thumb ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={thumb}
+                                    alt=""
+                                    className="w-full h-full object-cover"
                                   />
-                                </svg>
+                                ) : (
+                                  <div className="w-full h-full bg-sixth" />
+                                )}
+                                {s.mediaType === 'VIDEO' && (
+                                  <div className="absolute top-[4px] right-[4px]">
+                                    <svg
+                                      width="12"
+                                      height="12"
+                                      viewBox="0 0 24 24"
+                                      fill="white"
+                                    >
+                                      <rect
+                                        x="2"
+                                        y="2"
+                                        width="20"
+                                        height="20"
+                                        rx="3"
+                                      />
+                                      <polygon
+                                        points="10,8 16,12 10,16"
+                                        fill="#000"
+                                      />
+                                    </svg>
+                                  </div>
+                                )}
+                                {isSelected && (
+                                  <div className="absolute inset-0 bg-btnPrimary/20 flex items-center justify-center">
+                                    <svg
+                                      width="16"
+                                      height="16"
+                                      viewBox="0 0 24 24"
+                                      fill="none"
+                                      stroke="white"
+                                      strokeWidth="3"
+                                    >
+                                      <polyline points="20 6 9 17 4 12" />
+                                    </svg>
+                                  </div>
+                                )}
                               </div>
-                            )}
-                            {isSelected && (
-                              <div className="absolute inset-0 bg-btnPrimary/20 flex items-center justify-center">
-                                <svg
-                                  width="16"
-                                  height="16"
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  stroke="white"
-                                  strokeWidth="3"
-                                >
-                                  <polyline points="20 6 9 17 4 12" />
-                                </svg>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
-              )}
+              </label>
             </div>
-          </label>
-        </div>
 
-        {/* Keyword mode */}
-        <div className={sectionClass}>
-          <h3 className={sectionTitleClass}>
-            {t('automation_section_conditions')}
-          </h3>
-          <label
-            className={radioRowClass}
-            onClick={() => setKeywordMode('any_word_or_reaction')}
-          >
-            <RadioDot active={keywordMode === 'any_word_or_reaction'} />
-            <div className="text-[13px] text-textColor">
-              {t(
-                'story_keyword_mode_any',
-                'Qualquer palavra-chave ou reacao'
-              )}
-            </div>
-          </label>
-          <label
-            className={radioRowClass}
-            onClick={() => setKeywordMode('specific')}
-          >
-            <RadioDot active={keywordMode === 'specific'} />
-            <div className="w-full">
-              <div className="text-[13px] text-textColor">
-                {t(
-                  'story_keyword_mode_specific',
-                  'Palavras ou reacoes especificas'
-                )}
-              </div>
-              {keywordMode === 'specific' && (
-                <div onClick={(e) => e.stopPropagation()}>
-                  <div className="flex gap-[6px] mt-[8px]">
-                    <input
-                      type="text"
-                      value={keywordInput}
-                      onChange={(e) => setKeywordInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          addKeyword();
-                        }
-                      }}
-                      className="flex-1 bg-newBgColorInner border border-newTableBorder rounded-[6px] text-[12px] text-textColor px-[10px] py-[6px] outline-none"
-                      placeholder={t(
-                        'story_keywords_placeholder',
-                        'Adicionar palavra-chave'
-                      )}
-                    />
-                    <button
-                      type="button"
-                      onClick={addKeyword}
-                      className="rounded-[4px] bg-btnPrimary text-white text-[11px] px-[10px] py-[6px]"
-                    >
-                      {t('add', 'Adicionar')}
-                    </button>
-                  </div>
-                  <div className="flex flex-wrap gap-[6px] mt-[8px]">
-                    {keywords.map((k) => (
-                      <span
-                        key={k}
-                        className="inline-flex items-center gap-[6px] rounded-[12px] bg-btnSimple border border-fifth px-[8px] py-[2px] text-[11px] text-textColor"
-                      >
-                        {k}
-                        <button
-                          type="button"
-                          onClick={() => removeKeyword(k)}
-                          className="text-customColor18 hover:text-textColor"
-                        >
-                          ×
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </label>
-        </div>
-
-        {/* DM section */}
-        <div className={sectionClass}>
-          <h3 className={sectionTitleClass}>
-            {t('automation_section_response')}
-          </h3>
-          <textarea
-            value={dmMessage}
-            onChange={(e) => setDmMessage(e.target.value)}
-            rows={4}
-            placeholder={t(
-              'story_dm_placeholder',
-              'Escreva uma mensagem...'
-            )}
-            className="w-full bg-newBgColorInner border border-newTableBorder rounded-[8px] text-[13px] text-textColor px-[14px] py-[10px] outline-none resize-none"
-          />
-          <button
-            type="button"
-            onClick={() => setShowAddLink(true)}
-            className="self-start rounded-[4px] border border-dashed border-fifth text-[12px] text-textColor px-[14px] py-[8px] hover:bg-boxHover"
-          >
-            {dmButtonText && dmButtonUrl
-              ? `${dmButtonText} · ${dmButtonUrl}`
-              : `+ ${t('story_add_link', 'Adicionar um link')}`}
-          </button>
-        </div>
-
-        {/* Extras */}
-        <div className={sectionClass}>
-          <h3 className={sectionTitleClass}>
-            {t('story_section_extras', 'Outros recursos para automatizar')}
-          </h3>
-          <div className="rounded-[6px] border border-fifth">
-            <label className="flex items-center justify-between gap-[12px] p-[10px] cursor-pointer">
-              <div>
+            {/* Keyword mode */}
+            <div className={sectionClass}>
+              <h3 className={sectionTitleClass}>
+                {t('automation_section_conditions')}
+              </h3>
+              <label
+                className={radioRowClass}
+                onClick={() => setKeywordMode('any_word_or_reaction')}
+              >
+                <RadioDot active={keywordMode === 'any_word_or_reaction'} />
                 <div className="text-[13px] text-textColor">
                   {t(
-                    'story_require_follow',
-                    'Pedir para seguir antes de enviar'
+                    'story_keyword_mode_any',
+                    'Qualquer palavra-chave ou reacao'
                   )}
                 </div>
-                <div className="text-[11px] text-customColor18 mt-[2px]">
-                  {t(
-                    'story_require_follow_hint',
-                    'Quando o remetente não seguir a conta, responde com uma mensagem pedindo para seguir.'
+              </label>
+              <label
+                className={radioRowClass}
+                onClick={() => setKeywordMode('specific')}
+              >
+                <RadioDot active={keywordMode === 'specific'} />
+                <div className="w-full">
+                  <div className="text-[13px] text-textColor">
+                    {t(
+                      'story_keyword_mode_specific',
+                      'Palavras ou reacoes especificas'
+                    )}
+                  </div>
+                  {keywordMode === 'specific' && (
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <div className="flex gap-[6px] mt-[8px]">
+                        <input
+                          type="text"
+                          value={keywordInput}
+                          onChange={(e) => setKeywordInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              addKeyword();
+                            }
+                          }}
+                          className="flex-1 bg-newBgColorInner border border-newTableBorder rounded-[6px] text-[12px] text-textColor px-[10px] py-[6px] outline-none"
+                          placeholder={t(
+                            'story_keywords_placeholder',
+                            'Adicionar palavra-chave'
+                          )}
+                        />
+                        <button
+                          type="button"
+                          onClick={addKeyword}
+                          className="rounded-[4px] bg-btnPrimary text-white text-[11px] px-[10px] py-[6px]"
+                        >
+                          {t('add', 'Adicionar')}
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-[6px] mt-[8px]">
+                        {keywords.map((k) => (
+                          <span
+                            key={k}
+                            className="inline-flex items-center gap-[6px] rounded-[12px] bg-btnSimple border border-fifth px-[8px] py-[2px] text-[11px] text-textColor"
+                          >
+                            {k}
+                            <button
+                              type="button"
+                              onClick={() => removeKeyword(k)}
+                              className="text-customColor18 hover:text-textColor"
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
                   )}
                 </div>
-              </div>
-              <input
-                type="checkbox"
-                checked={requireFollow}
-                onChange={(e) => setRequireFollow(e.target.checked)}
-                className="h-[18px] w-[18px] accent-btnPrimary cursor-pointer"
+              </label>
+            </div>
+
+            {/* DM section */}
+            <div className={sectionClass}>
+              <h3 className={sectionTitleClass}>
+                {t('automation_section_response')}
+              </h3>
+              <label htmlFor={messageId} className="text-sm">
+                {t('shared_message')}
+              </label>
+              <textarea
+                id={messageId}
+                value={dmMessage}
+                onFocus={() => {
+                  setActivePreviewTab('dm');
+                  setJourneyStage('delivery');
+                }}
+                onChange={(e) => setDmMessage(e.target.value)}
+                rows={4}
+                placeholder={t(
+                  'story_dm_placeholder',
+                  'Escreva uma mensagem...'
+                )}
+                className="w-full bg-newBgColorInner border border-newTableBorder rounded-[8px] text-[13px] text-textColor px-[14px] py-[10px] outline-none resize-none"
               />
-            </label>
-            {requireFollow && (
-              <div className="border-t border-fifth p-[10px] flex flex-col gap-[6px]">
-                <label className="text-[11px] text-customColor18">
-                  {t(
-                    'story_follow_gate_label',
-                    'Mensagem enviada para quem ainda não segue'
-                  )}
-                </label>
-                <textarea
-                  value={followGateMessage}
-                  onChange={(e) => setFollowGateMessage(e.target.value)}
-                  rows={3}
-                  placeholder={t(
-                    'story_follow_gate_placeholder',
-                    FOLLOW_GATE_DEFAULT_PT
-                  )}
-                  className="w-full bg-newBgColorInner border border-newTableBorder rounded-[6px] text-[12px] text-textColor px-[10px] py-[8px] outline-none resize-none"
-                />
+              <button
+                type="button"
+                onClick={() => {
+                  setActivePreviewTab('dm');
+                  setJourneyStage('delivery');
+                  setShowAddLink(true);
+                }}
+                className="self-start rounded-[4px] border border-dashed border-fifth text-[12px] text-textColor px-[14px] py-[8px] hover:bg-boxHover"
+              >
+                {dmButtonText && dmButtonUrl
+                  ? `${dmButtonText} · ${dmButtonUrl}`
+                  : `+ ${t('story_add_link', 'Adicionar um link')}`}
+              </button>
+            </div>
+
+            {/* Extras */}
+            <div className={sectionClass}>
+              <h3 className={sectionTitleClass}>
+                {t('story_section_extras', 'Outros recursos para automatizar')}
+              </h3>
+              <div className="rounded-[6px] border border-fifth">
+                <div className="flex items-center gap-1 pr-3">
+                  <label className="flex flex-1 items-center justify-between gap-[12px] p-[10px] cursor-pointer">
+                    <div>
+                      <div className="text-[13px] text-textColor">
+                        {t(
+                          'story_require_follow',
+                          'Pedir para seguir antes de enviar'
+                        )}
+                      </div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={requireFollow}
+                      onChange={(e) => {
+                        setRequireFollow(e.target.checked);
+                        setJourneyStage(e.target.checked ? 'gate' : 'delivery');
+                        setActivePreviewTab('dm');
+                      }}
+                      className="h-[18px] w-[18px] accent-btnPrimary cursor-pointer"
+                    />
+                  </label>
+                  <AutomationContextHelp label={t('automation_follow_help')}>
+                    {t('story_require_follow_hint')}
+                  </AutomationContextHelp>
+                </div>
+                {requireFollow && (
+                  <div className="border-t border-fifth p-[10px] flex flex-col gap-[6px]">
+                    <label
+                      htmlFor={`${messageId}-gate`}
+                      className="text-[11px] text-customColor18"
+                    >
+                      {t(
+                        'story_follow_gate_label',
+                        'Mensagem enviada para quem ainda não segue'
+                      )}
+                    </label>
+                    <textarea
+                      id={`${messageId}-gate`}
+                      value={followGateMessage}
+                      onFocus={() => {
+                        setActivePreviewTab('dm');
+                        setJourneyStage('gate');
+                      }}
+                      onChange={(e) => setFollowGateMessage(e.target.value)}
+                      rows={3}
+                      placeholder={t(
+                        'story_follow_gate_placeholder',
+                        FOLLOW_GATE_DEFAULT_PT
+                      )}
+                      className="w-full bg-newBgColorInner border border-newTableBorder rounded-[6px] text-[12px] text-textColor px-[10px] py-[8px] outline-none resize-none"
+                    />
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        </div>
+            </div>
+          </fieldset>
+        </section>
 
-        {!isEditing && <p className="text-xs text-newTextColor/60">{t('automation_instagram_activate_hint')}</p>}
-        {storyMode === 'specific' && selectedStoryIds.length === 0 && <p role="status" className="text-sm text-newTextColor/70">{t('automation_choose_story_required')}</p>}
-        {/* Save */}
-        <div className="flex gap-[8px] pt-[8px]">
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={!canSave || saving}
-            className="rounded-[4px] bg-btnPrimary px-[16px] py-[10px] text-[13px] text-white hover:opacity-80 disabled:opacity-50"
-          >
-            {saving
-              ? t('saving', 'Salvando...')
-              : isEditing
-              ? t('save', 'Salvar')
-              : t('automation_create_activate')}
-          </button>
-          <button
-            type="button"
-            onClick={() => router.push('/automacoes')}
-            className="rounded-[4px] border border-fifth bg-btnSimple px-[16px] py-[10px] text-[13px] text-textColor hover:opacity-80"
-          >
-            {t('cancel', 'Cancelar')}
-          </button>
-        </div>
-      </div>
+        {/* Right: preview (fixed; the left column scrolls internally) */}
+        <AutomationPreviewPanel>
+          {activePreviewTab === 'dm' && requireFollow && (
+            <JourneyPreviewControls
+              story
+              stage={journeyStage}
+              onChange={setJourneyStage}
+            />
+          )}
+          <AutomationPhoneFrame>
+            <WizardPhonePreview
+              variant="story"
+              triggerText={keywords[0]}
+              journey={{
+                followGate: requireFollow,
+                story: true,
+                stage: journeyStage,
+                gateMessage: followGateMessage,
+              }}
+              storyMode={storyMode}
+              storyThumb={
+                selectedStory?.thumbnailUrl || selectedStory?.mediaUrl
+              }
+              dmMessage={dmMessage}
+              dmButtonText={dmButtonText}
+              dmButtonUrl={dmButtonUrl}
+              commenterName="usuario"
+              integrationPicture={(selectedIntegration as any)?.picture}
+              integrationName={(selectedIntegration as any)?.name}
+              activeTab={activePreviewTab}
+              onTabChange={(t) => setActivePreviewTab(t)}
+            />
+          </AutomationPhoneFrame>
+        </AutomationPreviewPanel>
 
-      {/* Right: preview (fixed; the left column scrolls internally) */}
-      <AutomationPreviewPanel desktopOnly>
-        <AutomationPhoneFrame><WizardPhonePreview
-          variant="story"
-          storyMode={storyMode}
-          storyThumb={selectedStory?.thumbnailUrl || selectedStory?.mediaUrl}
-          dmMessage={dmMessage}
-          dmButtonText={dmButtonText}
-          dmButtonUrl={dmButtonUrl}
-          commenterName="usuario"
-          integrationPicture={(selectedIntegration as any)?.picture}
-          integrationName={(selectedIntegration as any)?.name}
-          activeTab={activePreviewTab}
-          onTabChange={(t) => setActivePreviewTab(t)}
-        /></AutomationPhoneFrame>
-      </AutomationPreviewPanel>
-
-      <AddLinkModal
-        open={showAddLink}
-        initialText={dmButtonText}
-        initialUrl={dmButtonUrl}
-        onClose={() => setShowAddLink(false)}
-        onSave={(text, url) => {
-          setDmButtonText(text);
-          setDmButtonUrl(url);
-        }}
-      />
-    </div>
+        <AddLinkModal
+          open={showAddLink}
+          initialText={dmButtonText}
+          initialUrl={dmButtonUrl}
+          onClose={() => setShowAddLink(false)}
+          onSave={(text, url) => {
+            setDmButtonText(text);
+            setDmButtonUrl(url);
+          }}
+        />
+      </AutomationEditorLayout>
+    </AutomationWorkspace>
   );
 };

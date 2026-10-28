@@ -1,3 +1,5 @@
+import { AutomationHistoryRepository } from './automation-history/automation-history.repository';
+import { AutomationHistoryService } from './automation-history/automation-history.service';
 import { PostManagementService } from './posts/post-management.service';
 import { PostManagementRepository } from './posts/post-management.repository';
 import { ScheduledPostsService } from './scheduled-automations/scheduled-posts.service';
@@ -134,6 +136,8 @@ import { AiModule } from '@gitroom/nestjs-libraries/ai/ai.module';
     KnowledgeService,
     AnnouncementsRepository,
     AnnouncementsService,
+    AutomationHistoryRepository,
+    AutomationHistoryService,
     FlowsRepository,
     SharedFlowsRepository,
     SharedFlowEventsService,

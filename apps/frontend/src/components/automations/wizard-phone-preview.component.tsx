@@ -1,12 +1,21 @@
 'use client';
 
-import { FC, useState } from 'react';
+import { FC, useState, useMemo, useRef, useEffect } from 'react';
+import {
+  buildPreviewJourney,
+  PreviewJourneyContent,
+} from './shared-preview-journey';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 
 interface PhonePreviewProps {
   variant?: 'comment' | 'story';
   singleReply?: boolean;
+  triggerType?: 'comment_on_post' | 'messenger_message';
+  triggerText?: string;
+  journey?: Omit<PreviewJourneyContent, 'message' | 'buttonText' | 'buttonUrl'>;
   postThumb?: string;
+  postSelected?: boolean;
+  postMediaType?: string;
   postCaption?: string;
   replyMessage?: string;
   dmMessage?: string;
@@ -21,12 +30,26 @@ interface PhonePreviewProps {
   onTabChange?: (tab: 'post' | 'comments' | 'dm' | 'story') => void;
 }
 
+function PublicationMedia({src,mediaType,selected,compact=false}:{src?:string;mediaType?:string;selected:boolean;compact?:boolean}) {
+  const t=useT();
+  const [failed,setFailed]=useState(false);
+  useEffect(()=>setFailed(false),[src]);
+  const style = {width:'100%',...(compact?{height:120}:{aspectRatio:'1/1'}),objectFit:'cover' as const,display:'block',flexShrink:0};
+  if(src && !failed) return mediaType==='VIDEO' ? <video src={`${src}#t=0.1`} muted playsInline preload="metadata" style={style} onError={()=>setFailed(true)} /> : <img src={src} alt="" style={style} onError={()=>setFailed(true)} />;
+  return <div style={{...style,background:'#1a1a1a',display:'flex',alignItems:'center',justifyContent:'center',padding:12}}><span style={{fontSize:12,color:'#aaa',textAlign:'center'}}>{t(selected?'automation_preview_media_unavailable':'preview_no_post')}</span></div>;
+}
+
 type Tab = 'post' | 'comments' | 'dm' | 'story';
 
 export const WizardPhonePreview: FC<PhonePreviewProps> = ({
   variant = 'comment',
   singleReply = false,
+  triggerType,
+  triggerText,
+  journey,
   postThumb,
+  postSelected = false,
+  postMediaType,
   postCaption,
   replyMessage,
   dmMessage,
@@ -53,28 +76,42 @@ export const WizardPhonePreview: FC<PhonePreviewProps> = ({
     onTabChange?.(next);
   };
 
-  const tabs: { key: Tab; label: string }[] = singleReply
-    ? [
-        { key: 'dm', label: t('shared_message', 'Mensagem privada') },
-        ...(replyMessage
-          ? [
-              {
-                key: 'comments' as const,
-                label: t('preview_tab_comments', 'Comentários'),
-              },
-            ]
-          : []),
-      ]
-    : variant === 'story'
-    ? [
-        { key: 'story', label: t('preview_tab_story', 'Story') },
-        { key: 'dm', label: t('preview_tab_dm', 'DM') },
-      ]
-    : [
-        { key: 'post', label: t('preview_tab_post', 'Publicar') },
-        { key: 'comments', label: t('preview_tab_comments', 'Comentarios') },
-        { key: 'dm', label: t('preview_tab_dm', 'DM') },
-      ];
+  const tabs: { key: Tab; label: string }[] =
+    triggerType === 'messenger_message'
+      ? [{ key: 'dm', label: t('shared_message') }]
+      : variant === 'story'
+      ? [
+          { key: 'story', label: t('preview_tab_story') },
+          { key: 'dm', label: t('preview_tab_dm') },
+        ]
+      : singleReply && !triggerType
+      ? [
+          { key: 'dm', label: t('shared_message') },
+          ...(replyMessage
+            ? [{ key: 'comments' as const, label: t('preview_tab_comments') }]
+            : []),
+        ]
+      : [
+          { key: 'post', label: t('preview_tab_post') },
+          { key: 'comments', label: t('preview_tab_comments') },
+          { key: 'dm', label: t('preview_tab_dm') },
+        ];
+  const messages = useMemo(
+    () =>
+      buildPreviewJourney({
+        message: dmMessage,
+        buttonText: dmButtonText,
+        buttonUrl: dmButtonUrl,
+        ...journey,
+      }),
+    [dmMessage, dmButtonText, dmButtonUrl, journey]
+  );
+  const conversationRef = useRef<HTMLDivElement>(null);
+  const conversationSignature = JSON.stringify(messages);
+  useEffect(() => {
+    if (tab === 'dm' && conversationRef.current)
+      conversationRef.current.scrollTop = conversationRef.current.scrollHeight;
+  }, [tab, conversationSignature]);
 
   return (
     <div className="flex flex-col items-center select-none">
@@ -367,33 +404,7 @@ export const WizardPhonePreview: FC<PhonePreviewProps> = ({
               </div>
 
               {/* Post image */}
-              {postThumb ? (
-                <img
-                  src={postThumb}
-                  alt=""
-                  style={{
-                    width: '100%',
-                    aspectRatio: '1/1',
-                    objectFit: 'cover',
-                    display: 'block',
-                  }}
-                />
-              ) : (
-                <div
-                  style={{
-                    width: '100%',
-                    aspectRatio: '1/1',
-                    background: '#1a1a1a',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <span style={{ fontSize: 11, color: '#666' }}>
-                    {t('preview_no_post', 'Selecione um post')}
-                  </span>
-                </div>
-              )}
+              <PublicationMedia src={postThumb} mediaType={postMediaType} selected={postSelected || !!postThumb} />
 
               {/* Actions */}
               <div className="flex items-center justify-between px-[12px] py-[8px]">
@@ -464,19 +475,7 @@ export const WizardPhonePreview: FC<PhonePreviewProps> = ({
               style={{ flex: 1, background: '#0a0a0a', overflow: 'hidden' }}
             >
               {/* Post thumbnail mini */}
-              {postThumb && (
-                <img
-                  src={postThumb}
-                  alt=""
-                  style={{
-                    width: '100%',
-                    height: 120,
-                    objectFit: 'cover',
-                    display: 'block',
-                    flexShrink: 0,
-                  }}
-                />
-              )}
+              {(postThumb || postSelected) && <PublicationMedia src={postThumb} mediaType={postMediaType} selected={postSelected || !!postThumb} compact />}
 
               {/* Comment drawer */}
               <div
@@ -539,7 +538,8 @@ export const WizardPhonePreview: FC<PhonePreviewProps> = ({
                       <div
                         style={{ fontSize: 11, color: '#fff', marginTop: 2 }}
                       >
-                        {t('preview_user_comment', 'Incrivel! Eu quero!')}
+                        {triggerText ||
+                          t('preview_user_comment', 'Incrivel! Eu quero!')}
                       </div>
                       <div
                         style={{ fontSize: 10, color: '#666', marginTop: 4 }}
@@ -605,7 +605,7 @@ export const WizardPhonePreview: FC<PhonePreviewProps> = ({
                                 replyMessage,
                                 commenterName,
                                 singleReply,
-                                t('preview_user_comment')
+                                triggerText || t('preview_user_comment')
                               )}
                             </div>
                           </div>
@@ -737,41 +737,52 @@ export const WizardPhonePreview: FC<PhonePreviewProps> = ({
               </div>
 
               {/* Messages area */}
-              <div className="flex-1 overflow-y-auto px-[12px] py-[12px] flex flex-col gap-[10px]">
-                {dmMessage ? (
-                  <>
-                    {/* Page message (left, dark bubble) */}
-                    <div className="flex items-end gap-[6px]">
+              <div
+                ref={conversationRef}
+                className="flex-1 overflow-y-auto px-[12px] py-[12px] flex flex-col gap-[10px]"
+              >
+                {messages.length ? (
+                  messages.map((message, index) => (
+                    <div
+                      key={index}
+                      className={`flex items-end gap-[6px] ${
+                        message.role === 'user' ? 'justify-end' : ''
+                      }`}
+                    >
+                      {message.role === 'page' && (
+                        <div
+                          style={{
+                            width: 24,
+                            height: 24,
+                            borderRadius: '50%',
+                            flexShrink: 0,
+                            overflow: 'hidden',
+                            background: '#6366f1',
+                          }}
+                        >
+                          {integrationPicture && (
+                            <img
+                              src={integrationPicture}
+                              alt=""
+                              style={{
+                                width: '100%',
+                                height: '100%',
+                                objectFit: 'cover',
+                              }}
+                            />
+                          )}
+                        </div>
+                      )}
                       <div
                         style={{
-                          width: 24,
-                          height: 24,
-                          borderRadius: '50%',
-                          flexShrink: 0,
-                          overflow: 'hidden',
-                          background: integrationPicture
-                            ? 'transparent'
-                            : 'linear-gradient(45deg,#6366f1,#8b5cf6)',
-                        }}
-                      >
-                        {integrationPicture && (
-                          <img
-                            src={integrationPicture}
-                            alt=""
-                            style={{
-                              width: '100%',
-                              height: '100%',
-                              objectFit: 'cover',
-                            }}
-                          />
-                        )}
-                      </div>
-                      <div
-                        style={{
-                          background: '#262626',
-                          borderRadius: '18px 18px 18px 4px',
+                          background:
+                            message.role === 'user' ? '#3d3d9a' : '#262626',
+                          borderRadius:
+                            message.role === 'user'
+                              ? '18px 18px 4px 18px'
+                              : '18px 18px 18px 4px',
                           padding: '8px 12px',
-                          maxWidth: '72%',
+                          maxWidth: '78%',
                         }}
                       >
                         <p
@@ -784,14 +795,20 @@ export const WizardPhonePreview: FC<PhonePreviewProps> = ({
                           }}
                         >
                           {interpolatePreview(
-                            dmMessage,
+                            message.text,
                             commenterName,
                             singleReply,
-                            t('preview_user_comment')
+                            triggerText || t('preview_user_comment')
                           )}
                         </p>
-                        {dmButtonText && dmButtonUrl && (
+                        {message.button && (
                           <div
+                            role="img"
+                            aria-label={`${t(
+                              message.button.kind === 'link'
+                                ? 'automation_link_button'
+                                : 'automation_reply_button'
+                            )}: ${message.button.text}`}
                             style={{
                               marginTop: 8,
                               background: '#3d3d9a',
@@ -802,83 +819,24 @@ export const WizardPhonePreview: FC<PhonePreviewProps> = ({
                               textAlign: 'center',
                             }}
                           >
-                            {singleReply
-                              ? interpolatePreview(
-                                  dmButtonText,
-                                  commenterName,
-                                  true,
-                                  t('preview_user_comment')
-                                )
-                              : dmButtonText}
+                            {interpolatePreview(
+                              message.button.text,
+                              commenterName,
+                              singleReply,
+                              triggerText || t('preview_user_comment')
+                            )}
+                            {message.button.kind === 'link' && (
+                              <span aria-hidden="true"> ↗</span>
+                            )}
                           </div>
                         )}
                       </div>
                     </div>
-
-                    {!singleReply && (
-                      <>
-                        {/* User reply (right, purple) */}
-                        <div className="flex justify-end">
-                          <div
-                            style={{
-                              background: '#3d3d9a',
-                              borderRadius: '18px 18px 4px 18px',
-                              padding: '8px 12px',
-                              maxWidth: '72%',
-                            }}
-                          >
-                            <p style={{ fontSize: 11, color: '#fff' }}>
-                              {t('preview_user_response', 'Me envie o link')}
-                            </p>
-                          </div>
-                        </div>
-
-                        {/* Follow-up from page */}
-                        <div className="flex items-end gap-[6px]">
-                          <div
-                            style={{
-                              width: 24,
-                              height: 24,
-                              borderRadius: '50%',
-                              flexShrink: 0,
-                              overflow: 'hidden',
-                              background: integrationPicture
-                                ? 'transparent'
-                                : 'linear-gradient(45deg,#6366f1,#8b5cf6)',
-                            }}
-                          >
-                            {integrationPicture && (
-                              <img
-                                src={integrationPicture}
-                                alt=""
-                                style={{
-                                  width: '100%',
-                                  height: '100%',
-                                  objectFit: 'cover',
-                                }}
-                              />
-                            )}
-                          </div>
-                          <div
-                            style={{
-                              background: '#262626',
-                              borderRadius: '18px 18px 18px 4px',
-                              padding: '8px 12px',
-                              maxWidth: '72%',
-                            }}
-                          >
-                            <p style={{ fontSize: 11, color: '#fff' }}>
-                              {t('preview_follow_up', 'Escreva uma mensagem')}
-                            </p>
-                          </div>
-                        </div>
-                      </>
-                    )}
-                  </>
+                  ))
                 ) : (
                   <div className="flex-1 flex items-center justify-center">
-                    <p style={{ fontSize: 11, color: '#555' }}>
-                      {t('preview_no_dm', 'Nenhuma DM configurada')}
+                    <p style={{ fontSize: 11, color: '#888' }}>
+                      {t('preview_no_dm')}
                     </p>
                   </div>
                 )}
@@ -966,6 +924,8 @@ export const WizardPhonePreview: FC<PhonePreviewProps> = ({
           {tabs.map((tabItem) => (
             <button
               key={tabItem.key}
+              type="button"
+              aria-pressed={tabItem.key === tab}
               onClick={() => setTab(tabItem.key)}
               style={{
                 flex: 1,
@@ -1011,6 +971,7 @@ function interpolatePreview(
     );
   return template
     .replace(/\{commenter_name\}/g, commenterName)
-    .replace(/\{comment_text\}/g, 'Incrivel! Eu quero!')
-    .replace(/\{media_id\}/g, '12345');
+    .replace(/\{commenter_id\}/g, '12345')
+    .replace(/\{comment_text\}/g, commentText)
+    .replace(/\{media_id\}/g, '67890');
 }

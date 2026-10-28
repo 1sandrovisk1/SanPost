@@ -1,3 +1,4 @@
+import { AutomationHistoryController } from './routes/automation-history.controller';
 import { ScheduledAutomationPostsController } from './routes/scheduled-automation-posts.controller';
 import { SharedAutomationsModule } from '@gitroom/nestjs-libraries/integrations/automations/shared-automations.module';
 import { FlowsV2Controller } from './routes/flows-v2.controller';
@@ -70,6 +71,7 @@ import { FacebookAutomationProofService } from '@gitroom/nestjs-libraries/integr
 import { FacebookAutomationProofRepository } from '@gitroom/nestjs-libraries/integrations/automations/facebook-automation-proof.repository';
 
 const authenticatedController = [
+  AutomationHistoryController,
   ScheduledAutomationPostsController,
   FacebookAutomationsController,
   FlowsV2Controller,

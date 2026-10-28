@@ -35,21 +35,33 @@ afterEach(() => {
 });
 describe('historico e publicacoes', () => {
   it('exibe desconhecido sem reenvio ou erro bruto e consulta enquanto montado', () => {
-    state.data = [
-      {
-        id: 'e',
-        status: 'FAILED',
-        platform: 'facebook',
-        createdAt: '2026-10-22T18:00:00Z',
-        error: 'private raw error',
-        deliveries: [{ actionKey: 'private_reply', status: 'UNKNOWN' }],
-      },
-    ];
+    state.data = {
+      items: [
+        {
+          id: 'e',
+          status: 'unknown',
+          channel: 'facebook',
+          trigger: 'comment_on_post',
+          actorName: 'Pessoa',
+          text: 'Teste',
+          startedAt: '2026-10-22T18:00:00Z',
+          guidance: 'outcome_unknown',
+        },
+      ],
+      nextCursor: null,
+    };
     render(<SharedFlowHistory id="flow" />);
-    expect(screen.getByText('shared_run_unknown')).toBeTruthy();
+    expect(
+      screen.getByText('history_status_unknown', { selector: 'span' })
+    ).toBeTruthy();
     expect(screen.queryByText('private raw error')).toBeNull();
-    expect(screen.getAllByRole('button')).toHaveLength(1);
-    expect(state.calls).toContainEqual(['/flows-v2/flow/executions', 5000]);
+    expect(
+      screen.queryByRole('button', { name: /reenviar|retry_delivery/i })
+    ).toBeNull();
+    expect(state.calls).toContainEqual([
+      '/automation-history/shared/flow?status=all&limit=25',
+      5000,
+    ]);
   });
   it('distingue carregando, vazio e erro e abre configuracao Instagram em outra aba', () => {
     state.isLoading = true;
@@ -64,8 +76,12 @@ describe('historico e publicacoes', () => {
       onChange: vi.fn(),
     };
     const { rerender } = render(<SharedChannelPosts {...props} />);
-    fireEvent.click(screen.getByRole('button', { name: 'automation_select_publications' }));
-    expect(screen.getAllByText('shared_posts_loading').length).toBeGreaterThan(0);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'automation_select_publications' })
+    );
+    expect(screen.getAllByText('shared_posts_loading').length).toBeGreaterThan(
+      0
+    );
     state.isLoading = false;
     state.data = { posts: [] };
     rerender(<SharedChannelPosts {...props} />);

@@ -1,14 +1,50 @@
 'use client';
+import { AutomationContextHelp } from './shared-context-help.component';
+import { AutomationMessageVariables } from './shared-message-variables.component';
+import { PublicationPreviewControls } from './shared-response-controls.component';
+import type { PublicationPreview } from './shared-publication-selector.component';
 
+import { EditorPendingAction } from './shared-editor-footer.component';
+import { AutomationWorkspace } from './shared-workspace.component';
+import type { WorkspaceNavigation } from './shared-workspace-navigation';
+import { FlowExecutionsComponent } from './flow-executions.component';
+import { useEditorDirty } from './shared-editor-dirty';
+import {
+  saveEditorChanges,
+  setEditorStatus,
+  EditorRecord,
+  EditorStatus,
+} from './shared-editor-actions';
+import {
+  AutomationFollowGateFields,
+  JourneyPreviewControls,
+  ReplyPreviewControls,
+} from './shared-response-controls.component';
+import type { PreviewJourneyStage } from './shared-preview-journey';
 import { AutomationPublicReplyToggle } from './shared-public-reply-toggle.component';
 import { SharedReplyVariations } from './shared-reply-variations.component';
 import { AutomationKeywordConditions } from './shared-keyword-conditions.component';
 import { AutomationPublicationSelector } from './shared-publication-selector.component';
-import { AutomationPreviewPanel, AutomationPhoneFrame } from './shared-editor-preview.component';
+import {
+  AutomationPreviewPanel,
+  AutomationEditorLayout,
+  AutomationPhoneFrame,
+} from './shared-editor-preview.component';
 import { AutomationAccountSelect } from './shared-account-select.component';
-import { InstagramEditorConnection, useInstagramEditorConnection } from './shared-instagram-connection.component';
+import {
+  InstagramEditorConnection,
+  useInstagramEditorConnection,
+} from './shared-instagram-connection.component';
 import { useAliases } from './hooks/use-unmatched-comments';
-import { FC, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import {
+  FC,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import { useIntegrationList } from '@gitroom/frontend/components/launches/helpers/use.integration.list';
@@ -18,9 +54,6 @@ import { useToaster } from '@gitroom/react/toaster/toaster';
 import { WizardPhonePreview } from '@gitroom/frontend/components/automations/wizard-phone-preview.component';
 import { AddLinkModal } from '@gitroom/frontend/components/automations/add-link-modal.component';
 import { AdAliasesField } from '@gitroom/frontend/components/automations/ad-aliases-field.component';
-
-const FOLLOW_GATE_DEFAULT_PT =
-  'Olá! Esse conteúdo é exclusivo para seguidores. Me segue aqui e responde o story de novo para eu te enviar 💙';
 
 const OPENING_DM_DEFAULT_PT =
   'Obrigado pelo interesse! Clique no botão abaixo para receber o link.';
@@ -33,14 +66,23 @@ const DEFAULT_MAX_GATE_ATTEMPTS = 3;
 interface Props {
   flowId?: string;
   initialFlow?: any;
+  workspace?: WorkspaceNavigation;
 }
 
 function safeJson(data?: string): Record<string, any> {
   if (!data) return {};
-  try { return JSON.parse(data); } catch { return {}; }
+  try {
+    return JSON.parse(data);
+  } catch {
+    return {};
+  }
 }
 
-export const AutomationWizardComponent: FC<Props> = ({ flowId, initialFlow }) => {
+export const AutomationWizardComponent: FC<Props> = ({
+  flowId,
+  initialFlow,
+  workspace,
+}) => {
   const t = useT();
   const privateMessageId = useId();
   const fetchApi = useFetch();
@@ -50,7 +92,9 @@ export const AutomationWizardComponent: FC<Props> = ({ flowId, initialFlow }) =>
   const isEditing = !!flowId;
 
   // Form state
-  const [name, setName] = useState(() => flowId ? '' : t('automation_name_instagram_comment'));
+  const [name, setName] = useState(() =>
+    flowId ? '' : t('automation_name_instagram_comment')
+  );
   const [integrationId, setIntegrationId] = useState('');
   const [draftId, setDraftId] = useState<string | undefined>();
   const draftLock = useRef(false);
@@ -59,23 +103,28 @@ export const AutomationWizardComponent: FC<Props> = ({ flowId, initialFlow }) =>
   const connection = useInstagramEditorConnection(integrationId);
   const { data: aliases } = useAliases(effectiveFlowId || null);
 
-  const [postMode, setPostMode] = useState<'all' | 'specific' | 'next_publication' | 'scheduled'>('specific');
+  const [postMode, setPostMode] = useState<
+    'all' | 'specific' | 'next_publication' | 'scheduled'
+  >('specific');
   const [scheduledPostId, setScheduledPostId] = useState('');
   const [selectedPostIds, setSelectedPostIds] = useState<string[]>([]);
-  const hasSpecificSource = selectedPostIds.length > 0 || (Array.isArray(aliases) && aliases.length > 0);
-  const [keywordMode, setKeywordMode] = useState<'any_word' | 'specific'>('any_word');
+  const hasSpecificSource =
+    selectedPostIds.length > 0 ||
+    (Array.isArray(aliases) && aliases.length > 0);
+  const [keywordMode, setKeywordMode] = useState<'any_word' | 'specific'>(
+    'any_word'
+  );
   const [keywords, setKeywords] = useState<string[]>([]);
   const [matchMode, setMatchMode] = useState('any');
   const [enableReply, setEnableReply] = useState(false);
   const [replyMessages, setReplyMessages] = useState<string[]>(['']);
-  const [enableDm, setEnableDm] = useState(false);
   const [dmMessage, setDmMessage] = useState('');
   const [dmButtonText, setDmButtonText] = useState('');
   const [dmButtonUrl, setDmButtonUrl] = useState('');
   const [showAddLink, setShowAddLink] = useState(false);
   const [requireFollow, setRequireFollow] = useState(false);
   const [followGateMessage, setFollowGateMessage] = useState(
-    FOLLOW_GATE_DEFAULT_PT
+    t('automation_follow_comment_default')
   );
   const [openingDmMessage, setOpeningDmMessage] = useState(
     OPENING_DM_DEFAULT_PT
@@ -93,83 +142,155 @@ export const AutomationWizardComponent: FC<Props> = ({ flowId, initialFlow }) =>
     DEFAULT_MAX_GATE_ATTEMPTS
   );
   const [saving, setSaving] = useState(false);
-  const [activePreviewTab, setActivePreviewTab] = useState<'post' | 'comments' | 'dm'>('post');
+  const [pendingAction, setPendingAction] =
+    useState<EditorPendingAction>('save');
+
+  const [hydrated, setHydrated] = useState(!flowId);
+  const hydratedId = useRef<string | undefined>(undefined);
+  const latestFlow = useRef<EditorRecord | undefined>(
+    initialFlow
+      ? { ...initialFlow, id: initialFlow.id || flowId }
+      : flowId
+      ? { id: flowId }
+      : undefined
+  );
+  const [editorStatus, setEditorStatusValue] = useState<EditorStatus>(
+    initialFlow?.status || 'DRAFT'
+  );
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [replyPreviewIndex, setReplyPreviewIndex] = useState(0);
+  const [journeyStage, setJourneyStage] =
+    useState<PreviewJourneyStage>('delivery');
+  const [activePreviewTab, setActivePreviewTab] = useState<
+    'post' | 'comments' | 'dm'
+  >('post');
   const [modalPosts, setModalPosts] = useState<any[]>([]);
   const [modalNextCursor, setModalNextCursor] = useState<string | null>(null);
   const [modalLoadingMore, setModalLoadingMore] = useState(false);
 
+  const signature = JSON.stringify({
+    name,
+    integrationId,
+    postMode,
+    scheduledPostId,
+    selectedPostIds,
+    keywordMode,
+    keywords,
+    matchMode,
+    enableReply,
+    replyMessages,
+    dmMessage,
+    dmButtonText,
+    dmButtonUrl,
+    requireFollow,
+    followGateMessage,
+    openingDmMessage,
+    openingDmButtonText,
+    alreadyFollowedButtonText,
+    gateExhaustedMessage,
+    maxGateAttempts,
+  });
+  const { dirty, markSaved, resetBaseline } = useEditorDirty(
+    signature,
+    hydrated
+  );
+  useEffect(() => setActionError(null), [signature]);
+
   // Pre-fill form when editing
   useEffect(() => {
+    const initialId = initialFlow?.id || flowId;
     if (!initialFlow) return;
+    const sameRecord = hydratedId.current === initialId;
+    if (
+      sameRecord &&
+      (dirty || initialFlow.updatedAt === latestFlow.current?.updatedAt)
+    )
+      return;
+    if (
+      sameRecord &&
+      latestFlow.current?.updatedAt &&
+      (!initialFlow.updatedAt ||
+        new Date(initialFlow.updatedAt).getTime() <=
+          new Date(latestFlow.current.updatedAt).getTime())
+    )
+      return;
+    resetBaseline();
+    hydratedId.current = initialId;
+    latestFlow.current = { ...initialFlow, id: initialId };
+    setEditorStatusValue(initialFlow.status || 'DRAFT');
+    setHydrated(true);
     setName(initialFlow.name || '');
-    setIntegrationId(initialFlow.integrationId || initialFlow.integration?.id || '');
-    const triggerNode = initialFlow.nodes?.find((n: any) => n.type === 'TRIGGER');
-    const replyNode = initialFlow.nodes?.find((n: any) => n.type === 'REPLY_COMMENT');
+    setIntegrationId(
+      initialFlow.integrationId || initialFlow.integration?.id || ''
+    );
+    const triggerNode = initialFlow.nodes?.find(
+      (n: any) => n.type === 'TRIGGER'
+    );
+    const replyNode = initialFlow.nodes?.find(
+      (n: any) => n.type === 'REPLY_COMMENT'
+    );
     const dmNode = initialFlow.nodes?.find((n: any) => n.type === 'SEND_DM');
     const triggerCfg = safeJson(triggerNode?.data);
     const replyCfg = safeJson(replyNode?.data);
     const dmCfg = safeJson(dmNode?.data);
-    if (triggerCfg.mode === 'scheduled') { setPostMode('scheduled'); setScheduledPostId(triggerCfg.scheduledPostId || ''); }
-    else if (triggerCfg.mode === 'next_publication' && !triggerCfg.postIds?.length) {
-      setPostMode('next_publication');
-    } else if (triggerCfg.postIds?.length) {
-      setPostMode('specific');
-      setSelectedPostIds(triggerCfg.postIds);
-    } else if (triggerCfg.mode === 'all') {
-      setPostMode('all');
-    }
-    if (triggerCfg.keywords?.length) {
-      setKeywordMode('specific');
-      setKeywords(triggerCfg.keywords);
-      setMatchMode(triggerCfg.matchMode || 'any');
-    }
-    const msgs = replyCfg.messages as string[] | undefined;
-    if (msgs?.length) {
-      setEnableReply(true);
-      setReplyMessages(msgs);
-    } else if (replyCfg.message) {
-      setEnableReply(true);
-      setReplyMessages([replyCfg.message]);
-    }
-    if (dmCfg.message) {
-      setEnableDm(true);
-      setDmMessage(dmCfg.message);
-    }
-    if (dmCfg.buttonText) setDmButtonText(dmCfg.buttonText);
-    if (dmCfg.buttonUrl) setDmButtonUrl(dmCfg.buttonUrl);
-    if (typeof triggerCfg.requireFollow === 'boolean') {
-      setRequireFollow(triggerCfg.requireFollow);
-    }
-    if (typeof triggerCfg.followGateMessage === 'string') {
-      setFollowGateMessage(triggerCfg.followGateMessage);
-    }
-    if (typeof triggerCfg.openingDmMessage === 'string') {
-      setOpeningDmMessage(triggerCfg.openingDmMessage);
-    }
-    if (typeof triggerCfg.openingDmButtonText === 'string') {
-      setOpeningDmButtonText(triggerCfg.openingDmButtonText);
-    }
-    if (typeof triggerCfg.alreadyFollowedButtonText === 'string') {
-      setAlreadyFollowedButtonText(triggerCfg.alreadyFollowedButtonText);
-    }
-    if (typeof triggerCfg.gateExhaustedMessage === 'string') {
-      setGateExhaustedMessage(triggerCfg.gateExhaustedMessage);
-    }
-    if (typeof triggerCfg.maxGateAttempts === 'number') {
-      setMaxGateAttempts(triggerCfg.maxGateAttempts);
-    }
-  }, [initialFlow]);
-
-  // Auto-switch preview tab based on state
-  useEffect(() => {
-    if (dmMessage) {
-      setActivePreviewTab('dm');
-    } else if (enableReply) {
-      setActivePreviewTab('comments');
-    } else if (selectedPostIds.length > 0) {
-      setActivePreviewTab('post');
-    }
-  }, [dmMessage, enableReply, selectedPostIds.length]);
+    setScheduledPostId(triggerCfg.scheduledPostId || '');
+    setSelectedPostIds(triggerCfg.postIds || []);
+    setPostMode(
+      triggerCfg.mode === 'scheduled'
+        ? 'scheduled'
+        : triggerCfg.mode === 'next_publication' && !triggerCfg.postIds?.length
+        ? 'next_publication'
+        : triggerCfg.postIds?.length
+        ? 'specific'
+        : triggerCfg.mode === 'all'
+        ? 'all'
+        : 'specific'
+    );
+    setKeywordMode(triggerCfg.keywords?.length ? 'specific' : 'any_word');
+    setKeywords(triggerCfg.keywords || []);
+    setMatchMode(triggerCfg.matchMode || 'any');
+    const msgs = replyCfg.messages?.length
+      ? replyCfg.messages
+      : replyCfg.message
+      ? [replyCfg.message]
+      : [];
+    setEnableReply(msgs.length > 0);
+    setReplyMessages(msgs.length ? msgs : ['']);
+    setDmMessage(dmCfg.message || '');
+    setDmButtonText(dmCfg.buttonText || '');
+    setDmButtonUrl(dmCfg.buttonUrl || '');
+    setRequireFollow(!!triggerCfg.requireFollow);
+    setFollowGateMessage(
+      typeof triggerCfg.followGateMessage === 'string'
+        ? triggerCfg.followGateMessage
+        : t('automation_follow_comment_default')
+    );
+    setOpeningDmMessage(
+      typeof triggerCfg.openingDmMessage === 'string'
+        ? triggerCfg.openingDmMessage
+        : OPENING_DM_DEFAULT_PT
+    );
+    setOpeningDmButtonText(
+      typeof triggerCfg.openingDmButtonText === 'string'
+        ? triggerCfg.openingDmButtonText
+        : OPENING_DM_BTN_DEFAULT_PT
+    );
+    setAlreadyFollowedButtonText(
+      typeof triggerCfg.alreadyFollowedButtonText === 'string'
+        ? triggerCfg.alreadyFollowedButtonText
+        : ALREADY_FOLLOWED_BTN_DEFAULT_PT
+    );
+    setGateExhaustedMessage(
+      typeof triggerCfg.gateExhaustedMessage === 'string'
+        ? triggerCfg.gateExhaustedMessage
+        : GATE_EXHAUSTED_DEFAULT_PT
+    );
+    setMaxGateAttempts(
+      typeof triggerCfg.maxGateAttempts === 'number'
+        ? triggerCfg.maxGateAttempts
+        : DEFAULT_MAX_GATE_ATTEMPTS
+    );
+  }, [initialFlow, flowId, resetBaseline, dirty]);
 
   const instagramIntegrations = useMemo(() => {
     if (!Array.isArray(integrations)) return [];
@@ -177,7 +298,8 @@ export const AutomationWizardComponent: FC<Props> = ({ flowId, initialFlow }) =>
   }, [integrations]);
 
   const selectedIntegration = useMemo(
-    () => instagramIntegrations.find((ig: any) => ig.id === integrationId) || null,
+    () =>
+      instagramIntegrations.find((ig: any) => ig.id === integrationId) || null,
     [instagramIntegrations, integrationId]
   );
 
@@ -192,12 +314,20 @@ export const AutomationWizardComponent: FC<Props> = ({ flowId, initialFlow }) =>
     setModalPosts([]);
     setModalNextCursor(null);
     setModalLoadingMore(false);
-    if (integrationId) void fetchApi(`/flows/integrations/${integrationId}/posts?limit=25`).then(async response => {
-      if (!response.ok) return;
-      const data = await response.json();
-      if (!cancelled) { setModalPosts(Array.isArray(data) ? data : data.posts || []); setModalNextCursor(data.nextCursor || null); }
-    }).catch(() => {});
-    return () => { cancelled = true; };
+    if (integrationId)
+      void fetchApi(`/flows/integrations/${integrationId}/posts?limit=25`)
+        .then(async (response) => {
+          if (!response.ok) return;
+          const data = await response.json();
+          if (!cancelled) {
+            setModalPosts(Array.isArray(data) ? data : data.posts || []);
+            setModalNextCursor(data.nextCursor || null);
+          }
+        })
+        .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, [integrationId, fetchApi]);
 
   const loadMoreModalPosts = useCallback(async () => {
@@ -206,9 +336,9 @@ export const AutomationWizardComponent: FC<Props> = ({ flowId, initialFlow }) =>
     try {
       const data = await fetchApi(
         `/flows/integrations/${integrationId}/posts?limit=25&cursor=${modalNextCursor}`
-      ).then(r => r.json());
+      ).then((r) => r.json());
       if (postsAccount.current !== integrationId) return;
-      setModalPosts(prev => [...prev, ...(data.posts ?? [])]);
+      setModalPosts((prev) => [...prev, ...(data.posts ?? [])]);
       setModalNextCursor(data.nextCursor ?? null);
     } catch {
       // ignore
@@ -217,114 +347,242 @@ export const AutomationWizardComponent: FC<Props> = ({ flowId, initialFlow }) =>
     }
   }, [modalNextCursor, modalLoadingMore, integrationId, fetchApi]);
 
-  const selectedPost = useMemo(() => {
-    if (!Array.isArray(posts) || selectedPostIds.length === 0) return null;
-    return posts.find((p: any) => p.id === selectedPostIds[0]);
-  }, [posts, selectedPostIds]);
+  const [publicationPreviews, setPublicationPreviews] = useState<
+    PublicationPreview[]
+  >([]);
+  const [previewPublicationId, setPreviewPublicationId] = useState('');
+  const selectedPost =
+    publicationPreviews.find((p) => p.id === previewPublicationId) ||
+    publicationPreviews[0];
 
+  const formProblems = [
+    ...(!name.trim() ? [t('automation_name_required')] : []),
+    ...(!integrationId ? [t('automation_account_required')] : []),
+    ...(!isEditing && integrationId && !connection.ready
+      ? [t('automation_connection_required')]
+      : []),
+    ...(postMode === 'specific' && !hasSpecificSource
+      ? [t('automation_choose_publication_required')]
+      : []),
+    ...(postMode === 'scheduled' && !scheduledPostId
+      ? [t('automation_choose_publication_required')]
+      : []),
+    ...(keywordMode === 'specific' && !keywords.length
+      ? [t('automation_keywords_required')]
+      : []),
+    ...(!(enableReply && replyMessages.some((m) => m.trim())) &&
+    !dmMessage.trim()
+      ? [t('automation_response_required')]
+      : []),
+    ...(requireFollow && !dmMessage.trim()
+      ? [t('automation_final_message_required')]
+      : []),
+    ...(requireFollow &&
+    (!openingDmMessage.trim() || !openingDmButtonText.trim())
+      ? [t('automation_opening_required')]
+      : []),
+    ...(requireFollow &&
+    (!Number.isInteger(maxGateAttempts) ||
+      maxGateAttempts < 1 ||
+      maxGateAttempts > 10)
+      ? [t('automation_follow_attempts_required')]
+      : []),
+    ...(requireFollow &&
+    (!followGateMessage.trim() ||
+      !alreadyFollowedButtonText.trim() ||
+      !gateExhaustedMessage.trim())
+      ? [t('automation_follow_messages_required')]
+      : []),
+  ];
   const canSave =
-    !!name.trim() &&
-    !!integrationId &&
-    (isEditing || connection.ready) &&
-    (postMode !== 'specific' || hasSpecificSource) &&
-    (postMode !== 'scheduled' || !!scheduledPostId) &&
+    !workspace?.readOnly &&
+    !workspace?.switching &&
+    hydrated &&
+    !formProblems.length &&
     !preparingDraft &&
-    ((enableReply && replyMessages.some(m => m.trim())) || dmMessage.trim().length > 0) &&
-    (!requireFollow ||
-      (openingDmMessage.trim().length > 0 && openingDmButtonText.trim().length > 0));
+    editorStatus !== 'ARCHIVED';
 
-  const handleSave = useCallback(async () => {
-    if (!canSave) return;
-    setSaving(true);
-    try {
-      const body: Record<string, any> = {
-        name: name.trim(),
-        integrationId,
-        triggerType: 'comment_on_post',
-        postMode,
-      };
-      if (postMode === 'scheduled') body.scheduledPostId = scheduledPostId;
-      if (postMode === 'specific' && selectedPostIds.length > 0) {
-        body.postIds = selectedPostIds;
-      }
-      if (keywordMode === 'specific' && keywords.length > 0) {
-        body.keywords = keywords;
-        body.matchMode = matchMode;
-      }
-      if (enableReply) {
-        const msgs = replyMessages.filter(m => m.trim());
-        if (msgs.length) body.replyMessages = msgs;
-      }
-      if (dmMessage.trim()) {
-        body.dmMessage = dmMessage.trim();
-        if (dmButtonText.trim() && dmButtonUrl.trim()) {
-          body.dmButtonText = dmButtonText.trim();
-          body.dmButtonUrl = dmButtonUrl.trim();
+  const handleSave = useCallback(
+    async (activate = false) => {
+      if (!canSave || saving) return;
+      setActionError(null);
+      let configurationSaved = false;
+      setPendingAction(activate ? 'activate' : 'save');
+      setSaving(true);
+      try {
+        const body: Record<string, any> = {
+          name: name.trim(),
+          integrationId,
+          triggerType: 'comment_on_post',
+          postMode,
+        };
+        if (postMode === 'scheduled') body.scheduledPostId = scheduledPostId;
+        if (postMode === 'specific' && selectedPostIds.length > 0) {
+          body.postIds = selectedPostIds;
         }
-      }
-      body.requireFollow = requireFollow;
-      if (requireFollow && followGateMessage.trim()) {
-        body.followGateMessage = followGateMessage.trim();
-      }
-      if (requireFollow) {
-        if (openingDmMessage.trim()) {
-          body.openingDmMessage = openingDmMessage.trim();
+        if (keywordMode === 'specific' && keywords.length > 0) {
+          body.keywords = keywords;
+          body.matchMode = matchMode;
         }
-        if (openingDmButtonText.trim()) {
-          body.openingDmButtonText = openingDmButtonText.trim();
+        if (enableReply) {
+          const msgs = replyMessages.filter((m) => m.trim());
+          if (msgs.length) body.replyMessages = msgs;
         }
-        if (alreadyFollowedButtonText.trim()) {
-          body.alreadyFollowedButtonText = alreadyFollowedButtonText.trim();
+        if (dmMessage.trim()) {
+          body.dmMessage = dmMessage.trim();
+          if (dmButtonText.trim() && dmButtonUrl.trim()) {
+            body.dmButtonText = dmButtonText.trim();
+            body.dmButtonUrl = dmButtonUrl.trim();
+          }
         }
-        if (gateExhaustedMessage.trim()) {
-          body.gateExhaustedMessage = gateExhaustedMessage.trim();
+        body.requireFollow = requireFollow;
+        if (requireFollow && followGateMessage.trim()) {
+          body.followGateMessage = followGateMessage.trim();
         }
-        const clampedAttempts = Math.max(1, Math.min(10, Math.floor(maxGateAttempts) || DEFAULT_MAX_GATE_ATTEMPTS));
-        body.maxGateAttempts = clampedAttempts;
-      }
+        if (requireFollow) {
+          if (openingDmMessage.trim()) {
+            body.openingDmMessage = openingDmMessage.trim();
+          }
+          if (openingDmButtonText.trim()) {
+            body.openingDmButtonText = openingDmButtonText.trim();
+          }
+          if (alreadyFollowedButtonText.trim()) {
+            body.alreadyFollowedButtonText = alreadyFollowedButtonText.trim();
+          }
+          if (gateExhaustedMessage.trim()) {
+            body.gateExhaustedMessage = gateExhaustedMessage.trim();
+          }
+          const clampedAttempts = Math.max(
+            1,
+            Math.min(
+              10,
+              Math.floor(maxGateAttempts) || DEFAULT_MAX_GATE_ATTEMPTS
+            )
+          );
+          body.maxGateAttempts = clampedAttempts;
+        }
 
-      const url = effectiveFlowId ? `/flows/${effectiveFlowId}/quick-update` : '/flows/quick-create';
-      const method = effectiveFlowId ? 'PUT' : 'POST';
-      const res = await fetchApi(url, { method, body: JSON.stringify(body) });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        toaster.show(
-          data.message || t('failed_to_create_flow', 'Falha ao criar automação'),
-          'warning'
+        const flow = await saveEditorChanges(
+          fetchApi,
+          { engine: 'instagram', current: latestFlow.current, body, activate },
+          (record, phase) => {
+            latestFlow.current = record;
+            setDraftId(record.id);
+            setEditorStatusValue(record.status || 'DRAFT');
+            if (phase === 'saved') {
+              configurationSaved = true;
+              markSaved(signature);
+            }
+          }
         );
-        return;
+        toaster.show(t(isEditing ? 'flow_updated' : 'flow_created'), 'success');
+        if (!flowId) router.push(`/automacoes/${flow.id}/wizard`);
+      } catch (error) {
+        const reason = t(
+          `shared_error_${
+            error instanceof Error ? error.message.toLowerCase() : ''
+          }`,
+          t('shared_save_failed')
+        );
+        const message =
+          configurationSaved && activate
+            ? `${t('automation_activation_failed_saved')} ${reason}`
+            : reason;
+        setActionError(message);
+        toaster.show(message, 'warning');
+        if (configurationSaved && !flowId && latestFlow.current)
+          router.push(`/automacoes/${latestFlow.current.id}/wizard`);
+      } finally {
+        setSaving(false);
       }
-      const flow = await res.json();
-      toaster.show(
-        isEditing
-          ? t('flow_updated', 'Automação atualizada com sucesso')
-          : t('flow_created', 'Automação criada com sucesso'),
-        'success'
+    },
+    [
+      canSave,
+      saving,
+      name,
+      integrationId,
+      postMode,
+      scheduledPostId,
+      selectedPostIds,
+      keywordMode,
+      keywords,
+      matchMode,
+      enableReply,
+      replyMessages,
+      dmMessage,
+      dmButtonText,
+      dmButtonUrl,
+      requireFollow,
+      followGateMessage,
+      openingDmMessage,
+      openingDmButtonText,
+      alreadyFollowedButtonText,
+      gateExhaustedMessage,
+      maxGateAttempts,
+      fetchApi,
+      signature,
+      markSaved,
+      toaster,
+      t,
+      isEditing,
+      flowId,
+      router,
+    ]
+  );
+  const changeStatus = async (status: EditorStatus) => {
+    if (saving) return;
+    if (status === 'ACTIVE' && (dirty || !latestFlow.current))
+      return handleSave(true);
+    if (!latestFlow.current) return;
+    setPendingAction(status === 'ACTIVE' ? 'activate' : 'pause');
+    setSaving(true);
+    setActionError(null);
+    try {
+      await setEditorStatus(
+        fetchApi,
+        'instagram',
+        latestFlow.current,
+        status,
+        (record) => {
+          latestFlow.current = record;
+          setEditorStatusValue(record.status || status);
+        }
       );
-      router.push(`/automacoes/${flow.id}`);
-    } catch {
-      toaster.show(t('failed_to_create_flow', 'Falha ao criar automação'), 'warning');
+    } catch (error) {
+      setActionError(
+        t(
+          `shared_error_${
+            error instanceof Error ? error.message.toLowerCase() : ''
+          }`,
+          t('shared_save_failed')
+        )
+      );
     } finally {
       setSaving(false);
     }
-  }, [
-    canSave, name, integrationId, postMode, scheduledPostId, selectedPostIds,
-    keywordMode, keywords, matchMode, enableReply, replyMessages,
-    enableDm, dmMessage, dmButtonText, dmButtonUrl,
-    requireFollow, followGateMessage,
-    openingDmMessage, openingDmButtonText, alreadyFollowedButtonText, gateExhaustedMessage, maxGateAttempts,
-    isEditing, effectiveFlowId, fetchApi, router, toaster, t,
-  ]);
+  };
 
   const prepareDraft = async () => {
-    if (draftLock.current || effectiveFlowId || !name.trim() || !integrationId || !connection.ready) return;
+    if (
+      draftLock.current ||
+      effectiveFlowId ||
+      !name.trim() ||
+      !integrationId ||
+      !connection.ready
+    )
+      return;
     draftLock.current = true;
     setPreparingDraft(true);
     try {
-      const response = await fetchApi('/flows', { method: 'POST', body: JSON.stringify({ name: name.trim(), integrationId }) });
+      const response = await fetchApi('/flows', {
+        method: 'POST',
+        body: JSON.stringify({ name: name.trim(), integrationId }),
+      });
       if (!response.ok) throw new Error('draft_failed');
       const draft = await response.json();
       if (typeof draft.id !== 'string') throw new Error('draft_failed');
+      latestFlow.current = draft;
+      setEditorStatusValue(draft.status || 'DRAFT');
       setDraftId(draft.id);
     } catch {
       toaster.show(t('failed_to_create_flow'), 'warning');
@@ -340,365 +598,422 @@ export const AutomationWizardComponent: FC<Props> = ({ flowId, initialFlow }) =>
     'bg-newBgColorInner border border-newTableBorder rounded-[8px]';
 
   return (
-    <div className="automation-editor flex flex-1 min-h-0">
-      {/* Left sidebar — form (internal scroll) */}
-      <div className="flex-1 overflow-y-auto p-[24px] max-w-[600px]">
-        <div className="flex items-center gap-[12px] mb-[24px]">
-          <button
-            onClick={() => router.push('/automacoes')}
-            className="text-customColor18 hover:text-textColor text-[18px]"
+    <AutomationWorkspace
+      name={name}
+      nameLabel={t('wizard_name')}
+      onNameChange={setName}
+      subtitle={`${(selectedIntegration as any)?.name || ''} · ${t(
+        'automation_instagram_comment_type'
+      )}`}
+      status={editorStatus}
+      dirty={dirty}
+      busy={saving || preparingDraft}
+      pendingAction={pendingAction}
+      valid={canSave}
+      problems={formProblems}
+      impact={t('automation_save_impact_instagram')}
+      error={actionError}
+      onSave={() => void handleSave(false)}
+      onStatusChange={(next) => void changeStatus(next)}
+      navigation={workspace}
+      history={flowId ? <FlowExecutionsComponent flowId={flowId} /> : undefined}
+    >
+      <AutomationEditorLayout>
+        {/* Left sidebar — form (internal scroll) */}
+        <section
+          aria-label={t('shared_configuration')}
+          className="flex flex-col min-w-0 w-full lg:w-[600px] lg:max-w-[55%] lg:shrink-0 lg:min-h-0 bg-newBgColorInner"
+        >
+          <fieldset
+            disabled={
+              saving ||
+              workspace?.switching ||
+              workspace?.readOnly ||
+              editorStatus === 'ARCHIVED'
+            }
+            className="min-w-0 border-0 p-6 lg:flex-1 lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain"
           >
-            &larr;
-          </button>
-          <h1 className="text-[20px] font-semibold text-textColor">
-            {isEditing
-              ? t('wizard_editing_title', 'Edit Quick Automation')
-              : t('wizard_title', 'New Quick Automation')}
-          </h1>
-        </div>
+            <section className="mb-5 space-y-3">
+              <h2 className="text-base font-semibold">
+                {t('automation_section_account')}
+              </h2>
+              <AutomationAccountSelect
+                label={t('wizard_account')}
+                value={integrationId}
+                accounts={instagramIntegrations.map((ig: any) => ({
+                  id: ig.id,
+                  name: ig.name || ig.display || ig.id,
+                }))}
+                disabled={!!effectiveFlowId || preparingDraft || saving}
+                onChange={(id) => {
+                  setIntegrationId(id);
+                  setPublicationPreviews([]);
+                  setPreviewPublicationId('');
+                  setSelectedPostIds([]);
+                  setScheduledPostId('');
+                }}
+              />
+              {instagramIntegrations.length === 0 && (
+                <a
+                  className="text-sm underline"
+                  href="/launches"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {t('shared_connect_channel')}
+                </a>
+              )}
+              {integrationId && (
+                <InstagramEditorConnection connection={connection} />
+              )}
+            </section>
 
-        {/* Name */}
-        <div className="mb-[20px]">
-          <label htmlFor="automation-name" className="block text-[14px] text-textColor mb-[6px]">
-            {t('wizard_name', 'Automation name')}
-          </label>
-          <div className={inputWrapperClass}>
-            <input
-              id="automation-name"
-              type="text"
-              className={inputClass}
-              placeholder={t('wizard_name_placeholder', 'e.g. Ebook promo')}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </div>
-        </div>
+            {/* Step 1: When someone comments */}
+            {integrationId && (
+              <>
+                <div className="border-t border-fifth pt-[20px] mb-[20px]">
+                  <h2 className="text-[16px] font-semibold text-textColor mb-[12px]">
+                    {t('automation_section_origin')}
+                  </h2>
 
-        <section className="mb-5 space-y-3">
-          <h2 className="text-base font-semibold">{t('automation_section_account')}</h2>
-          <p className="text-sm text-newTextColor/60">{t('automation_instagram_comment_type')}</p>
-          <AutomationAccountSelect label={t('wizard_account')} value={integrationId}
-            accounts={instagramIntegrations.map((ig: any) => ({ id: ig.id, name: ig.name || ig.display || ig.id }))}
-            disabled={!!effectiveFlowId || preparingDraft || saving}
-            onChange={(id) => { setIntegrationId(id); setSelectedPostIds([]); setScheduledPostId(''); }} />
-          {instagramIntegrations.length === 0 && <a className="text-sm underline" href="/launches" target="_blank" rel="noreferrer">{t('shared_connect_channel')}</a>}
-          {integrationId && <InstagramEditorConnection connection={connection} />}
-          {!!effectiveFlowId && <p className="text-xs text-newTextColor/60">{t('automation_account_fixed')}</p>}
+                  <AutomationPublicationSelector
+                    onPreviewChange={setPublicationPreviews}
+                    key={integrationId}
+                    integrationId={integrationId}
+                    mode={postMode}
+                    postIds={selectedPostIds}
+                    scheduledPostId={scheduledPostId}
+                    posts={
+                      modalPosts.length
+                        ? modalPosts
+                        : Array.isArray(posts)
+                        ? posts
+                        : []
+                    }
+                    loading={postsLoading}
+                    onLoadMore={
+                      modalNextCursor ? loadMoreModalPosts : undefined
+                    }
+                    loadingMore={modalLoadingMore}
+                    onChange={(selection) => {
+                      setPostMode(selection.mode);
+                      setSelectedPostIds(selection.postIds);
+                      setScheduledPostId(selection.scheduledPostId || '');
+                      setActivePreviewTab('post');
+                    }}
+                  />
+
+                  {/* Aliases de dark posts (anuncios) — aditivo a qualquer modo */}
+                  <details className="mt-4 rounded-lg border border-newTableBorder p-3 text-sm">
+                    <summary className="cursor-pointer font-medium">
+                      {t('trigger_ad_ids_label')}
+                    </summary>
+                    <div className="pt-3 space-y-3">
+                      {!effectiveFlowId && (
+                        <>
+                          <p className="text-xs text-newTextColor/60">
+                            {t('automation_prepare_draft_hint')}
+                          </p>
+                          <button
+                            type="button"
+                            disabled={
+                              preparingDraft ||
+                              saving ||
+                              !name.trim() ||
+                              !connection.ready
+                            }
+                            onClick={prepareDraft}
+                            className="rounded-lg border border-newTableBorder px-3 py-2 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-btnPrimary"
+                          >
+                            {t(
+                              preparingDraft
+                                ? 'automation_preparing_draft'
+                                : 'automation_prepare_draft'
+                            )}
+                          </button>
+                        </>
+                      )}
+                      {effectiveFlowId && (
+                        <AdAliasesField
+                          flowId={effectiveFlowId}
+                          integrationId={integrationId || null}
+                        />
+                      )}
+                    </div>
+                  </details>
+                </div>
+
+                {/* Section: E esse comentário possui (ManyChat style) */}
+                <div className="border-t border-fifth pt-[20px] mb-[20px]">
+                  <h2 className="text-[16px] font-semibold text-textColor mb-[12px]">
+                    {t(
+                      'automation_section_conditions',
+                      'E esse comentário possui'
+                    )}
+                  </h2>
+
+                  <AutomationKeywordConditions
+                    specific={keywordMode === 'specific'}
+                    keywords={keywords}
+                    onSpecificChange={(value) =>
+                      setKeywordMode(value ? 'specific' : 'any_word')
+                    }
+                    onKeywordsChange={setKeywords}
+                    matchMode={matchMode}
+                    onMatchModeChange={setMatchMode}
+                    onFocus={() => setActivePreviewTab('comments')}
+                  />
+                </div>
+
+                {/* DM section */}
+                <section className="border-t border-fifth pt-[20px] mb-[20px]">
+                  <h2 className="text-[16px] font-semibold text-textColor mb-[12px]">
+                    {t('automation_section_response')}
+                  </h2>
+                  <div className="mt-3">
+                    <AutomationPublicReplyToggle
+                      enabled={enableReply}
+                      onChange={(enabled) => {
+                        setEnableReply(enabled);
+                        setActivePreviewTab('comments');
+                      }}
+                      label={t('shared_add_public_reply')}
+                    />
+                  </div>
+                  {enableReply && (
+                    <div className="mt-3">
+                      <SharedReplyVariations
+                        messages={replyMessages}
+                        onChange={setReplyMessages}
+                        maxVariants={null}
+                        onFocus={(index) => {
+                          setReplyPreviewIndex(index);
+                          setActivePreviewTab('comments');
+                        }}
+                      />
+                    </div>
+                  )}
+
+                  <div className="mt-5 mb-3 flex items-center justify-between text-xs text-newTextColor/70">
+                    <span>
+                      {t(
+                        requireFollow
+                          ? 'automation_preview_delivery'
+                          : 'automation_direct_delivery'
+                      )}
+                    </span>
+                    <AutomationContextHelp
+                      label={t('automation_delivery_help')}
+                    >
+                      {t(
+                        requireFollow
+                          ? 'automation_gate_delivery_hint'
+                          : 'automation_direct_delivery_hint'
+                      )}
+                    </AutomationContextHelp>
+                  </div>
+                  <label
+                    htmlFor={privateMessageId}
+                    className="block text-sm mb-2"
+                  >
+                    {t('shared_message')}
+                  </label>
+                  <div className={inputWrapperClass}>
+                    <textarea
+                      id={privateMessageId}
+                      className={`${inputClass} min-h-[100px] resize-y`}
+                      rows={4}
+                      placeholder={t('automation_private_message_placeholder')}
+                      value={dmMessage}
+                      onFocus={() => {
+                        setActivePreviewTab('dm');
+                        setJourneyStage('delivery');
+                      }}
+                      onChange={(e) => setDmMessage(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <AutomationMessageVariables
+                      textareaId={privateMessageId}
+                      onChange={setDmMessage}
+                    />
+                    <AutomationContextHelp label={t('automation_link_help')}>
+                      {t('shared_link_hint')}
+                    </AutomationContextHelp>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActivePreviewTab('dm');
+                      setJourneyStage('delivery');
+                      setShowAddLink(true);
+                    }}
+                    className="mt-[10px] rounded-[4px] border border-dashed border-fifth text-[12px] text-textColor px-[14px] py-[8px] hover:bg-boxHover"
+                  >
+                    {dmButtonText && dmButtonUrl
+                      ? `${dmButtonText} · ${dmButtonUrl}`
+                      : `+ ${t('story_add_link', 'Adicionar um link')}`}
+                  </button>
+                </section>
+
+                {/* Extras — follow gate */}
+                <div className="border-t border-fifth pt-[20px] mb-[20px]">
+                  <h2 className="text-[16px] font-semibold text-textColor mb-[12px]">
+                    {t(
+                      'story_section_extras',
+                      'Outros recursos para automatizar'
+                    )}
+                  </h2>
+                  <div className="rounded-[6px] border border-fifth">
+                    <div className="flex items-center gap-1 pr-3">
+                      <label className="flex flex-1 items-center justify-between gap-[12px] p-[10px] cursor-pointer">
+                        <div>
+                          <div className="text-[13px] text-textColor">
+                            {t(
+                              'story_require_follow',
+                              'Pedir para seguir antes de enviar'
+                            )}
+                          </div>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={requireFollow}
+                          onChange={(e) => {
+                            setRequireFollow(e.target.checked);
+                            setJourneyStage(
+                              e.target.checked ? 'opening' : 'delivery'
+                            );
+                            setActivePreviewTab('dm');
+                          }}
+                          className="h-[18px] w-[18px] accent-btnPrimary cursor-pointer"
+                        />
+                      </label>
+                      <AutomationContextHelp
+                        label={t('automation_follow_help')}
+                      >
+                        {t('story_require_follow_hint')}
+                      </AutomationContextHelp>
+                    </div>
+                    {requireFollow && (
+                      <div className="border-t border-newTableBorder p-3">
+                        <AutomationFollowGateFields
+                          values={{
+                            openingDmMessage,
+                            openingDmButtonText,
+                            followGateMessage,
+                            alreadyFollowedButtonText,
+                            gateExhaustedMessage,
+                            maxGateAttempts,
+                          }}
+                          onChange={(patch) => {
+                            if (patch.openingDmMessage !== undefined)
+                              setOpeningDmMessage(patch.openingDmMessage);
+                            if (patch.openingDmButtonText !== undefined)
+                              setOpeningDmButtonText(patch.openingDmButtonText);
+                            if (patch.followGateMessage !== undefined)
+                              setFollowGateMessage(patch.followGateMessage);
+                            if (patch.alreadyFollowedButtonText !== undefined)
+                              setAlreadyFollowedButtonText(
+                                patch.alreadyFollowedButtonText
+                              );
+                            if (patch.gateExhaustedMessage !== undefined)
+                              setGateExhaustedMessage(
+                                patch.gateExhaustedMessage
+                              );
+                            if (patch.maxGateAttempts !== undefined)
+                              setMaxGateAttempts(patch.maxGateAttempts);
+                          }}
+                          onFocusStage={(stage) => {
+                            setJourneyStage(stage);
+                            setActivePreviewTab('dm');
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+          </fieldset>
         </section>
 
-        {/* Step 1: When someone comments */}
-        {integrationId && (
-          <>
-            <div className="border-t border-fifth pt-[20px] mb-[20px]">
-              <h2 className="text-[16px] font-semibold text-textColor mb-[12px]">
-                {t('automation_section_origin')}
-              </h2>
+        {/* Right side — phone preview (fixed; the left column scrolls internally) */}
+        <AutomationPreviewPanel>
+          {(activePreviewTab === 'post' || activePreviewTab === 'comments') && (
+            <PublicationPreviewControls
+              posts={publicationPreviews}
+              value={selectedPost?.id}
+              onChange={setPreviewPublicationId}
+            />
+          )}
+          {activePreviewTab === 'comments' && enableReply && (
+            <ReplyPreviewControls
+              messages={replyMessages}
+              index={replyPreviewIndex}
+              onChange={setReplyPreviewIndex}
+            />
+          )}
+          {activePreviewTab === 'dm' && requireFollow && (
+            <JourneyPreviewControls
+              stage={journeyStage}
+              onChange={setJourneyStage}
+            />
+          )}
+          <AutomationPhoneFrame>
+            <WizardPhonePreview
+              postSelected={!!selectedPost}
+              postMediaType={
+                selectedPost?.thumbnailUrl ? undefined : selectedPost?.mediaType
+              }
+              postThumb={selectedPost?.thumbnailUrl || selectedPost?.mediaUrl}
+              postCaption={selectedPost?.caption}
+              replyMessage={
+                enableReply
+                  ? replyMessages[
+                      Math.min(replyPreviewIndex, replyMessages.length - 1)
+                    ]
+                  : undefined
+              }
+              triggerType="comment_on_post"
+              triggerText={keywords[0]}
+              journey={{
+                followGate: requireFollow,
+                stage: journeyStage,
+                openingMessage: openingDmMessage,
+                openingButton: openingDmButtonText,
+                gateMessage: followGateMessage,
+                gateButton: alreadyFollowedButtonText,
+                exhaustedMessage: gateExhaustedMessage,
+              }}
+              dmMessage={dmMessage || undefined}
+              dmButtonText={dmButtonText || undefined}
+              dmButtonUrl={dmButtonUrl || undefined}
+              integrationPicture={(selectedIntegration as any)?.picture}
+              integrationName={
+                (selectedIntegration as any)?.name ||
+                (selectedIntegration as any)?.display
+              }
+              activeTab={activePreviewTab}
+              onTabChange={(next) => {
+                if (next === 'post' || next === 'comments' || next === 'dm') {
+                  setActivePreviewTab(next);
+                }
+              }}
+            />
+          </AutomationPhoneFrame>
+        </AutomationPreviewPanel>
 
-              <AutomationPublicationSelector key={integrationId} integrationId={integrationId} mode={postMode} postIds={selectedPostIds} scheduledPostId={scheduledPostId} posts={modalPosts.length ? modalPosts : Array.isArray(posts) ? posts : []} loading={postsLoading} onLoadMore={modalNextCursor ? loadMoreModalPosts : undefined} loadingMore={modalLoadingMore} onChange={selection => { setPostMode(selection.mode); setSelectedPostIds(selection.postIds); setScheduledPostId(selection.scheduledPostId || ''); setActivePreviewTab('post'); }} />
-
-              {/* Aliases de dark posts (anuncios) — aditivo a qualquer modo */}
-              <details className="mt-4 rounded-lg border border-newTableBorder p-3 text-sm">
-                <summary className="cursor-pointer font-medium">{t('trigger_ad_ids_label')}</summary>
-                <div className="pt-3 space-y-3">
-                  {!effectiveFlowId && <>
-                    <p className="text-xs text-newTextColor/60">{t('automation_prepare_draft_hint')}</p>
-                    <button type="button" disabled={preparingDraft || saving || !name.trim() || !connection.ready} onClick={prepareDraft}
-                      className="rounded-lg border border-newTableBorder px-3 py-2 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-btnPrimary">
-                      {t(preparingDraft ? 'automation_preparing_draft' : 'automation_prepare_draft')}
-                    </button>
-                  </>}
-                  {effectiveFlowId && <AdAliasesField flowId={effectiveFlowId} integrationId={integrationId || null} />}
-                </div>
-              </details>
-            </div>
-
-            {/* Section: E esse comentário possui (ManyChat style) */}
-            <div className="border-t border-fifth pt-[20px] mb-[20px]">
-              <h2 className="text-[16px] font-semibold text-textColor mb-[12px]">
-                {t('automation_section_conditions', 'E esse comentário possui')}
-              </h2>
-
-              <AutomationKeywordConditions specific={keywordMode === 'specific'} keywords={keywords} onSpecificChange={value => setKeywordMode(value ? 'specific' : 'any_word')} onKeywordsChange={setKeywords} matchMode={matchMode} onMatchModeChange={setMatchMode} onFocus={() => setActivePreviewTab('comments')} />
-
-              <div className="mt-3"><AutomationPublicReplyToggle enabled={enableReply} onChange={setEnableReply} label={t('shared_add_public_reply')} /></div>
-              {enableReply && <div className="mt-3"><SharedReplyVariations messages={replyMessages} onChange={setReplyMessages} maxVariants={null} onFocus={() => setActivePreviewTab('comments')} /></div>}
-
-            </div>
-
-            {/* DM section */}
-            <div className="border-t border-fifth pt-[20px] mb-[20px]">
-              <h2 className="text-[16px] font-semibold text-textColor mb-[12px]">
-                {t('automation_section_response')}
-              </h2>
-              <label htmlFor={privateMessageId} className="block text-sm mb-2">
-                {t('shared_message')}
-              </label>
-              <div className={inputWrapperClass}>
-                <textarea
-                  id={privateMessageId}
-                  className={`${inputClass} min-h-[100px] resize-y`}
-                  rows={4}
-                  placeholder={t('automation_private_message_placeholder')}
-                  value={dmMessage}
-                  onFocus={() => setActivePreviewTab('dm')}
-                  onChange={(e) => setDmMessage(e.target.value)}
-                />
-              </div>
-              <p className="text-[11px] text-customColor18 mt-[4px]">
-                {t('variables_hint', 'Variables: {commenter_name}, {comment_text}')}
-              </p>
-              <p className="text-[11px] text-newTextColor/60 mt-1">
-                {t('shared_link_hint')}
-              </p>
-              <button
-                type="button"
-                onClick={() => setShowAddLink(true)}
-                className="mt-[10px] rounded-[4px] border border-dashed border-fifth text-[12px] text-textColor px-[14px] py-[8px] hover:bg-boxHover"
-              >
-                {dmButtonText && dmButtonUrl
-                  ? `${dmButtonText} · ${dmButtonUrl}`
-                  : `+ ${t('story_add_link', 'Adicionar um link')}`}
-              </button>
-            </div>
-
-            {/* Extras — follow gate */}
-            <div className="border-t border-fifth pt-[20px] mb-[20px]">
-              <h2 className="text-[16px] font-semibold text-textColor mb-[12px]">
-                {t('story_section_extras', 'Outros recursos para automatizar')}
-              </h2>
-              <div className="rounded-[6px] border border-fifth">
-                <label className="flex items-center justify-between gap-[12px] p-[10px] cursor-pointer">
-                  <div>
-                    <div className="text-[13px] text-textColor">
-                      {t(
-                        'story_require_follow',
-                        'Pedir para seguir antes de enviar'
-                      )}
-                    </div>
-                    <div className="text-[11px] text-customColor18 mt-[2px]">
-                      {t(
-                        'story_require_follow_hint',
-                        'Quando o remetente não seguir a conta, responde com uma mensagem pedindo para seguir.'
-                      )}
-                    </div>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={requireFollow}
-                    onChange={(e) => setRequireFollow(e.target.checked)}
-                    className="h-[18px] w-[18px] accent-btnPrimary cursor-pointer"
-                  />
-                </label>
-                {requireFollow && (
-                  <div className="border-t border-fifth p-[10px] flex flex-col gap-[12px]">
-                    <div className="rounded-[6px] border border-yellow-500/40 bg-yellow-500/10 p-[10px] flex flex-col gap-[6px]">
-                      <div className="text-[12px] font-semibold text-textColor">
-                        ⚠️ {t(
-                          'follow_gate_warning_title',
-                          'Atenção: gate de follow em 2 etapas'
-                        )}
-                      </div>
-                      <ol className="list-decimal list-inside text-[11px] text-customColor18 space-y-[2px]">
-                        <li>
-                          {t(
-                            'follow_gate_warning_step_1',
-                            'Resposta pública no comentário'
-                          )}
-                        </li>
-                        <li>
-                          {t(
-                            'follow_gate_warning_step_2',
-                            'DM inicial com botão (abre janela de mensagens)'
-                          )}
-                        </li>
-                        <li>
-                          {t(
-                            'follow_gate_warning_step_3',
-                            'Verificação de follow após o clique'
-                          )}
-                        </li>
-                        <li>
-                          {t(
-                            'follow_gate_warning_step_4',
-                            'Envia o link ou convida a seguir'
-                          )}
-                        </li>
-                      </ol>
-                    </div>
-
-                    <div className="flex flex-col gap-[6px]">
-                      <label className="text-[11px] text-customColor18">
-                        {t(
-                          'follow_gate_opening_dm_label',
-                          'DM inicial (antes de checar follow)'
-                        )}
-                      </label>
-                      <textarea
-                        value={openingDmMessage}
-                        onChange={(e) => setOpeningDmMessage(e.target.value)}
-                        rows={2}
-                        placeholder={t(
-                          'follow_gate_opening_dm_placeholder',
-                          OPENING_DM_DEFAULT_PT
-                        )}
-                        className="w-full bg-newBgColorInner border border-newTableBorder rounded-[6px] text-[12px] text-textColor px-[10px] py-[8px] outline-none resize-none"
-                      />
-                    </div>
-
-                    <div className="flex flex-col gap-[6px]">
-                      <label className="text-[11px] text-customColor18">
-                        {t(
-                          'follow_gate_opening_btn_label',
-                          'Texto do botão inicial'
-                        )}
-                      </label>
-                      <input
-                        type="text"
-                        value={openingDmButtonText}
-                        onChange={(e) => setOpeningDmButtonText(e.target.value)}
-                        placeholder={t(
-                          'follow_gate_opening_btn_placeholder',
-                          OPENING_DM_BTN_DEFAULT_PT
-                        )}
-                        maxLength={20}
-                        className="w-full bg-newBgColorInner border border-newTableBorder rounded-[6px] text-[12px] text-textColor px-[10px] py-[8px] outline-none"
-                      />
-                    </div>
-
-                    <div className="flex flex-col gap-[6px]">
-                      <label className="text-[11px] text-customColor18">
-                        {t(
-                          'story_follow_gate_label',
-                          'Mensagem enviada para quem ainda não segue'
-                        )}
-                      </label>
-                      <textarea
-                        value={followGateMessage}
-                        onChange={(e) => setFollowGateMessage(e.target.value)}
-                        rows={3}
-                        placeholder={t(
-                          'story_follow_gate_placeholder',
-                          FOLLOW_GATE_DEFAULT_PT
-                        )}
-                        className="w-full bg-newBgColorInner border border-newTableBorder rounded-[6px] text-[12px] text-textColor px-[10px] py-[8px] outline-none resize-none"
-                      />
-                    </div>
-
-                    <div className="flex flex-col gap-[6px]">
-                      <label className="text-[11px] text-customColor18">
-                        {t(
-                          'follow_gate_already_btn_label',
-                          'Texto do botão "Já segui"'
-                        )}
-                      </label>
-                      <input
-                        type="text"
-                        value={alreadyFollowedButtonText}
-                        onChange={(e) => setAlreadyFollowedButtonText(e.target.value)}
-                        placeholder={t(
-                          'follow_gate_already_btn_placeholder',
-                          ALREADY_FOLLOWED_BTN_DEFAULT_PT
-                        )}
-                        maxLength={20}
-                        className="w-full bg-newBgColorInner border border-newTableBorder rounded-[6px] text-[12px] text-textColor px-[10px] py-[8px] outline-none"
-                      />
-                    </div>
-
-                    <div className="flex flex-col gap-[6px]">
-                      <label className="text-[11px] text-customColor18">
-                        {t(
-                          'follow_gate_exhausted_label',
-                          'Mensagem quando tentativas esgotam'
-                        )}
-                      </label>
-                      <textarea
-                        value={gateExhaustedMessage}
-                        onChange={(e) => setGateExhaustedMessage(e.target.value)}
-                        rows={2}
-                        placeholder={t(
-                          'follow_gate_exhausted_placeholder',
-                          GATE_EXHAUSTED_DEFAULT_PT
-                        )}
-                        className="w-full bg-newBgColorInner border border-newTableBorder rounded-[6px] text-[12px] text-textColor px-[10px] py-[8px] outline-none resize-none"
-                      />
-                    </div>
-
-                    <div className="flex flex-col gap-[6px]">
-                      <label className="text-[11px] text-customColor18">
-                        {t(
-                          'follow_gate_max_attempts_label',
-                          'Máximo de tentativas após "Já segui"'
-                        )}
-                      </label>
-                      <input
-                        type="number"
-                        min={1}
-                        max={10}
-                        value={maxGateAttempts}
-                        onChange={(e) => {
-                          const v = Number(e.target.value);
-                          setMaxGateAttempts(Number.isFinite(v) ? v : DEFAULT_MAX_GATE_ATTEMPTS);
-                        }}
-                        className="w-full bg-newBgColorInner border border-newTableBorder rounded-[6px] text-[12px] text-textColor px-[10px] py-[8px] outline-none"
-                      />
-                      <span className="text-[10px] text-customColor18">
-                        {t(
-                          'follow_gate_max_attempts_hint',
-                          'Evita loop infinito se a pessoa nunca seguir.'
-                        )}
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {!isEditing && <p className="mb-3 text-xs text-newTextColor/60">{t('automation_instagram_activate_hint')}</p>}
-            {postMode === 'specific' && !hasSpecificSource && <p role="status" className="mb-3 text-sm text-newTextColor/70">{t('automation_choose_publication_required')}</p>}
-            {/* Save button */}
-            <button
-              onClick={handleSave}
-              disabled={!canSave || saving}
-              className="w-full rounded-[6px] bg-btnPrimary py-[12px] text-[14px] font-medium text-white hover:opacity-80 disabled:opacity-50"
-            >
-              {saving
-                ? (isEditing ? t('wizard_updating', 'Saving...') : t('wizard_saving', 'Creating automation...'))
-                : (isEditing ? t('wizard_update', 'Save Changes') : t('automation_create_activate'))}
-            </button>
-          </>
-        )}
-      </div>
-
-      {/* Right side — phone preview (fixed; the left column scrolls internally) */}
-      <AutomationPreviewPanel desktopOnly>
-        <AutomationPhoneFrame><WizardPhonePreview
-          postThumb={selectedPost?.thumbnailUrl || selectedPost?.mediaUrl}
-          postCaption={selectedPost?.caption}
-          replyMessage={enableReply ? replyMessages.filter(m => m.trim())[0] : undefined}
-          dmMessage={dmMessage || undefined}
-          dmButtonText={dmButtonText || undefined}
-          dmButtonUrl={dmButtonUrl || undefined}
-          integrationPicture={(selectedIntegration as any)?.picture}
-          integrationName={(selectedIntegration as any)?.name || (selectedIntegration as any)?.display}
-          activeTab={activePreviewTab}
-          onTabChange={(next) => {
-            if (next === 'post' || next === 'comments' || next === 'dm') {
-              setActivePreviewTab(next);
-            }
+        <AddLinkModal
+          open={showAddLink}
+          initialText={dmButtonText}
+          initialUrl={dmButtonUrl}
+          onClose={() => setShowAddLink(false)}
+          onSave={(text, url) => {
+            setDmButtonText(text);
+            setDmButtonUrl(url);
           }}
-        /></AutomationPhoneFrame>
-      </AutomationPreviewPanel>
-
-      <AddLinkModal
-        open={showAddLink}
-        initialText={dmButtonText}
-        initialUrl={dmButtonUrl}
-        onClose={() => setShowAddLink(false)}
-        onSave={(text, url) => {
-          setDmButtonText(text);
-          setDmButtonUrl(url);
-        }}
-      />
-    </div>
+        />
+      </AutomationEditorLayout>
+    </AutomationWorkspace>
   );
 };

@@ -1,7 +1,8 @@
 'use client';
 
+import { AutomationMessageVariables } from './shared-message-variables.component';
 import { AutomationPublicationSelector } from './shared-publication-selector.component';
-import { FC, useCallback, useState, useEffect } from 'react';
+import { FC, useCallback, useState, useEffect, useId } from 'react';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import useSWR from 'swr';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
@@ -14,6 +15,8 @@ interface NodeConfigPanelProps {
   integrationId: string;
   onUpdate: (nodeId: string, data: Record<string, any>) => void;
   onClose: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
+  disabled?: boolean;
 }
 
 // Mantidos em sync com os defaults do automation-wizard.component.tsx.
@@ -58,7 +61,15 @@ const KeywordsField: FC<{
   onMatchModeChange: (m: string) => void;
   inputClass: string;
   inputWrapperClass: string;
-}> = ({ t, keywords, matchMode, onKeywordsChange, onMatchModeChange, inputClass, inputWrapperClass }) => (
+}> = ({
+  t,
+  keywords,
+  matchMode,
+  onKeywordsChange,
+  onMatchModeChange,
+  inputClass,
+  inputWrapperClass,
+}) => (
   <div>
     <label className="block text-[13px] font-semibold text-textColor mb-[8px]">
       {t('trigger_keywords', 'Palavras-chave')}
@@ -67,7 +78,10 @@ const KeywordsField: FC<{
     <div className={inputWrapperClass}>
       <CommaSeparatedKeywordsInput
         className={inputClass + ' h-[42px]'}
-        placeholder={t('wizard_keywords_input_placeholder', 'Digite uma ou mais palavras')}
+        placeholder={t(
+          'wizard_keywords_input_placeholder',
+          'Digite uma ou mais palavras'
+        )}
         keywords={keywords}
         onKeywordsChange={onKeywordsChange}
       />
@@ -77,7 +91,9 @@ const KeywordsField: FC<{
     </p>
     {/* Example chips */}
     <div className="flex flex-wrap gap-[6px] mb-[10px]">
-      <span className="text-[11px] text-customColor18">{t('wizard_example', 'Por exemplo:')}</span>
+      <span className="text-[11px] text-customColor18">
+        {t('wizard_example', 'Por exemplo:')}
+      </span>
       {EXAMPLE_CHIPS.map((chip) => (
         <button
           key={chip}
@@ -103,9 +119,15 @@ const KeywordsField: FC<{
           value={matchMode}
           onChange={(e) => onMatchModeChange(e.target.value)}
         >
-          <option value="any">{t('match_any', 'Qualquer palavra-chave')}</option>
-          <option value="all">{t('match_all', 'Todas as palavras-chave')}</option>
-          <option value="exact">{t('match_exact', 'Correspondência exata')}</option>
+          <option value="any">
+            {t('match_any', 'Qualquer palavra-chave')}
+          </option>
+          <option value="all">
+            {t('match_all', 'Todas as palavras-chave')}
+          </option>
+          <option value="exact">
+            {t('match_exact', 'Correspondência exata')}
+          </option>
         </select>
       </div>
     )}
@@ -118,8 +140,12 @@ export const NodeConfigPanel: FC<NodeConfigPanelProps> = ({
   integrationId,
   onUpdate,
   onClose,
+  onDirtyChange,
+  disabled = false,
 }) => {
   const t = useT();
+  const messageId = useId();
+  const [baseline, setBaseline] = useState('{}');
   const [config, setConfig] = useState<Record<string, any>>({});
 
   useEffect(() => {
@@ -129,14 +155,20 @@ export const NodeConfigPanel: FC<NodeConfigPanelProps> = ({
           ? JSON.parse(node.data.config)
           : node.data?.config || {};
       setConfig(parsed);
+      setBaseline(JSON.stringify(parsed));
     } catch {
       setConfig({});
+      setBaseline('{}');
     }
   }, [node]);
 
+  useEffect(() => {
+    onDirtyChange?.(JSON.stringify(config) !== baseline);
+  }, [config, baseline, onDirtyChange]);
   const handleSave = useCallback(() => {
+    onDirtyChange?.(false);
     onUpdate(node.id, config);
-  }, [node.id, config, onUpdate]);
+  }, [node.id, config, onUpdate, onDirtyChange]);
 
   const inputClass =
     'w-full bg-transparent outline-none text-[14px] text-textColor px-[16px] py-[10px]';
@@ -172,8 +204,14 @@ export const NodeConfigPanel: FC<NodeConfigPanelProps> = ({
           config.triggerType === 'story_reply'
             ? 'story_reply'
             : 'comment_on_post';
-        const currentMode: 'all' | 'specific' | 'next_publication' | 'scheduled' =
-          config.mode === 'scheduled' ? 'scheduled' : config.mode === 'next_publication'
+        const currentMode:
+          | 'all'
+          | 'specific'
+          | 'next_publication'
+          | 'scheduled' =
+          config.mode === 'scheduled'
+            ? 'scheduled'
+            : config.mode === 'next_publication'
             ? 'next_publication'
             : config.mode === 'specific' ||
               (Array.isArray(config.postIds) && config.postIds.length > 0) ||
@@ -185,11 +223,17 @@ export const NodeConfigPanel: FC<NodeConfigPanelProps> = ({
           const next: Record<string, any> = { ...config, triggerType: type };
           // Clear id list from the other type to avoid stale references
           if (type === 'comment_on_post') delete next.storyIds;
-          if (type === 'story_reply') { delete next.postIds; delete next.scheduledPostId; if (next.mode === 'scheduled') next.mode = 'all'; }
+          if (type === 'story_reply') {
+            delete next.postIds;
+            delete next.scheduledPostId;
+            if (next.mode === 'scheduled') next.mode = 'all';
+          }
           setConfig(next);
         };
 
-        const setMode = (mode: 'all' | 'specific' | 'next_publication' | 'scheduled') => {
+        const setMode = (
+          mode: 'all' | 'specific' | 'next_publication' | 'scheduled'
+        ) => {
           const next: Record<string, any> = { ...config, mode };
           if (mode !== 'scheduled') delete next.scheduledPostId;
           if (mode !== 'specific') {
@@ -212,7 +256,10 @@ export const NodeConfigPanel: FC<NodeConfigPanelProps> = ({
             <div className="flex flex-col gap-[6px] mb-[16px]">
               {(
                 [
-                  ['comment_on_post', t('trigger_type_comment', 'Comentario em publicacao')],
+                  [
+                    'comment_on_post',
+                    t('trigger_type_comment', 'Comentario em publicacao'),
+                  ],
                   ['story_reply', t('trigger_type_story', 'Resposta ao story')],
                 ] as const
               ).map(([value, label]) => (
@@ -234,73 +281,101 @@ export const NodeConfigPanel: FC<NodeConfigPanelProps> = ({
               ))}
             </div>
 
-            {triggerType === 'story_reply' && <>
-            {/* Mode */}
-            <label className="block text-[13px] font-semibold text-textColor mb-[8px]">
-              {triggerType === 'story_reply'
-                ? t('story_section_when', 'Quando alguem responder')
-                : t('trigger_posts_label', 'Posts monitorados')}
-            </label>
-            <div className="flex flex-col gap-[6px] mb-[12px]">
-              <label
-                className={`flex items-center gap-[8px] p-[8px] rounded-[6px] border cursor-pointer ${
-                  currentMode === 'all'
-                    ? 'border-btnPrimary bg-btnPrimary/10'
-                    : 'border-newTableBorder hover:border-btnPrimary'
-                }`}
-              >
-                <input
-                  type="radio"
-                  checked={currentMode === 'all'}
-                  onChange={() => setMode('all')}
-                />
-                <span className="text-[13px] text-textColor">
+            {triggerType === 'story_reply' && (
+              <>
+                {/* Mode */}
+                <label className="block text-[13px] font-semibold text-textColor mb-[8px]">
                   {triggerType === 'story_reply'
-                    ? t('story_mode_all', 'Qualquer story')
-                    : t('trigger_posts_all', 'Todos os posts')}
-                </span>
-              </label>
-              <label
-                className={`flex items-center gap-[8px] p-[8px] rounded-[6px] border cursor-pointer ${
-                  currentMode === 'next_publication'
-                    ? 'border-btnPrimary bg-btnPrimary/10'
-                    : 'border-newTableBorder hover:border-btnPrimary'
-                }`}
-              >
-                <input
-                  type="radio"
-                  checked={currentMode === 'next_publication'}
-                  onChange={() => setMode('next_publication')}
-                />
-                <span className="text-[13px] text-textColor">
-                  {triggerType === 'story_reply'
-                    ? t('story_mode_next', 'Proximo story')
-                    : t('post_mode_next_publication', 'Proxima publicacao')}
-                </span>
-              </label>
-              <label
-                className={`flex items-center gap-[8px] p-[8px] rounded-[6px] border cursor-pointer ${
-                  (currentMode === 'specific' || currentMode === 'scheduled')
-                    ? 'border-btnPrimary bg-btnPrimary/10'
-                    : 'border-newTableBorder hover:border-btnPrimary'
-                }`}
-              >
-                <input
-                  type="radio"
-                  checked={(currentMode === 'specific' || currentMode === 'scheduled')}
-                  onChange={() => setMode('specific')}
-                />
-                <span className="text-[13px] text-textColor">
-                  {triggerType === 'story_reply'
-                    ? t('story_mode_specific', 'Story especifico')
-                    : t('summary_specific_posts_label', 'Posts especificos')}
-                </span>
-              </label>
-            </div>
-
-            </>}
+                    ? t('story_section_when', 'Quando alguem responder')
+                    : t('trigger_posts_label', 'Posts monitorados')}
+                </label>
+                <div className="flex flex-col gap-[6px] mb-[12px]">
+                  <label
+                    className={`flex items-center gap-[8px] p-[8px] rounded-[6px] border cursor-pointer ${
+                      currentMode === 'all'
+                        ? 'border-btnPrimary bg-btnPrimary/10'
+                        : 'border-newTableBorder hover:border-btnPrimary'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      checked={currentMode === 'all'}
+                      onChange={() => setMode('all')}
+                    />
+                    <span className="text-[13px] text-textColor">
+                      {triggerType === 'story_reply'
+                        ? t('story_mode_all', 'Qualquer story')
+                        : t('trigger_posts_all', 'Todos os posts')}
+                    </span>
+                  </label>
+                  <label
+                    className={`flex items-center gap-[8px] p-[8px] rounded-[6px] border cursor-pointer ${
+                      currentMode === 'next_publication'
+                        ? 'border-btnPrimary bg-btnPrimary/10'
+                        : 'border-newTableBorder hover:border-btnPrimary'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      checked={currentMode === 'next_publication'}
+                      onChange={() => setMode('next_publication')}
+                    />
+                    <span className="text-[13px] text-textColor">
+                      {triggerType === 'story_reply'
+                        ? t('story_mode_next', 'Proximo story')
+                        : t('post_mode_next_publication', 'Proxima publicacao')}
+                    </span>
+                  </label>
+                  <label
+                    className={`flex items-center gap-[8px] p-[8px] rounded-[6px] border cursor-pointer ${
+                      currentMode === 'specific' || currentMode === 'scheduled'
+                        ? 'border-btnPrimary bg-btnPrimary/10'
+                        : 'border-newTableBorder hover:border-btnPrimary'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      checked={
+                        currentMode === 'specific' ||
+                        currentMode === 'scheduled'
+                      }
+                      onChange={() => setMode('specific')}
+                    />
+                    <span className="text-[13px] text-textColor">
+                      {triggerType === 'story_reply'
+                        ? t('story_mode_specific', 'Story especifico')
+                        : t(
+                            'summary_specific_posts_label',
+                            'Posts especificos'
+                          )}
+                    </span>
+                  </label>
+                </div>
+              </>
+            )}
             {/* Specific selectors */}
-            {triggerType === 'comment_on_post' && <AutomationPublicationSelector key={integrationId} integrationId={integrationId} mode={currentMode} postIds={selectedPostIds} scheduledPostId={config.scheduledPostId} posts={posts || []} loading={postsLoading} onChange={selection => { const next: Record<string, any> = { ...config, mode: selection.mode, postIds: selection.postIds }; delete next.scheduledPostId; if (selection.scheduledPostId) next.scheduledPostId = selection.scheduledPostId; setConfig(next); }} />}
+            {triggerType === 'comment_on_post' && (
+              <AutomationPublicationSelector
+                key={integrationId}
+                integrationId={integrationId}
+                mode={currentMode}
+                postIds={selectedPostIds}
+                scheduledPostId={config.scheduledPostId}
+                posts={posts || []}
+                loading={postsLoading}
+                onChange={(selection) => {
+                  const next: Record<string, any> = {
+                    ...config,
+                    mode: selection.mode,
+                    postIds: selection.postIds,
+                  };
+                  delete next.scheduledPostId;
+                  if (selection.scheduledPostId)
+                    next.scheduledPostId = selection.scheduledPostId;
+                  setConfig(next);
+                }}
+              />
+            )}
 
             {currentMode === 'specific' && triggerType === 'story_reply' && (
               <div className="mb-[12px]">
@@ -346,8 +421,12 @@ export const NodeConfigPanel: FC<NodeConfigPanelProps> = ({
                 t={t}
                 keywords={config.keywords || []}
                 matchMode={config.matchMode || 'any'}
-                onKeywordsChange={(kws) => setConfig({ ...config, keywords: kws })}
-                onMatchModeChange={(m) => setConfig({ ...config, matchMode: m })}
+                onKeywordsChange={(kws) =>
+                  setConfig({ ...config, keywords: kws })
+                }
+                onMatchModeChange={(m) =>
+                  setConfig({ ...config, matchMode: m })
+                }
                 inputClass={inputClass}
                 inputWrapperClass={inputWrapperClass}
               />
@@ -358,7 +437,10 @@ export const NodeConfigPanel: FC<NodeConfigPanelProps> = ({
               <div className="mt-[16px]">
                 <label className="flex items-center justify-between gap-[8px] p-[8px] rounded-[6px] border border-newTableBorder">
                   <span className="text-[12px] text-textColor">
-                    {t('story_match_reactions', 'Responder reacoes nos stories')}
+                    {t(
+                      'story_match_reactions',
+                      'Responder reacoes nos stories'
+                    )}
                   </span>
                   <input
                     type="checkbox"
@@ -562,7 +644,9 @@ export const NodeConfigPanel: FC<NodeConfigPanelProps> = ({
                       type="number"
                       min={1}
                       max={10}
-                      value={config.maxGateAttempts ?? DEFAULT_MAX_GATE_ATTEMPTS}
+                      value={
+                        config.maxGateAttempts ?? DEFAULT_MAX_GATE_ATTEMPTS
+                      }
                       onChange={(e) => {
                         const v = Number(e.target.value);
                         setConfig({
@@ -621,7 +705,9 @@ export const NodeConfigPanel: FC<NodeConfigPanelProps> = ({
               t={t}
               keywords={config.keywords || []}
               matchMode={config.matchMode || 'any'}
-              onKeywordsChange={(kws) => setConfig({ ...config, keywords: kws })}
+              onKeywordsChange={(kws) =>
+                setConfig({ ...config, keywords: kws })
+              }
               onMatchModeChange={(m) => setConfig({ ...config, matchMode: m })}
               inputClass={inputClass}
               inputWrapperClass={inputWrapperClass}
@@ -637,6 +723,7 @@ export const NodeConfigPanel: FC<NodeConfigPanelProps> = ({
             </label>
             <div className={inputWrapperClass}>
               <textarea
+                id={messageId}
                 className={`${inputClass} min-h-[100px] resize-y`}
                 rows={4}
                 placeholder={t(
@@ -649,12 +736,11 @@ export const NodeConfigPanel: FC<NodeConfigPanelProps> = ({
                 }
               />
             </div>
-            <p className="text-[12px] text-customColor18 mt-[6px]">
-              {t(
-                'variables_hint',
-                'Variables: {commenter_name}, {comment_text}, {media_id}'
-              )}
-            </p>
+            <AutomationMessageVariables
+              textareaId={messageId}
+              disabled={disabled}
+              onChange={(message) => setConfig({ ...config, message })}
+            />
           </>
         );
 
@@ -666,6 +752,7 @@ export const NodeConfigPanel: FC<NodeConfigPanelProps> = ({
             </label>
             <div className={inputWrapperClass}>
               <textarea
+                id={messageId}
                 className={`${inputClass} min-h-[120px] resize-y`}
                 rows={6}
                 placeholder={t(
@@ -678,12 +765,11 @@ export const NodeConfigPanel: FC<NodeConfigPanelProps> = ({
                 }
               />
             </div>
-            <p className="text-[12px] text-customColor18 mt-[6px]">
-              {t(
-                'variables_hint',
-                'Variables: {commenter_name}, {comment_text}, {media_id}'
-              )}
-            </p>
+            <AutomationMessageVariables
+              textareaId={messageId}
+              disabled={disabled}
+              onChange={(message) => setConfig({ ...config, message })}
+            />
             <p className="text-[11px] text-customColor18 mt-[4px]">
               {t(
                 'dm_multiline_hint',
@@ -788,19 +874,27 @@ export const NodeConfigPanel: FC<NodeConfigPanelProps> = ({
       default:
         return (
           <p className="text-[14px] text-customColor18">
-            {t('no_config_available', 'No configuration available for this node')}
+            {t(
+              'no_config_available',
+              'No configuration available for this node'
+            )}
           </p>
         );
     }
   };
 
   return (
-    <div className="absolute right-0 top-0 h-full w-[320px] border-l border-fifth bg-newBgColorInner p-[16px] overflow-y-auto z-10">
+    <aside
+      aria-label={t('node_config')}
+      className="w-full lg:w-[360px] lg:max-w-[45%] lg:shrink-0 border-b lg:border-b-0 lg:border-r border-newTableBorder bg-newBgColorInner p-4 overflow-y-auto max-h-[60dvh] lg:max-h-none lg:min-h-0"
+    >
       <div className="flex items-center justify-between mb-[16px]">
         <h3 className="text-[14px] font-semibold text-textColor">
           {t('node_config', 'Node Configuration')}
         </h3>
         <button
+          type="button"
+          aria-label={t('close')}
           onClick={onClose}
           className="text-customColor18 hover:text-textColor text-[18px]"
         >
@@ -808,14 +902,21 @@ export const NodeConfigPanel: FC<NodeConfigPanelProps> = ({
         </button>
       </div>
 
-      {renderFields()}
+      <fieldset disabled={disabled} className="min-w-0">
+        {renderFields()}
+      </fieldset>
 
+      <p className="mt-4 text-xs text-newTextColor/60">
+        {t('automation_apply_node_hint')}
+      </p>
       <button
+        type="button"
+        disabled={disabled || JSON.stringify(config) === baseline}
         onClick={handleSave}
-        className="mt-[16px] w-full rounded-[4px] bg-btnPrimary py-[8px] text-[14px] font-medium text-white hover:opacity-80"
+        className="mt-4 w-full rounded-lg bg-btnPrimary py-2 text-sm font-medium text-white hover:opacity-80 disabled:bg-newBgColor disabled:text-newTextColor/45 disabled:cursor-not-allowed"
       >
-        {t('save_config', 'Save')}
+        {t('automation_apply_node')}
       </button>
-    </div>
+    </aside>
   );
 };
