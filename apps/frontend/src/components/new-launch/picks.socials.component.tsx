@@ -37,7 +37,13 @@ export const PicksSocialsComponent: FC<{ toolTip?: boolean }> = ({
             {integrations
               .filter((f) => {
                 if (exising.integration) {
-                  return f.id === exising.integration;
+                  // os outros canais com que o post foi criado (lote)
+                  return (
+                    f.id === exising.integration ||
+                    !!exising.siblings?.some(
+                      (sibling) => sibling.integration === f.id
+                    )
+                  );
                 }
                 return !f.inBetweenSteps && !f.disabled;
               })

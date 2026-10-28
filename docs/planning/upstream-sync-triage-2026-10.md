@@ -778,6 +778,36 @@ novo). Decisão do mantenedor: manter o comportamento do Postiz (post em
 ERROR com o link do vídeo). Próximo: agendamento por grupo (`a194e3f4`),
 plano em duas etapas (backend e composer).
 
+### Agendamento por grupo (28/10/2026)
+
+Portado `a194e3f4` em duas partes. Backend: `Post.batchId` (migração
+`20261028_post_batch_id`), um lote por perfil e só com mais de um canal,
+`posts[].date` só no editor (a API pública remove) e `siblings` em
+`GET /posts/group/:group`. Os irmãos são carregados pelas raízes do lote no
+perfil do post e pelas cadeias do grupo, porque comentários do
+post-management podem não ter `batchId`. Composer: irmãos abrem juntos,
+seletor de canais e data por canal (sem modo global nem troca de cliente em
+post existente) e regras puras em `new-launch/batch.edit.ts` (vitest:
+`pnpm exec vitest run -c tools/vitest.composer.config.mts`):
+- "no ar" = PUBLISHED ou ERROR com `releaseId`; "saindo" = QUEUE com a data
+  guardada vencida;
+- "só atualizar" mantém a data guardada só de quem está saindo;
+- irmão movido para o passado é recusado ao agendar;
+- rascunho num lote não mexe no que está no ar;
+- duas requisições, com aviso e fechamento só quando parte foi salva;
+- excluir pergunta "todos os canais / só este".
+
+Decisões do mantenedor: como no Postiz (irmãos juntos, diálogo "só
+atualizar/republicar"; tags e intervalo compartilhados e rascunho leva os
+agendados). Revisões: `plan-reviewer` (sem bloqueador; ajustes aplicados),
+`security-auditor` (2 MEDIUM introduzidos e 2 HIGH antigos corrigidos — troca
+de grupo escopada pelo perfil e `PUT /posts/:id/date` sem a linha inteira),
+`code-reviewer` e `feature-acceptance-reviewer` (bloqueador do seletor de
+canais escondido em post existente, corrigido; seletor de cliente escondido
+em post existente; textos de exclusão). Sem backfill: posts antigos abrem
+sozinhos. Observação aceita: o canal aberto movido para o passado segue o
+comportamento antigo (pergunta só atualizar/republicar).
+
 ## Apêndice — classificação 1 por 1 (171 PRs + 74 commits diretos)
 
 Legenda: **P0** segurança (nesta branch) · **ADOPT** cherry-pick/porte leve ·
