@@ -17,6 +17,7 @@ export function AutomationWorkspace(
     nameLabel: string;
     onNameChange: (name: string) => void;
     subtitle?: string;
+    picture?: string;
     navigation?: WorkspaceNavigation;
     history?: ReactNode;
     onStatusChange: (status: 'ACTIVE' | 'PAUSED') => void;
@@ -57,7 +58,7 @@ export function AutomationWorkspace(
       <header className="shrink-0 border-b border-newTableBorder bg-newBgColorInner px-4 py-3 space-y-2">
         <div className="flex flex-wrap items-center gap-3">
           <a
-            href="/automacoes"
+            href="/automations"
             aria-label={t('automacoes')}
             className="shrink-0 p-2 rounded-lg hover:bg-boxHover"
           >
@@ -80,7 +81,14 @@ export function AutomationWorkspace(
               className="w-full bg-transparent border border-transparent hover:border-newTableBorder focus:border-newTableBorder rounded-md px-2 py-1 text-base font-semibold outline-none"
             />
             {props.subtitle && (
-              <p className="px-2 text-xs text-newTextColor/60 truncate">
+              <p className="px-2 flex items-center gap-1.5 text-xs text-newTextColor/60 truncate">
+                {props.picture && (
+                  <img
+                    src={props.picture}
+                    alt=""
+                    className="w-5 h-5 rounded-full object-cover"
+                  />
+                )}
                 {props.subtitle}
               </p>
             )}
@@ -105,7 +113,7 @@ export function AutomationWorkspace(
             />
           )}
         </div>
-        <AutomationEditorFeedback {...props} />
+        <AutomationEditorFeedback {...props} showProblems={false} />
         {mode === 'history' && props.dirty && (
           <p className="text-xs text-newTextColor/60">
             {t('history_draft_preserved')}
@@ -191,6 +199,16 @@ export function AutomationWorkspace(
               : 'flex flex-col flex-1 min-w-0 lg:min-h-0'
           }
         >
+          {!props.valid && !!props.problems?.length && (
+            <ul
+              className="shrink-0 px-6 py-3 text-xs text-newTextColor/70 border-b border-newTableBorder space-y-1"
+              aria-live="polite"
+            >
+              {props.problems.map((problem) => (
+                <li key={problem}>{problem}</li>
+              ))}
+            </ul>
+          )}
           {props.children}
         </div>
         {mode === 'history' && (

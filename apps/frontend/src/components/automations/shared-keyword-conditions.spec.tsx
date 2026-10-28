@@ -34,7 +34,9 @@ describe('condicoes comuns Instagram e Facebook', () => {
     });
     fireEvent.blur(screen.getByLabelText('trigger_keywords'));
     expect(change).toHaveBeenLastCalledWith(['quero', 'link']);
-    fireEvent.click(screen.getByRole('radio', { name: 'automation_any_comment' }));
+    fireEvent.click(
+      screen.getByRole('radio', { name: 'automation_any_comment' })
+    );
     expect(change).toHaveBeenLastCalledWith([]);
     expect(screen.queryByRole('textbox')).toBeNull();
   });
@@ -54,7 +56,9 @@ describe('condicoes comuns Instagram e Facebook', () => {
       'disabled',
       true
     );
-    for (const button of screen.getAllByRole('button'))
+    for (const button of screen
+      .getAllByRole('button')
+      .filter((button) => !button.hasAttribute('aria-expanded')))
       expect(button).toHaveProperty('disabled', true);
   });
 });

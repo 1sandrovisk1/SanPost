@@ -163,8 +163,7 @@ export const LogsComponent: FC = () => {
   const [status, setStatus] = useState<UnmatchedStatus>('PENDING');
   const [page, setPage] = useState(1);
 
-  const effectiveIntegrationId =
-    integrationId ?? igIntegrations[0]?.id ?? null;
+  const effectiveIntegrationId = integrationId ?? igIntegrations[0]?.id ?? null;
 
   const {
     data: inbox,
@@ -227,7 +226,7 @@ export const LogsComponent: FC = () => {
       <div className="flex items-center gap-[12px]">
         <button
           type="button"
-          onClick={() => router.push('/automacoes')}
+          onClick={() => router.push('/automations')}
           aria-label={t('back', 'Voltar')}
           className="text-customColor18 hover:text-textColor text-[18px]"
         >
@@ -292,28 +291,30 @@ export const LogsComponent: FC = () => {
             </div>
 
             <div className="ml-auto flex gap-[6px]">
-              {(['PENDING', 'BOUND', 'IGNORED'] as UnmatchedStatus[]).map((s) => {
-                const active = status === s;
-                return (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => {
-                      setStatus(s);
-                      setPage(1);
-                    }}
-                    className={`text-[13px] px-[12px] py-[5px] rounded-[4px] border transition-colors ${
-                      active
-                        ? 'border-btnPrimary bg-btnPrimary/10 text-textColor'
-                        : 'border-fifth bg-newBgColorInner text-customColor18 hover:border-btnPrimary/40'
-                    }`}
-                  >
-                    {s === 'PENDING' && t('logs_status_pending', 'Pendentes')}
-                    {s === 'BOUND' && t('logs_status_bound', 'Vinculados')}
-                    {s === 'IGNORED' && t('logs_status_ignored', 'Ignorados')}
-                  </button>
-                );
-              })}
+              {(['PENDING', 'BOUND', 'IGNORED'] as UnmatchedStatus[]).map(
+                (s) => {
+                  const active = status === s;
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => {
+                        setStatus(s);
+                        setPage(1);
+                      }}
+                      className={`text-[13px] px-[12px] py-[5px] rounded-[4px] border transition-colors ${
+                        active
+                          ? 'border-btnPrimary bg-btnPrimary/10 text-textColor'
+                          : 'border-fifth bg-newBgColorInner text-customColor18 hover:border-btnPrimary/40'
+                      }`}
+                    >
+                      {s === 'PENDING' && t('logs_status_pending', 'Pendentes')}
+                      {s === 'BOUND' && t('logs_status_bound', 'Vinculados')}
+                      {s === 'IGNORED' && t('logs_status_ignored', 'Ignorados')}
+                    </button>
+                  );
+                }
+              )}
             </div>
           </>
         )}

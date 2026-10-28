@@ -565,6 +565,7 @@ const FlowEditorInner: FC<FlowEditorProps> = ({ id, workspace }) => {
 
   return (
     <AutomationWorkspace
+      picture={flow.integration?.picture || undefined}
       name={flowName}
       nameLabel={t('flow_name')}
       onNameChange={setFlowName}

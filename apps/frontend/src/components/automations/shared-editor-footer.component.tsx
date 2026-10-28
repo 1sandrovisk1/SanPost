@@ -13,6 +13,7 @@ export function AutomationEditorFeedback({
   impact,
   error,
   onSave,
+  showProblems = true,
 }: {
   status: EditorStatus;
   dirty: boolean;
@@ -23,6 +24,7 @@ export function AutomationEditorFeedback({
   impact?: string;
   error?: string | null;
   onSave: () => void;
+  showProblems?: boolean;
 }) {
   const t = useT();
   const active = status === 'ACTIVE';
@@ -34,7 +36,7 @@ export function AutomationEditorFeedback({
       >
         {dirty && <p>{t('shared_unsaved')}</p>}
         {active && dirty && impact && <p className="font-medium">{impact}</p>}
-        {!valid && problems.length > 0 && (
+        {showProblems && !valid && problems.length > 0 && (
           <div>
             <p>{problems[0]}</p>
             {problems.length > 1 && (

@@ -1,14 +1,18 @@
 'use client';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
-/** Legacy Instagram interpolation only. Never reuse these tokens in the V2 engine. */
+/** Insert only tokens actually supported by the selected engine/event. */
 export function AutomationMessageVariables({
   textareaId,
   onChange,
   disabled = false,
+  engine = 'legacy',
+  messenger = false,
 }: {
   textareaId: string;
   onChange: (value: string) => void;
   disabled?: boolean;
+  engine?: 'legacy' | 'shared';
+  messenger?: boolean;
 }) {
   const t = useT();
   return (
@@ -35,13 +39,27 @@ export function AutomationMessageVariables({
         }}
       >
         <option value="">{t('automation_choose_variable')}</option>
-        {['commenter_name', 'commenter_id', 'comment_text', 'media_id'].map(
-          (name) => (
-            <option key={name} value={`{${name}}`}>
-              {t(`automation_variable_${name}`)}
-            </option>
-          )
-        )}
+        {(engine === 'legacy'
+          ? ['commenter_name', 'commenter_id', 'comment_text', 'media_id']
+          : messenger
+          ? ['comment_text', 'comment_id']
+          : ['comment_name', 'comment_text', 'comment_id', 'media_id']
+        ).map((name) => (
+          <option
+            key={name}
+            value={engine === 'legacy' ? `{${name}}` : `{{${name}}}`}
+          >
+            {t(
+              `automation_variable_${
+                messenger && engine === 'shared'
+                  ? name === 'comment_text'
+                    ? 'message_text'
+                    : 'message_id'
+                  : name
+              }`
+            )}
+          </option>
+        ))}
       </select>
     </label>
   );

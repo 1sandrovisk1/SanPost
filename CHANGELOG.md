@@ -7,6 +7,14 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 
 ## [Unreleased]
 
+### Melhorado — revisão visual e alternativas privadas (28/10/2026)
+
+- Histórico com retorno de atualização manual, ajuda flutuante sem deslocar o layout e fuso no cabeçalho Início; setas dos seletores com espaço adequado.
+- Conta/Página com avatar e acesso compacto a Credenciais, pendências fora do cabeçalho e expansão da galeria por ícone. IDs selecionados ficam na área de Dark Post.
+- Prévia específica de Instagram, Facebook e Messenger, com navegação por ícones fora do telefone e escopo de qualquer/próxima publicação.
+- Até dez alternativas privadas no rápido, canvas, API e MCP; uma mensagem escolhida por execução, com botão comum e preservação em retries. Variáveis disponíveis conforme motor e gatilho.
+- URLs da interface padronizadas em inglês, com redirecionamento compatível das rotas antigas e preservação dos parâmetros.
+
 ### Melhorado — interface de automações (28/10/2026)
 
 - Inspetor do construtor visual à esquerda em Instagram e Facebook/Messenger; aplicação local do nó diferenciada do salvamento global e drop ajustado à viewport.

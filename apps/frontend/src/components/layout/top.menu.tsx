@@ -157,7 +157,7 @@ export const useMenuItem = () => {
           />
         </svg>
       ),
-      path: '/automacoes',
+      path: '/automations',
     },
     {
       name: t('integrations', 'Integrations'),

@@ -421,7 +421,7 @@ function FacebookSetupForProfile({
                 {ready && !hasError && (
                   <a
                     className="inline-flex rounded-lg bg-btnPrimary text-white px-4 py-2 text-sm"
-                    href={`/automacoes/compartilhada/nova?channel=${encodeURIComponent(
+                    href={`/automations/new?channel=${encodeURIComponent(
                       selectedPage.id
                     )}`}
                   >

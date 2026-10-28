@@ -1,21 +1,13 @@
+import { redirect } from 'next/navigation';
+import { legacyAutomationDestination } from '@gitroom/frontend/components/automations/shared-routes';
 export const dynamic = 'force-dynamic';
-import { AutomationWizardServerWrapper } from '@gitroom/frontend/components/automations/automation-wizard-server-wrapper.component';
-import { Metadata } from 'next';
-
-export const metadata: Metadata = {
-  title: 'Editar Automação',
-  description: 'Editar automação no assistente',
-};
-
-export default async function WizardEditPage({
+export default async function Page({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { id } = await params;
-  return (
-    <div className="bg-newBgColorInner flex-1 flex-col flex min-w-0 lg:min-h-0 lg:h-[calc(100dvh-105px)] lg:overflow-hidden">
-      <AutomationWizardServerWrapper flowId={id} />
-    </div>
-  );
+  redirect(legacyAutomationDestination([id, 'wizard'], await searchParams));
 }

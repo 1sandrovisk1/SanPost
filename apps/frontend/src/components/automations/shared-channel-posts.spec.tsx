@@ -171,7 +171,9 @@ describe('publicacao de anuncio no seletor compartilhado', () => {
       name: 'automation_facebook_specific_post',
     });
     expect(
-      radio.closest('div')?.contains(screen.getByText('fb_post_lookup_title'))
+      radio
+        .closest('div')
+        ?.parentElement?.contains(screen.getByText('fb_post_lookup_title'))
     ).toBe(true);
   });
   it('mantem texto durante consulta e informa erro sem exibir resposta bruta', async () => {

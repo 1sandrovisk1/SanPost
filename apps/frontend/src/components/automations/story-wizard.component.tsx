@@ -1,4 +1,6 @@
 'use client';
+import { PrivateMessageVariations } from './shared-private-variations.component';
+import { AutomationConnectionIndicator } from './shared-connection-indicator.component';
 import { AutomationContextHelp } from './shared-context-help.component';
 
 import { EditorPendingAction } from './shared-editor-footer.component';
@@ -20,10 +22,7 @@ import {
   AutomationPhoneFrame,
 } from './shared-editor-preview.component';
 import { AutomationAccountSelect } from './shared-account-select.component';
-import {
-  InstagramEditorConnection,
-  useInstagramEditorConnection,
-} from './shared-instagram-connection.component';
+import { useInstagramEditorConnection } from './shared-instagram-connection.component';
 import {
   FC,
   useCallback,
@@ -102,6 +101,8 @@ export const StoryWizardComponent: FC<Props> = ({
     FOLLOW_GATE_DEFAULT_PT
   );
   const [dmMessage, setDmMessage] = useState('');
+  const [dmMessages, setDmMessages] = useState<string[]>(['']);
+  const [dmPreviewIndex, setDmPreviewIndex] = useState(0);
   const [dmButtonText, setDmButtonText] = useState('');
   const [dmButtonUrl, setDmButtonUrl] = useState('');
   const [showAddLink, setShowAddLink] = useState(false);
@@ -135,6 +136,7 @@ export const StoryWizardComponent: FC<Props> = ({
     requireFollow,
     followGateMessage,
     dmMessage,
+    dmMessages,
     dmButtonText,
     dmButtonUrl,
   });
@@ -226,7 +228,8 @@ export const StoryWizardComponent: FC<Props> = ({
         ? triggerCfg.followGateMessage
         : FOLLOW_GATE_DEFAULT_PT
     );
-    setDmMessage(dmCfg.message || '');
+    setDmMessage(dmCfg.messages?.[0] || dmCfg.message || '');
+    setDmMessages(dmCfg.messages || [dmCfg.message || '']);
     setDmButtonText(dmCfg.buttonText || '');
     setDmButtonUrl(dmCfg.buttonUrl || '');
   }, [initialFlow, flowId, resetBaseline, dirty]);
@@ -279,7 +282,10 @@ export const StoryWizardComponent: FC<Props> = ({
     ...(keywordMode === 'specific' && !keywords.length
       ? [t('automation_keywords_required')]
       : []),
-    ...(!dmMessage.trim() ? [t('automation_response_required')] : []),
+    ...(!dmMessage.trim() ||
+    dmMessages.some((m) => !m.trim() || m.length > (dmButtonText ? 640 : 2000))
+      ? [t('automation_response_required')]
+      : []),
     ...(requireFollow && !followGateMessage.trim()
       ? [t('automation_follow_messages_required')]
       : []),
@@ -317,7 +323,8 @@ export const StoryWizardComponent: FC<Props> = ({
           body.keywords = keywords;
         }
         if (dmMessage.trim()) {
-          body.dmMessage = dmMessage.trim();
+          if (dmMessages.length > 1) body.dmMessages = dmMessages;
+          else body.dmMessage = dmMessage.trim();
           if (dmButtonText.trim() && dmButtonUrl.trim()) {
             body.dmButtonText = dmButtonText.trim();
             body.dmButtonUrl = dmButtonUrl.trim();
@@ -338,7 +345,7 @@ export const StoryWizardComponent: FC<Props> = ({
           }
         );
         toaster.show(t(isEditing ? 'flow_updated' : 'flow_created'), 'success');
-        if (!flowId) router.push(`/automacoes/${flow.id}/wizard`);
+        if (!flowId) router.push(`/automations/instagram/${flow.id}`);
       } catch (error) {
         const reason = t(
           `shared_error_${
@@ -353,7 +360,7 @@ export const StoryWizardComponent: FC<Props> = ({
         setActionError(message);
         toaster.show(message, 'warning');
         if (configurationSaved && !flowId && latestFlow.current)
-          router.push(`/automacoes/${latestFlow.current.id}/wizard`);
+          router.push(`/automations/instagram/${latestFlow.current.id}`);
       } finally {
         setSaving(false);
       }
@@ -370,6 +377,7 @@ export const StoryWizardComponent: FC<Props> = ({
       requireFollow,
       followGateMessage,
       dmMessage,
+      dmMessages,
       dmButtonText,
       dmButtonUrl,
       fetchApi,
@@ -439,6 +447,7 @@ export const StoryWizardComponent: FC<Props> = ({
       name={name}
       nameLabel={t('flow_name')}
       onNameChange={setName}
+      picture={(selectedIntegration as any)?.picture}
       subtitle={`${(selectedIntegration as any)?.name || ''} · ${t(
         'automation_name_instagram_story'
       )}`}
@@ -511,10 +520,21 @@ export const StoryWizardComponent: FC<Props> = ({
                 {t('automation_section_account')}
               </h2>
               <AutomationAccountSelect
+                connection={
+                  integrationId && (
+                    <AutomationConnectionIndicator
+                      integrationId={integrationId}
+                      provider="instagram"
+                      ready={connection.ready}
+                      loading={connection.loading}
+                    />
+                  )
+                }
                 label={t('wizard_account')}
                 value={integrationId}
                 accounts={instagramIntegrations.map((ig: any) => ({
                   id: ig.id,
+                  picture: ig.picture,
                   name: ig.name || ig.display || ig.id,
                 }))}
                 disabled={isEditing || !!draftId || saving}
@@ -532,9 +552,6 @@ export const StoryWizardComponent: FC<Props> = ({
                 >
                   {t('shared_connect_channel')}
                 </a>
-              )}
-              {integrationId && (
-                <InstagramEditorConnection connection={connection} />
               )}
             </div>
 
@@ -771,23 +788,18 @@ export const StoryWizardComponent: FC<Props> = ({
               <h3 className={sectionTitleClass}>
                 {t('automation_section_response')}
               </h3>
-              <label htmlFor={messageId} className="text-sm">
-                {t('shared_message')}
-              </label>
-              <textarea
-                id={messageId}
-                value={dmMessage}
-                onFocus={() => {
+              <PrivateMessageVariations
+                maxLength={dmButtonText ? 640 : 2000}
+                messages={dmMessages}
+                onChange={(messages) => {
+                  setDmMessages(messages);
+                  setDmMessage(messages[0]);
+                }}
+                onFocus={(index) => {
+                  setDmPreviewIndex(index);
                   setActivePreviewTab('dm');
                   setJourneyStage('delivery');
                 }}
-                onChange={(e) => setDmMessage(e.target.value)}
-                rows={4}
-                placeholder={t(
-                  'story_dm_placeholder',
-                  'Escreva uma mensagem...'
-                )}
-                className="w-full bg-newBgColorInner border border-newTableBorder rounded-[8px] text-[13px] text-textColor px-[14px] py-[10px] outline-none resize-none"
               />
               <button
                 type="button"
@@ -891,7 +903,9 @@ export const StoryWizardComponent: FC<Props> = ({
               storyThumb={
                 selectedStory?.thumbnailUrl || selectedStory?.mediaUrl
               }
-              dmMessage={dmMessage}
+              dmMessage={
+                dmMessages[Math.min(dmPreviewIndex, dmMessages.length - 1)]
+              }
               dmButtonText={dmButtonText}
               dmButtonUrl={dmButtonUrl}
               commenterName="usuario"

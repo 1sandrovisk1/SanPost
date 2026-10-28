@@ -1,6 +1,7 @@
 'use client';
+import { PrivateMessageVariations } from './shared-private-variations.component';
+import { AutomationConnectionIndicator } from './shared-connection-indicator.component';
 import { AutomationContextHelp } from './shared-context-help.component';
-import { AutomationMessageVariables } from './shared-message-variables.component';
 import { PublicationPreviewControls } from './shared-response-controls.component';
 import type { PublicationPreview } from './shared-publication-selector.component';
 
@@ -18,7 +19,6 @@ import {
 import {
   AutomationFollowGateFields,
   JourneyPreviewControls,
-  ReplyPreviewControls,
 } from './shared-response-controls.component';
 import type { PreviewJourneyStage } from './shared-preview-journey';
 import { AutomationPublicReplyToggle } from './shared-public-reply-toggle.component';
@@ -31,20 +31,9 @@ import {
   AutomationPhoneFrame,
 } from './shared-editor-preview.component';
 import { AutomationAccountSelect } from './shared-account-select.component';
-import {
-  InstagramEditorConnection,
-  useInstagramEditorConnection,
-} from './shared-instagram-connection.component';
+import { useInstagramEditorConnection } from './shared-instagram-connection.component';
 import { useAliases } from './hooks/use-unmatched-comments';
-import {
-  FC,
-  useCallback,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import { useIntegrationList } from '@gitroom/frontend/components/launches/helpers/use.integration.list';
@@ -84,7 +73,6 @@ export const AutomationWizardComponent: FC<Props> = ({
   workspace,
 }) => {
   const t = useT();
-  const privateMessageId = useId();
   const fetchApi = useFetch();
   const router = useRouter();
   const toaster = useToaster();
@@ -119,6 +107,8 @@ export const AutomationWizardComponent: FC<Props> = ({
   const [enableReply, setEnableReply] = useState(false);
   const [replyMessages, setReplyMessages] = useState<string[]>(['']);
   const [dmMessage, setDmMessage] = useState('');
+  const [dmMessages, setDmMessages] = useState<string[]>(['']);
+  const [dmPreviewIndex, setDmPreviewIndex] = useState(0);
   const [dmButtonText, setDmButtonText] = useState('');
   const [dmButtonUrl, setDmButtonUrl] = useState('');
   const [showAddLink, setShowAddLink] = useState(false);
@@ -180,6 +170,7 @@ export const AutomationWizardComponent: FC<Props> = ({
     enableReply,
     replyMessages,
     dmMessage,
+    dmMessages,
     dmButtonText,
     dmButtonUrl,
     requireFollow,
@@ -256,7 +247,8 @@ export const AutomationWizardComponent: FC<Props> = ({
       : [];
     setEnableReply(msgs.length > 0);
     setReplyMessages(msgs.length ? msgs : ['']);
-    setDmMessage(dmCfg.message || '');
+    setDmMessage(dmCfg.messages?.[0] || dmCfg.message || '');
+    setDmMessages(dmCfg.messages || [dmCfg.message || '']);
     setDmButtonText(dmCfg.buttonText || '');
     setDmButtonUrl(dmCfg.buttonUrl || '');
     setRequireFollow(!!triggerCfg.requireFollow);
@@ -374,6 +366,10 @@ export const AutomationWizardComponent: FC<Props> = ({
     !dmMessage.trim()
       ? [t('automation_response_required')]
       : []),
+    ...(dmMessages.some((m) => m.length > (dmButtonText ? 640 : 2000)) ||
+    (dmMessages.length > 1 && dmMessages.some((m) => !m.trim()))
+      ? [t('automation_response_required')]
+      : []),
     ...(requireFollow && !dmMessage.trim()
       ? [t('automation_final_message_required')]
       : []),
@@ -429,7 +425,8 @@ export const AutomationWizardComponent: FC<Props> = ({
           if (msgs.length) body.replyMessages = msgs;
         }
         if (dmMessage.trim()) {
-          body.dmMessage = dmMessage.trim();
+          if (dmMessages.length > 1) body.dmMessages = dmMessages;
+          else body.dmMessage = dmMessage.trim();
           if (dmButtonText.trim() && dmButtonUrl.trim()) {
             body.dmButtonText = dmButtonText.trim();
             body.dmButtonUrl = dmButtonUrl.trim();
@@ -476,7 +473,7 @@ export const AutomationWizardComponent: FC<Props> = ({
           }
         );
         toaster.show(t(isEditing ? 'flow_updated' : 'flow_created'), 'success');
-        if (!flowId) router.push(`/automacoes/${flow.id}/wizard`);
+        if (!flowId) router.push(`/automations/instagram/${flow.id}`);
       } catch (error) {
         const reason = t(
           `shared_error_${
@@ -491,7 +488,7 @@ export const AutomationWizardComponent: FC<Props> = ({
         setActionError(message);
         toaster.show(message, 'warning');
         if (configurationSaved && !flowId && latestFlow.current)
-          router.push(`/automacoes/${latestFlow.current.id}/wizard`);
+          router.push(`/automations/instagram/${latestFlow.current.id}`);
       } finally {
         setSaving(false);
       }
@@ -510,6 +507,7 @@ export const AutomationWizardComponent: FC<Props> = ({
       enableReply,
       replyMessages,
       dmMessage,
+      dmMessages,
       dmButtonText,
       dmButtonUrl,
       requireFollow,
@@ -592,16 +590,12 @@ export const AutomationWizardComponent: FC<Props> = ({
     }
   };
 
-  const inputClass =
-    'w-full bg-transparent outline-none text-[14px] text-textColor px-[16px] py-[10px]';
-  const inputWrapperClass =
-    'bg-newBgColorInner border border-newTableBorder rounded-[8px]';
-
   return (
     <AutomationWorkspace
       name={name}
       nameLabel={t('wizard_name')}
       onNameChange={setName}
+      picture={(selectedIntegration as any)?.picture}
       subtitle={`${(selectedIntegration as any)?.name || ''} · ${t(
         'automation_instagram_comment_type'
       )}`}
@@ -638,10 +632,21 @@ export const AutomationWizardComponent: FC<Props> = ({
                 {t('automation_section_account')}
               </h2>
               <AutomationAccountSelect
+                connection={
+                  integrationId && (
+                    <AutomationConnectionIndicator
+                      integrationId={integrationId}
+                      provider="instagram"
+                      ready={connection.ready}
+                      loading={connection.loading}
+                    />
+                  )
+                }
                 label={t('wizard_account')}
                 value={integrationId}
                 accounts={instagramIntegrations.map((ig: any) => ({
                   id: ig.id,
+                  picture: ig.picture,
                   name: ig.name || ig.display || ig.id,
                 }))}
                 disabled={!!effectiveFlowId || preparingDraft || saving}
@@ -662,9 +667,6 @@ export const AutomationWizardComponent: FC<Props> = ({
                 >
                   {t('shared_connect_channel')}
                 </a>
-              )}
-              {integrationId && (
-                <InstagramEditorConnection connection={connection} />
               )}
             </section>
 
@@ -767,9 +769,6 @@ export const AutomationWizardComponent: FC<Props> = ({
 
                 {/* DM section */}
                 <section className="border-t border-fifth pt-[20px] mb-[20px]">
-                  <h2 className="text-[16px] font-semibold text-textColor mb-[12px]">
-                    {t('automation_section_response')}
-                  </h2>
                   <div className="mt-3">
                     <AutomationPublicReplyToggle
                       enabled={enableReply}
@@ -812,31 +811,20 @@ export const AutomationWizardComponent: FC<Props> = ({
                       )}
                     </AutomationContextHelp>
                   </div>
-                  <label
-                    htmlFor={privateMessageId}
-                    className="block text-sm mb-2"
-                  >
-                    {t('shared_message')}
-                  </label>
-                  <div className={inputWrapperClass}>
-                    <textarea
-                      id={privateMessageId}
-                      className={`${inputClass} min-h-[100px] resize-y`}
-                      rows={4}
-                      placeholder={t('automation_private_message_placeholder')}
-                      value={dmMessage}
-                      onFocus={() => {
-                        setActivePreviewTab('dm');
-                        setJourneyStage('delivery');
-                      }}
-                      onChange={(e) => setDmMessage(e.target.value)}
-                    />
-                  </div>
+                  <PrivateMessageVariations
+                    maxLength={dmButtonText ? 640 : 2000}
+                    messages={dmMessages}
+                    onChange={(messages) => {
+                      setDmMessages(messages);
+                      setDmMessage(messages[0]);
+                    }}
+                    onFocus={(index) => {
+                      setDmPreviewIndex(index);
+                      setActivePreviewTab('dm');
+                      setJourneyStage('delivery');
+                    }}
+                  />
                   <div className="flex items-center justify-between gap-2">
-                    <AutomationMessageVariables
-                      textareaId={privateMessageId}
-                      onChange={setDmMessage}
-                    />
                     <AutomationContextHelp label={t('automation_link_help')}>
                       {t('shared_link_hint')}
                     </AutomationContextHelp>
@@ -946,13 +934,7 @@ export const AutomationWizardComponent: FC<Props> = ({
               onChange={setPreviewPublicationId}
             />
           )}
-          {activePreviewTab === 'comments' && enableReply && (
-            <ReplyPreviewControls
-              messages={replyMessages}
-              index={replyPreviewIndex}
-              onChange={setReplyPreviewIndex}
-            />
-          )}
+
           {activePreviewTab === 'dm' && requireFollow && (
             <JourneyPreviewControls
               stage={journeyStage}
@@ -961,6 +943,8 @@ export const AutomationWizardComponent: FC<Props> = ({
           )}
           <AutomationPhoneFrame>
             <WizardPhonePreview
+              postScope={postMode}
+              postIsReel={selectedPost?.permalink?.includes('/reel/')}
               postSelected={!!selectedPost}
               postMediaType={
                 selectedPost?.thumbnailUrl ? undefined : selectedPost?.mediaType
@@ -985,7 +969,10 @@ export const AutomationWizardComponent: FC<Props> = ({
                 gateButton: alreadyFollowedButtonText,
                 exhaustedMessage: gateExhaustedMessage,
               }}
-              dmMessage={dmMessage || undefined}
+              dmMessage={
+                dmMessages[Math.min(dmPreviewIndex, dmMessages.length - 1)] ||
+                undefined
+              }
               dmButtonText={dmButtonText || undefined}
               dmButtonUrl={dmButtonUrl || undefined}
               integrationPicture={(selectedIntegration as any)?.picture}

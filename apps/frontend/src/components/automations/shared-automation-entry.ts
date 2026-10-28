@@ -4,21 +4,25 @@ export const automationEntryOptions = {
     {
       key: 'comment',
       icon: 'instagram',
-      href: '/automacoes/nova?type=comment',
+      href: '/automations/instagram/new?type=comment',
     },
-    { key: 'story', icon: 'instagram', href: '/automacoes/nova?type=story' },
-    { key: 'repost', icon: 'instagram', href: '/automacoes/repost/nova' },
+    {
+      key: 'story',
+      icon: 'instagram',
+      href: '/automations/instagram/new?type=story',
+    },
+    { key: 'repost', icon: 'instagram', href: '/automations/reposts/new' },
   ],
   facebook: [
     {
       key: 'comment',
       icon: 'facebook',
-      href: '/automacoes/compartilhada/nova?trigger=comment_on_post',
+      href: '/automations/new?trigger=comment_on_post',
     },
     {
       key: 'message',
       icon: 'messenger',
-      href: '/automacoes/compartilhada/nova?trigger=messenger_message',
+      href: '/automations/new?trigger=messenger_message',
     },
   ],
 } as const;

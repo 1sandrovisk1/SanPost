@@ -128,9 +128,9 @@ it('ajuda e expansivel por clique e alternar a ilustracao so chama a selecao loc
     </>
   );
   const help = screen.getByLabelText('Ajuda do campo');
-  expect(help.closest('details')?.open).toBe(false);
+  expect(help.getAttribute('aria-expanded')).toBe('false');
   fireEvent.click(help);
-  expect(help.closest('details')?.open).toBe(true);
+  expect(help.getAttribute('aria-expanded')).toBe('true');
   fireEvent.change(screen.getByLabelText('automation_preview_publication'), {
     target: { value: 'b' },
   });

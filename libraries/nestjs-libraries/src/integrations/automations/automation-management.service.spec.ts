@@ -497,6 +497,88 @@ describe('gerenciamento de automacoes por API e agentes', () => {
     expect(resolved).toEqual({ organizationId: 'org', profileId: 'default' });
     expect(profiles.getDefaultProfile).toHaveBeenCalledWith('org');
   });
+  it('preserva alternativas privadas em PATCH omitido e troca para singular explicitamente', async () => {
+    const flow = await shared.save(scope, {} as any);
+    flow.definition = simpleDefinition({
+      message: '',
+      dmMessages: ['Primeira', 'Segunda'],
+    });
+    shared.get.mockResolvedValue(flow);
+    const detail = await service.detail(scope, flow.id, 2);
+    expect(detail.configuration).toMatchObject({
+      dmMessages: ['Primeira', 'Segunda'],
+    });
+    await service.update(scope, flow.id, 2, {
+      configuration: { name: 'Outro nome' },
+      expectedRevision: 1,
+    });
+    expect(
+      JSON.parse(
+        shared.save.mock.calls
+          .at(-1)![1]
+          .definition.nodes.find((n) => n.type === 'SEND_DM')!.data
+      )
+    ).toMatchObject({ messages: ['Primeira', 'Segunda'] });
+    await service.update(scope, flow.id, 2, {
+      configuration: { dmMessage: 'Unica' },
+      expectedRevision: 1,
+    });
+    expect(
+      JSON.parse(
+        shared.save.mock.calls
+          .at(-1)![1]
+          .definition.nodes.find((n) => n.type === 'SEND_DM')!.data
+      )
+    ).toEqual({ message: 'Unica' });
+  });
+  it('troca singular por plural e rejeita patch ambiguo ou com alternativa vazia', async () => {
+    const flow = await shared.save(scope, {} as any);
+    shared.get.mockResolvedValue(flow);
+    await service.update(scope, flow.id, 2, {
+      configuration: { dmMessages: ['A', 'B'] },
+      expectedRevision: 1,
+    });
+    expect(
+      JSON.parse(
+        shared.save.mock.calls
+          .at(-1)![1]
+          .definition.nodes.find((n) => n.type === 'SEND_DM')!.data
+      )
+    ).toEqual({ messages: ['A', 'B'] });
+    await expect(
+      service.update(scope, flow.id, 2, {
+        configuration: { dmMessage: 'A', dmMessages: ['B'] },
+        expectedRevision: 1,
+      })
+    ).rejects.toThrow('AMBIGUOUS_PRIVATE_REPLY');
+    await expect(
+      service.update(scope, flow.id, 2, {
+        configuration: { dmMessages: ['ok', '   '] },
+        expectedRevision: 1,
+      })
+    ).rejects.toThrow();
+  });
+  it('extrai a lista legada e preserva gate e botao ao editar somente nome', async () => {
+    const flow = legacy();
+    flow.nodes[2].data = JSON.stringify({
+      messages: ['A', 'B'],
+      buttonText: 'Ver',
+      buttonUrl: 'https://example.com',
+    });
+    flows.getFlow.mockResolvedValue(flow as any);
+    expect(
+      (await service.detail(scope, flow.id, 1)).configuration
+    ).toMatchObject({ dmMessages: ['A', 'B'], requireFollow: true });
+    await service.update(scope, flow.id, 1, {
+      configuration: { name: 'Novo nome' },
+      expectedUpdatedAt: flow.updatedAt.toISOString(),
+    });
+    expect(flows.quickUpdateFlow.mock.calls.at(-1)![2]).toMatchObject({
+      dmMessages: ['A', 'B'],
+      dmButtonText: 'Ver',
+      requireFollow: true,
+    });
+  });
 });
 
 describe('historico normalizado da fachada', () => {

@@ -580,3 +580,31 @@ describe('origens combinadas sem quarto modo operacional', () => {
     expect(screen.queryByText('fb_post_by_id_badge')).toBeNull();
   });
 });
+it('usa expansao na linha do escopo apenas quando selecionado', () => {
+  const { rerender } = render(
+    <AutomationPublicationSelector
+      integrationId="fb"
+      mode="specific"
+      postIds={[]}
+      posts={[]}
+      onChange={() => {}}
+    />
+  );
+  const expand = screen.getByRole('button', {
+    name: 'automation_select_publications',
+  });
+  expect(expand.querySelector('svg')).toBeTruthy();
+  expect(expand.parentElement?.querySelector('input[type=radio]')).toBeTruthy();
+  rerender(
+    <AutomationPublicationSelector
+      integrationId="fb"
+      mode="all"
+      postIds={[]}
+      posts={[]}
+      onChange={() => {}}
+    />
+  );
+  expect(
+    screen.queryByRole('button', { name: 'automation_select_publications' })
+  ).toBeNull();
+});

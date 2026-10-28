@@ -118,7 +118,7 @@ export const RepostListComponent: FC = () => {
           </p>
         </div>
         <button
-          onClick={() => router.push('/automacoes/repost/nova')}
+          onClick={() => router.push('/automations/reposts/new')}
           className="rounded-[4px] bg-btnPrimary px-[16px] py-[8px] text-[14px] text-white hover:opacity-80"
         >
           {t('repost_new_rule', 'Nova regra de Repost')}
@@ -163,7 +163,7 @@ export const RepostListComponent: FC = () => {
                   rule={rule}
                   isLast={idx === rules.length - 1}
                   onToggle={() => toggleRule(rule)}
-                  onEdit={() => router.push(`/automacoes/repost/${rule.id}`)}
+                  onEdit={() => router.push(`/automations/reposts/${rule.id}`)}
                   onRun={() => runNow(rule.id)}
                   onDelete={() => deleteRule(rule.id)}
                 />
@@ -230,7 +230,9 @@ const RepostRuleRow: FC<RowProps> = ({
           <span
             className="rounded-[4px] px-[8px] py-[2px] text-[10px] font-medium"
             style={{
-              backgroundColor: rule.enabled ? 'rgba(34,197,94,0.15)' : 'rgba(82,82,91,0.18)',
+              backgroundColor: rule.enabled
+                ? 'rgba(34,197,94,0.15)'
+                : 'rgba(82,82,91,0.18)',
               color: rule.enabled ? '#16a34a' : '#a1a1aa',
             }}
           >
@@ -255,9 +257,10 @@ const RepostRuleRow: FC<RowProps> = ({
               ? `${rule.intervalMinutes} ${t('minutes_short', 'min')}`
               : `${rule.intervalMinutes / 60} ${t('hours_short', 'h')}`}
             {source
-              ? ` · ${source.providerIdentifier.replace('instagram-standalone', 'instagram')} · ${
-                  SOURCE_TYPE_LABEL[rule.sourceType] ?? rule.sourceType
-                }`
+              ? ` · ${source.providerIdentifier.replace(
+                  'instagram-standalone',
+                  'instagram'
+                )} · ${SOURCE_TYPE_LABEL[rule.sourceType] ?? rule.sourceType}`
               : ''}
           </div>
         </button>
@@ -290,7 +293,8 @@ const RepostRuleRow: FC<RowProps> = ({
             <div className="flex items-center gap-[8px]">
               {destinations.slice(0, 6).map((d) => {
                 const integration = d.integration;
-                const providerIdentifier = integration?.providerIdentifier ?? '';
+                const providerIdentifier =
+                  integration?.providerIdentifier ?? '';
                 const name = integration?.name ?? '';
                 return (
                   <div
@@ -303,7 +307,9 @@ const RepostRuleRow: FC<RowProps> = ({
                       size={32}
                       zernioBadgeSize={15}
                       zernioBadgeRadius={15}
-                      className={integration?.disabled ? 'opacity-40 grayscale' : ''}
+                      className={
+                        integration?.disabled ? 'opacity-40 grayscale' : ''
+                      }
                     />
                   </div>
                 );

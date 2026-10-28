@@ -38,7 +38,7 @@ describe('aplicacao local do inspetor', () => {
     expect(
       screen.getByRole('button', { name: 'automation_apply_node' })
     ).toHaveProperty('disabled', true);
-    fireEvent.change(screen.getByPlaceholderText('dm_template_placeholder'), {
+    fireEvent.change(screen.getByLabelText('shared_message'), {
       target: { value: 'Mensagem nova' },
     });
     expect(onDirtyChange).toHaveBeenLastCalledWith(true);
@@ -48,6 +48,7 @@ describe('aplicacao local do inspetor', () => {
     );
     expect(onUpdate).toHaveBeenCalledWith('dm', {
       message: 'Mensagem nova',
+      messages: undefined,
       buttonText: 'Abrir',
       buttonUrl: 'https://example.com',
     });

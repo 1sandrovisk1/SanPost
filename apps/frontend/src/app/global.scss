@@ -8,31 +8,47 @@
 @tailwind utilities;
 
 @media (min-width: 1024px) {
-  html:has(.automation-editor--quick), html:has(.automation-workspace) {
+  html:has(.automation-editor--quick),
+  html:has(.automation-workspace) {
     overflow: hidden;
   }
 }
 
-.automation-editor select:not([multiple]):is(:not([size]), [size='0'], [size='1']) {
+:is(.automation-editor, .automation-workspace)
+  select:not([multiple]):is(:not([size]), [size='0'], [size='1']) {
   appearance: none;
   padding-right: 2.5rem;
-  background-image:
-    linear-gradient(45deg, transparent 42%, currentColor 42%, currentColor 58%, transparent 58%),
-    linear-gradient(-45deg, transparent 42%, currentColor 42%, currentColor 58%, transparent 58%);
+  background-image: linear-gradient(
+      45deg,
+      transparent 42%,
+      currentColor 42%,
+      currentColor 58%,
+      transparent 58%
+    ),
+    linear-gradient(
+      -45deg,
+      transparent 42%,
+      currentColor 42%,
+      currentColor 58%,
+      transparent 58%
+    );
   background-position: calc(100% - 17px) center, calc(100% - 12px) center;
   background-size: 6px 6px;
   background-repeat: no-repeat;
 }
 
 @media (forced-colors: active) {
-  .automation-editor select:not([multiple]):is(:not([size]), [size='0'], [size='1']) {
+  :is(.automation-editor, .automation-workspace)
+    select:not([multiple]):is(:not([size]), [size='0'], [size='1']) {
     appearance: auto;
     background-image: none;
   }
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 body {
@@ -819,5 +835,7 @@ html[dir='rtl'] [dir='ltr'] {
 }
 
 @media (min-width: 1024px) {
-  .automation-workspace .automation-editor--quick { height: 100%; }
+  .automation-workspace .automation-editor--quick {
+    height: 100%;
+  }
 }

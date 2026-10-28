@@ -1,4 +1,5 @@
 'use client';
+import { PrivateMessageVariations } from './shared-private-variations.component';
 
 import { AutomationMessageVariables } from './shared-message-variables.component';
 import { AutomationPublicationSelector } from './shared-publication-selector.component';
@@ -747,28 +748,17 @@ export const NodeConfigPanel: FC<NodeConfigPanelProps> = ({
       case 'sendDm':
         return (
           <>
-            <label className="block text-[14px] text-textColor mb-[6px]">
-              {t('dm_template', 'DM Template')}
-            </label>
-            <div className={inputWrapperClass}>
-              <textarea
-                id={messageId}
-                className={`${inputClass} min-h-[120px] resize-y`}
-                rows={6}
-                placeholder={t(
-                  'dm_template_placeholder',
-                  'Hey {commenter_name}!\n\nHere is the link you requested...\n\nSee you soon!'
-                )}
-                value={config.message || ''}
-                onChange={(e) =>
-                  setConfig({ ...config, message: e.target.value })
-                }
-              />
-            </div>
-            <AutomationMessageVariables
-              textareaId={messageId}
+            <PrivateMessageVariations
               disabled={disabled}
-              onChange={(message) => setConfig({ ...config, message })}
+              messages={config.messages || [config.message || '']}
+              onChange={(messages) =>
+                setConfig({
+                  ...config,
+                  ...(messages.length > 1
+                    ? { message: undefined, messages }
+                    : { message: messages[0], messages: undefined }),
+                })
+              }
             />
             <p className="text-[11px] text-customColor18 mt-[4px]">
               {t(

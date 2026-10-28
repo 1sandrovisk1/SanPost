@@ -1,6 +1,12 @@
-import { legacyFlowScopeMatches, legacyFlowIntegrationSelect } from '../flows/legacy-flow-scope';
+import {
+  legacyFlowScopeMatches,
+  legacyFlowIntegrationSelect,
+} from '../flows/legacy-flow-scope';
 import type { DeferredNextCandidate } from '../../../dtos/flows/scheduled-post.dto';
-import { syncScheduledTarget, scheduledPostReserved } from '../scheduled-automations/scheduled-posts.repository';
+import {
+  syncScheduledTarget,
+  scheduledPostReserved,
+} from '../scheduled-automations/scheduled-posts.repository';
 import { messengerRule, selectMessengerWinner } from './messenger-keywords';
 import { HttpException, Injectable } from '@nestjs/common';
 import { Prisma, FlowStatus } from '@prisma/client';
@@ -131,10 +137,17 @@ export class SharedFlowsRepository {
       if (id && !old) throw new HttpException('FLOW_NOT_FOUND', 404);
       if (old && old.revision !== input.expectedRevision)
         throw new HttpException('REVISION_CONFLICT', 409);
-      if (old?.status === 'ARCHIVED') throw new HttpException('FLOW_NOT_FOUND', 404);
+      if (old?.status === 'ARCHIVED')
+        throw new HttpException('FLOW_NOT_FOUND', 404);
       if (old?.status === 'ACTIVE') {
         await this.lockAccounts(tx, [...old.channels, ...channels]);
-        await this.assertActiveChannels(tx, scope, old.id, channels, input.definition);
+        await this.assertActiveChannels(
+          tx,
+          scope,
+          old.id,
+          channels,
+          input.definition
+        );
       }
       const data = {
         name: input.name.trim(),
@@ -157,96 +170,150 @@ export class SharedFlowsRepository {
       // Preserve channel identity and next-publication binding on equivalent edits.
       for (const channel of channels) {
         const { scheduledPostId } = channel;
-        const c = { integrationId: channel.integrationId, platform: channel.platform, remoteAccountId: channel.remoteAccountId, postMode: channel.postMode, postIds: channel.postIds };
-        const previous = old?.channels.find(p => p.integrationId === c.integrationId);
-        const sameOrigin = previous && previous.platform === c.platform && previous.remoteAccountId === c.remoteAccountId && previous.postMode === c.postMode && JSON.stringify([...previous.postIds].sort()) === JSON.stringify([...c.postIds].sort()) && (c.postMode !== 'scheduled' || old?.scheduledTargets.find(t => t.integrationId === c.integrationId)?.postId === scheduledPostId);
-        const boundary = sameOrigin ? previous.activatedAt : old?.status === 'ACTIVE' ? new Date() : null;
+        const c = {
+          integrationId: channel.integrationId,
+          platform: channel.platform,
+          remoteAccountId: channel.remoteAccountId,
+          postMode: channel.postMode,
+          postIds: channel.postIds,
+        };
+        const previous = old?.channels.find(
+          (p) => p.integrationId === c.integrationId
+        );
+        const sameOrigin =
+          previous &&
+          previous.platform === c.platform &&
+          previous.remoteAccountId === c.remoteAccountId &&
+          previous.postMode === c.postMode &&
+          JSON.stringify([...previous.postIds].sort()) ===
+            JSON.stringify([...c.postIds].sort()) &&
+          (c.postMode !== 'scheduled' ||
+            old?.scheduledTargets.find(
+              (t) => t.integrationId === c.integrationId
+            )?.postId === scheduledPostId);
+        const boundary = sameOrigin
+          ? previous.activatedAt
+          : old?.status === 'ACTIVE'
+          ? new Date()
+          : null;
         await tx.flowChannel.upsert({
-          where: { flowId_integrationId: { flowId: flow.id, integrationId: c.integrationId } },
+          where: {
+            flowId_integrationId: {
+              flowId: flow.id,
+              integrationId: c.integrationId,
+            },
+          },
           create: { ...c, flowId: flow.id, activatedAt: boundary },
-          update: { ...c, activatedAt: boundary, boundPostId: sameOrigin ? previous.boundPostId : null },
+          update: {
+            ...c,
+            activatedAt: boundary,
+            boundPostId: sameOrigin ? previous.boundPostId : null,
+          },
         });
       }
-      await tx.flowChannel.deleteMany({ where: { flowId: flow.id, integrationId: { notIn: channels.map(c => c.integrationId) } } });
-      for (const c of channels) await syncScheduledTarget(tx, scope, flow.id, c.integrationId, c.postMode === 'scheduled' ? c.scheduledPostId : undefined);
-      await tx.scheduledAutomationTarget.deleteMany({ where: { flowId: flow.id, integrationId: { notIn: channels.map(c => c.integrationId) } } });
+      await tx.flowChannel.deleteMany({
+        where: {
+          flowId: flow.id,
+          integrationId: { notIn: channels.map((c) => c.integrationId) },
+        },
+      });
+      for (const c of channels)
+        await syncScheduledTarget(
+          tx,
+          scope,
+          flow.id,
+          c.integrationId,
+          c.postMode === 'scheduled' ? c.scheduledPostId : undefined
+        );
+      await tx.scheduledAutomationTarget.deleteMany({
+        where: {
+          flowId: flow.id,
+          integrationId: { notIn: channels.map((c) => c.integrationId) },
+        },
+      });
       return flow.id;
     });
   }
-  private async assertActiveChannels(tx: Prisma.TransactionClient, scope: FlowScope, id: string, channels: ResolvedChannel[], definition: CommentDefinition) {
-        const messenger = getTriggerType(definition) === 'messenger_message';
-        if (
-          messenger &&
-          (channels.length !== 1 ||
-            channels[0].platform !== 'facebook' ||
-            channels[0].postMode !== 'all' ||
-            channels[0].postIds.length)
-        )
-          throw new HttpException('MESSENGER_FACEBOOK_ONLY', 400);
-        for (const channel of channels) {
-          const integration = await tx.integration.findFirst({
-            where: {
-              id: channel.integrationId,
-              ...scope,
-              disabled: false,
-              deletedAt: null,
-              inBetweenSteps: false,
+  private async assertActiveChannels(
+    tx: Prisma.TransactionClient,
+    scope: FlowScope,
+    id: string,
+    channels: ResolvedChannel[],
+    definition: CommentDefinition
+  ) {
+    const messenger = getTriggerType(definition) === 'messenger_message';
+    if (
+      messenger &&
+      (channels.length !== 1 ||
+        channels[0].platform !== 'facebook' ||
+        channels[0].postMode !== 'all' ||
+        channels[0].postIds.length)
+    )
+      throw new HttpException('MESSENGER_FACEBOOK_ONLY', 400);
+    for (const channel of channels) {
+      const integration = await tx.integration.findFirst({
+        where: {
+          id: channel.integrationId,
+          ...scope,
+          disabled: false,
+          deletedAt: null,
+          inBetweenSteps: false,
+          internalId: channel.remoteAccountId,
+          clientProfile: { deletedAt: null },
+        },
+      });
+      if (!integration) throw new HttpException('CHANNEL_NOT_FOUND', 412);
+      if (messenger)
+        await this.assertMessengerActivation(
+          tx,
+          scope,
+          id,
+          channel,
+          definition
+        );
+      if (channel.platform === 'instagram') {
+        const legacy = await tx.flow.findMany({
+          where: {
+            ...active,
+            executionVersion: 1,
+            integration: {
               internalId: channel.remoteAccountId,
-              clientProfile: { deletedAt: null },
+              providerIdentifier: {
+                in: ['instagram', 'instagram-standalone'],
+              },
             },
-          });
-          if (!integration) throw new HttpException('CHANNEL_NOT_FOUND', 412);
-          if (messenger)
-            await this.assertMessengerActivation(
-              tx,
-              scope,
-              id,
-              channel,
-              definition
-            );
-          if (channel.platform === 'instagram') {
-            const legacy = await tx.flow.findMany({
-              where: {
-                ...active,
-                executionVersion: 1,
-                integration: {
-                  internalId: channel.remoteAccountId,
-                  providerIdentifier: {
-                    in: ['instagram', 'instagram-standalone'],
-                  },
-                },
-              },
-              include: { nodes: { where: { type: 'TRIGGER' } } },
-            });
-            const isComment = (f: (typeof legacy)[number]) =>
-              !f.nodes.some(
-                (n) =>
-                  n.label === 'story_reply' ||
-                  (() => {
-                    try {
-                      return JSON.parse(n.data).triggerType === 'story_reply';
-                    } catch {
-                      return false;
-                    }
-                  })()
-              );
-            const running = await tx.flowExecution.count({
-              where: {
-                status: { in: ['RUNNING', 'WAITING_POSTBACK'] },
-                flow: {
-                  executionVersion: 1,
-                  integration: { internalId: channel.remoteAccountId },
-                },
-                OR: [
-                  { triggerType: null },
-                  { triggerType: { not: 'story_reply' } },
-                ],
-              },
-            });
-            if (legacy.some(isComment) || running)
-              throw new HttpException('LEGACY_COMMENT_FLOW_ACTIVE', 409);
-          }
-        }
+          },
+          include: { nodes: { where: { type: 'TRIGGER' } } },
+        });
+        const isComment = (f: (typeof legacy)[number]) =>
+          !f.nodes.some(
+            (n) =>
+              n.label === 'story_reply' ||
+              (() => {
+                try {
+                  return JSON.parse(n.data).triggerType === 'story_reply';
+                } catch {
+                  return false;
+                }
+              })()
+          );
+        const running = await tx.flowExecution.count({
+          where: {
+            status: { in: ['RUNNING', 'WAITING_POSTBACK'] },
+            flow: {
+              executionVersion: 1,
+              integration: { internalId: channel.remoteAccountId },
+            },
+            OR: [
+              { triggerType: null },
+              { triggerType: { not: 'story_reply' } },
+            ],
+          },
+        });
+        if (legacy.some(isComment) || running)
+          throw new HttpException('LEGACY_COMMENT_FLOW_ACTIVE', 409);
+      }
+    }
   }
   async setStatus(
     scope: FlowScope,
@@ -266,7 +333,13 @@ export class SharedFlowsRepository {
         throw new HttpException('REVISION_CONFLICT', 409);
       await this.lockAccounts(tx, flow.channels);
       if (status === 'ACTIVE') {
-        await this.assertActiveChannels(tx, scope, id, flow.channels, flow.definition as unknown as CommentDefinition);
+        await this.assertActiveChannels(
+          tx,
+          scope,
+          id,
+          flow.channels,
+          flow.definition as unknown as CommentDefinition
+        );
         await tx.flowChannel.updateMany({
           where: { flowId: id },
           data: { activatedAt: new Date() },
@@ -332,19 +405,64 @@ export class SharedFlowsRepository {
       return tx.flow.update({ where: { id }, data: { status: 'ACTIVE' } });
     });
   }
-  async bindLegacyNext(flowId: string, nodeId: string, data: Record<string, unknown>, mediaId: string, expected: { revision: number; updatedAt: string }) {
-    return this.db.$transaction(async tx => {
-      const flow = await tx.flow.findFirst({ where: { id: flowId, executionVersion: 1, ...active, revision: expected.revision, updatedAt: new Date(expected.updatedAt), triggerPostIds: null }, include: { nodes: { where: { id: nodeId, type: 'TRIGGER' } } } });
+  async bindLegacyNext(
+    flowId: string,
+    nodeId: string,
+    data: Record<string, unknown>,
+    mediaId: string,
+    expected: { revision: number; updatedAt: string }
+  ) {
+    return this.db.$transaction(async (tx) => {
+      const flow = await tx.flow.findFirst({
+        where: {
+          id: flowId,
+          executionVersion: 1,
+          ...active,
+          revision: expected.revision,
+          updatedAt: new Date(expected.updatedAt),
+          triggerPostIds: null,
+        },
+        include: { nodes: { where: { id: nodeId, type: 'TRIGGER' } } },
+      });
       const node = flow?.nodes[0];
-      if (!flow || !node || JSON.parse(node.data || '{}').mode !== 'next_publication') return false;
-      const bound = await tx.flow.updateMany({ where: { id: flowId, ...active, revision: expected.revision, updatedAt: flow.updatedAt, triggerPostIds: null }, data: { triggerPostIds: JSON.stringify([mediaId]), updatedAt: flow.updatedAt } });
+      if (
+        !flow ||
+        !node ||
+        JSON.parse(node.data || '{}').mode !== 'next_publication'
+      )
+        return false;
+      const bound = await tx.flow.updateMany({
+        where: {
+          id: flowId,
+          ...active,
+          revision: expected.revision,
+          updatedAt: flow.updatedAt,
+          triggerPostIds: null,
+        },
+        data: {
+          triggerPostIds: JSON.stringify([mediaId]),
+          updatedAt: flow.updatedAt,
+        },
+      });
       if (!bound.count) return false;
-      const updated = await tx.flowNode.updateMany({ where: { id: nodeId, flowId, data: node.data }, data: { data: JSON.stringify(data) } });
+      const updated = await tx.flowNode.updateMany({
+        where: { id: nodeId, flowId, data: node.data },
+        data: { data: JSON.stringify(data) },
+      });
       if (!updated.count) throw new HttpException('REVISION_CONFLICT', 409);
       return true;
     });
   }
-  async admitLegacy(data: Prisma.FlowExecutionUncheckedCreateInput, guard?: { targetId: string; revision: number; updatedAt: string; externalPostId: string; kind?: 'next' }) {
+  async admitLegacy(
+    data: Prisma.FlowExecutionUncheckedCreateInput,
+    guard?: {
+      targetId: string;
+      revision: number;
+      updatedAt: string;
+      externalPostId: string;
+      kind?: 'next';
+    }
+  ) {
     return this.db.$transaction(async (tx) => {
       const flow = await tx.flow.findUnique({
         where: { id: data.flowId },
@@ -355,11 +473,46 @@ export class SharedFlowsRepository {
         { platform: 'instagram', remoteAccountId: flow.integration.internalId },
       ]);
       const current = await tx.flow.findFirst({
-        where: { id: data.flowId, ...active, executionVersion: 1, OR: [{profileId:null}, {profile:{deletedAt:null}}] },
+        where: {
+          id: data.flowId,
+          ...active,
+          executionVersion: 1,
+          OR: [{ profileId: null }, { profile: { deletedAt: null } }],
+        },
         include: { integration: { select: legacyFlowIntegrationSelect } },
       });
-      if (!legacyFlowScopeMatches(current) || current.integrationId !== flow.integrationId) return null;
-      if (guard && (current.revision !== guard.revision || current.updatedAt.toISOString() !== guard.updatedAt || (guard.kind === 'next' ? !JSON.parse(current.triggerPostIds || '[]').includes(guard.externalPostId) : !await tx.scheduledAutomationTarget.findFirst({ where: { id: guard.targetId, flowId: current.id, integrationId: current.integrationId, boundPostIds: { has: guard.externalPostId }, post: { organizationId: current.organizationId, profileId: current.profileId, integrationId: current.integrationId, deletedAt: null, state: 'PUBLISHED', parentPostId: null, intervalInDays: null } } })))) return null;
+      if (
+        !legacyFlowScopeMatches(current) ||
+        current.integrationId !== flow.integrationId
+      )
+        return null;
+      if (
+        guard &&
+        (current.revision !== guard.revision ||
+          current.updatedAt.toISOString() !== guard.updatedAt ||
+          (guard.kind === 'next'
+            ? !JSON.parse(current.triggerPostIds || '[]').includes(
+                guard.externalPostId
+              )
+            : !(await tx.scheduledAutomationTarget.findFirst({
+                where: {
+                  id: guard.targetId,
+                  flowId: current.id,
+                  integrationId: current.integrationId,
+                  boundPostIds: { has: guard.externalPostId },
+                  post: {
+                    organizationId: current.organizationId,
+                    profileId: current.profileId,
+                    integrationId: current.integrationId,
+                    deletedAt: null,
+                    state: 'PUBLISHED',
+                    parentPostId: null,
+                    intervalInDays: null,
+                  },
+                },
+              }))))
+      )
+        return null;
       const sharedActive = await tx.flowChannel.count({
         where: {
           platform: 'instagram',
@@ -516,11 +669,15 @@ export class SharedFlowsRepository {
       let planningError: string | undefined;
       if (!skipped) {
         try {
-          actions = planCommentActions(definition, {
-            text: event.text,
-            actorName: event.actorName,
-            commentId: event.externalEventId,
-          });
+          actions = planCommentActions(
+            definition,
+            {
+              text: event.text,
+              actorName: event.actorName,
+              commentId: event.externalEventId,
+            },
+            (count) => randomInt(count)
+          );
         } catch {
           planningError = 'INVALID_MESSAGE';
         }
@@ -587,9 +744,19 @@ export class SharedFlowsRepository {
     return dispatched;
   }
 
-  async ingest(event: CommentEvent, scheduled?: { flowId: string; targetId: string; revision: number; updatedAt: Date }, nextReplay?: DeferredNextCandidate[]) {
+  async ingest(
+    event: CommentEvent,
+    scheduled?: {
+      flowId: string;
+      targetId: string;
+      revision: number;
+      updatedAt: Date;
+    },
+    nextReplay?: DeferredNextCandidate[]
+  ) {
     this.scope(event);
-    if (nextReplay && !nextReplay.some(c => c.executionVersion === 2)) return [];
+    if (nextReplay && !nextReplay.some((c) => c.executionVersion === 2))
+      return [];
     return this.db.$transaction(
       async (tx) => {
         await this.lockAccounts(tx, [event]);
@@ -617,8 +784,40 @@ export class SharedFlowsRepository {
               executionVersion: 2,
               organizationId: event.organizationId,
               profileId: event.profileId,
-              ...(nextReplay ? { OR: nextReplay.filter(c => c.executionVersion === 2).map(c => ({ id: c.id, revision: c.revision, updatedAt: new Date(c.updatedAt) })) } : {}),
-              ...(scheduled ? { id: scheduled.flowId, revision: scheduled.revision, updatedAt: scheduled.updatedAt, scheduledTargets: { some: { id: scheduled.targetId, integrationId: event.integrationId, boundPostIds: { has: event.externalPostId }, post: { organizationId: event.organizationId, profileId: event.profileId, integrationId: event.integrationId, deletedAt: null, state: 'PUBLISHED', parentPostId: null, intervalInDays: null } } } } : {}),
+              ...(nextReplay
+                ? {
+                    OR: nextReplay
+                      .filter((c) => c.executionVersion === 2)
+                      .map((c) => ({
+                        id: c.id,
+                        revision: c.revision,
+                        updatedAt: new Date(c.updatedAt),
+                      })),
+                  }
+                : {}),
+              ...(scheduled
+                ? {
+                    id: scheduled.flowId,
+                    revision: scheduled.revision,
+                    updatedAt: scheduled.updatedAt,
+                    scheduledTargets: {
+                      some: {
+                        id: scheduled.targetId,
+                        integrationId: event.integrationId,
+                        boundPostIds: { has: event.externalPostId },
+                        post: {
+                          organizationId: event.organizationId,
+                          profileId: event.profileId,
+                          integrationId: event.integrationId,
+                          deletedAt: null,
+                          state: 'PUBLISHED',
+                          parentPostId: null,
+                          intervalInDays: null,
+                        },
+                      },
+                    },
+                  }
+                : {}),
             },
           },
           include: { flow: true },
@@ -635,22 +834,63 @@ export class SharedFlowsRepository {
           },
         });
         if (existing && !scheduled && !nextReplay) return []; // Only a captured scheduled target may resume.
-        const row = existing || await tx.automationEvent.create({
-          data: {
-            organizationId: event.organizationId, profileId: event.profileId, integrationId: event.integrationId, platform: event.platform, remoteAccountId: event.remoteAccountId, externalEventId: event.externalEventId, externalPostId: event.externalPostId, externalActorId: event.externalActorId, text: event.text,
-            actorName: event.actorName?.slice(0, 200),
-            eventType: 'comment_on_post',
-            occurredAt: new Date(event.occurredAt),
-          },
-        });
-        const exactReserved = channels.some(c => c.postMode === 'next_publication') && await scheduledPostReserved(tx, event.integrationId, event.externalPostId, false);
-        const pendingReservation = channels.some(c => c.postMode === 'next_publication' && !c.boundPostId) && await scheduledPostReserved(tx, event.integrationId, event.externalPostId);
+        const row =
+          existing ||
+          (await tx.automationEvent.create({
+            data: {
+              organizationId: event.organizationId,
+              profileId: event.profileId,
+              integrationId: event.integrationId,
+              platform: event.platform,
+              remoteAccountId: event.remoteAccountId,
+              externalEventId: event.externalEventId,
+              externalPostId: event.externalPostId,
+              externalActorId: event.externalActorId,
+              text: event.text,
+              actorName: event.actorName?.slice(0, 200),
+              eventType: 'comment_on_post',
+              occurredAt: new Date(event.occurredAt),
+            },
+          }));
+        const exactReserved =
+          channels.some((c) => c.postMode === 'next_publication') &&
+          (await scheduledPostReserved(
+            tx,
+            event.integrationId,
+            event.externalPostId,
+            false
+          ));
+        const pendingReservation =
+          channels.some(
+            (c) => c.postMode === 'next_publication' && !c.boundPostId
+          ) &&
+          (await scheduledPostReserved(
+            tx,
+            event.integrationId,
+            event.externalPostId
+          ));
         const result: string[] = [];
         for (const channel of channels) {
-          if (channel.postMode === 'next_publication' && (exactReserved || (!channel.boundPostId && pendingReservation))) continue;
+          if (
+            channel.postMode === 'next_publication' &&
+            (exactReserved || (!channel.boundPostId && pendingReservation))
+          )
+            continue;
           if (channel.postMode === 'scheduled' && !scheduled) continue;
           if (scheduled && channel.postMode !== 'scheduled') continue;
-          if ((scheduled || nextReplay) && await tx.automationDispatch.findUnique({ where: { flowId_channelId_eventId: { flowId: channel.flowId, channelId: channel.id, eventId: row.id } } })) continue;
+          if (
+            (scheduled || nextReplay) &&
+            (await tx.automationDispatch.findUnique({
+              where: {
+                flowId_channelId_eventId: {
+                  flowId: channel.flowId,
+                  channelId: channel.id,
+                  eventId: row.id,
+                },
+              },
+            }))
+          )
+            continue;
           if (
             getTriggerType(
               channel.flow.definition as unknown as CommentDefinition
@@ -854,7 +1094,11 @@ export class SharedFlowsRepository {
       },
     });
   }
-  async bindNext(integrationId: string, postId: string, internalPostId?: string) {
+  async bindNext(
+    integrationId: string,
+    postId: string,
+    internalPostId?: string
+  ) {
     const row = await this.db.integration.findUnique({
       where: { id: integrationId },
       select: { internalId: true, providerIdentifier: true },
@@ -867,7 +1111,16 @@ export class SharedFlowsRepository {
           remoteAccountId: row.internalId,
         },
       ]);
-      if (await scheduledPostReserved(tx, integrationId, postId, !internalPostId, internalPostId)) return;
+      if (
+        await scheduledPostReserved(
+          tx,
+          integrationId,
+          postId,
+          !internalPostId,
+          internalPostId
+        )
+      )
+        return;
       await tx.flowChannel.updateMany({
         where: {
           integrationId,

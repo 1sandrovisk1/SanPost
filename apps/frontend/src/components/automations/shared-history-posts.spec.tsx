@@ -89,9 +89,6 @@ describe('historico e publicacoes', () => {
     state.error = new Error('failed');
     rerender(<SharedChannelPosts {...props} />);
     expect(screen.getByRole('alert')).toBeTruthy();
-    fireEvent.click(screen.getByText('shared_connection_details'));
-    const link = screen.getByRole('link', { name: 'shared_setup_new_tab' });
-    expect(link.getAttribute('href')).toContain('instagramAutomation=ig');
-    expect(link.getAttribute('target')).toBe('_blank');
+    expect(screen.queryByText('shared_connection_details')).toBeNull();
   });
 });

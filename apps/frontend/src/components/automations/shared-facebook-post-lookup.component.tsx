@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { Button } from '@gitroom/react/form/button';
@@ -25,10 +25,12 @@ export function SharedFacebookPostLookup({
   selectedIds,
   disabled,
   onAdd,
+  selectedContent,
 }: {
   integrationId: string;
   selectedIds: string[];
   disabled: boolean;
+  selectedContent?: ReactNode;
   onAdd: (post: AutomationPostView) => void;
 }) {
   const t = useT();
@@ -183,6 +185,7 @@ export function SharedFacebookPostLookup({
             </Button>
           </div>
         )}
+        {selectedContent}
         <details className="text-xs text-newTextColor/70">
           <summary className="cursor-pointer underline">
             {t('fb_post_help_title')}

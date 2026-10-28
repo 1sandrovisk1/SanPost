@@ -172,6 +172,9 @@ describe('criador compartilhado', () => {
     expect(screen.queryByLabelText('shared_posts')).toBeNull();
     expect(screen.queryByText('shared_add_public_reply')).toBeNull();
     expect(screen.queryByText('shared_link_hint')).toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'automation_link_help' })
+    );
     expect(screen.getByText('messenger_message_hint')).toBeTruthy();
     fireEvent.change(screen.getByLabelText('shared_message'), {
       target: { value: 'Link de teste' },
@@ -294,15 +297,13 @@ describe('criador compartilhado', () => {
       target: { value: 'Atualizada' },
     });
     fireEvent.click(
-      screen.getByRole('button', { name: 'wizard_add_reply_variant' })
+      screen.getAllByRole('button', { name: 'wizard_add_reply_variant' })[0]
     );
     fireEvent.change(screen.getByLabelText('shared_reply_variant 3'), {
       target: { value: 'Terceira' },
     });
     fireEvent.focus(screen.getByLabelText('shared_reply_variant 3'));
-    fireEvent.change(screen.getByLabelText('shared_reply_preview'), {
-      target: { value: '2' },
-    });
+    expect(screen.queryByLabelText('shared_reply_preview')).toBeNull();
     expect(
       within(screen.getByRole('complementary')).getByText('Terceira')
     ).toBeTruthy();
@@ -335,7 +336,7 @@ describe('criador compartilhado', () => {
     };
     render(<SharedFlowCreator id="flow" />);
     fireEvent.click(
-      screen.getByRole('button', { name: 'wizard_add_reply_variant' })
+      screen.getAllByRole('button', { name: 'wizard_add_reply_variant' })[0]
     );
     fireEvent.click(
       screen.getByRole('button', {
@@ -588,9 +589,7 @@ describe('criador compartilhado', () => {
       })
     );
     await waitFor(() =>
-      expect(state.replace).toHaveBeenCalledWith(
-        '/automacoes/compartilhada/created'
-      )
+      expect(state.replace).toHaveBeenCalledWith('/automations/created')
     );
     const body = JSON.parse(state.fetchApi.mock.calls[0][1].body);
     expect(body.channels).toEqual([
@@ -755,7 +754,7 @@ describe('respostas e estado do Facebook', () => {
       target: { value: 'fb' },
     });
     const section = screen
-      .getByRole('heading', { name: 'automation_section_response' })
+      .getByRole('switch', { name: 'shared_add_public_reply' })
       .closest('section')!;
     fireEvent.click(
       within(section).getByRole('switch', { name: 'shared_add_public_reply' })
@@ -831,7 +830,7 @@ it('falha de ativacao apos salvar preserva origem do atalho e retry nao cria nem
   });
   fireEvent.click(screen.getByRole('switch', { name: 'activate_flow' }));
   await screen.findByText(/automation_activation_failed_saved/);
-  expect(state.replace).toHaveBeenCalledWith('/automacoes/compartilhada/saved');
+  expect(state.replace).toHaveBeenCalledWith('/automations/saved');
   expect(
     screen
       .getByRole('button', { name: 'Post fixture' })

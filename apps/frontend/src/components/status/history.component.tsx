@@ -117,7 +117,7 @@ export const HistoryComponent: FC = () => {
       }
       if (item.type === 'AUTOMATION_FAILED') {
         return (
-          <DebugLink href={`/automacoes/${item.entityId}`}>
+          <DebugLink href={`/automations/instagram/${item.entityId}`}>
             {t('status_view_automation', 'Ver automação')} ↗
           </DebugLink>
         );

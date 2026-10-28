@@ -1,0 +1,93 @@
+'use client';
+import { useT } from '@gitroom/react/translation/get.transation.service.client';
+import { useSharedFlowData } from './hooks/use-shared-flows';
+import { connectionSettingsUrl } from './shared-flow-ui';
+import type { AutomationReadiness } from '@gitroom/nestjs-libraries/dtos/flows/flow-v2.dto';
+export function AutomationConnectionIndicator({
+  ready,
+  loading,
+  provider,
+  integrationId,
+  detail,
+}: {
+  ready: boolean;
+  loading?: boolean;
+  provider: string;
+  integrationId: string;
+  detail?: string;
+}) {
+  const t = useT();
+  const label = t(
+    loading
+      ? 'shared_checking'
+      : ready
+      ? 'automation_webhook_configured'
+      : 'automation_connection_settings'
+  );
+  const icon = (
+    <svg
+      aria-hidden="true"
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+    >
+      <circle cx="12" cy="12" r="9" />
+      <path
+        d={
+          ready ? 'm8 12 3 3 5-6' : loading ? 'M12 7v5l3 2' : 'M12 7v6m0 3h.01'
+        }
+      />
+    </svg>
+  );
+  return loading || ready ? (
+    <span
+      title={detail || label}
+      aria-label={label}
+      role="status"
+      className={
+        ready ? 'text-emerald-600' : 'text-newTextColor/50 animate-pulse'
+      }
+    >
+      {icon}
+    </span>
+  ) : (
+    <a
+      href={connectionSettingsUrl(provider, integrationId)}
+      target="_blank"
+      rel="noreferrer"
+      title={label}
+      aria-label={label}
+      className="rounded text-amber-600 hover:bg-boxHover focus-visible:ring-2 focus-visible:ring-btnPrimary"
+    >
+      {icon}
+    </a>
+  );
+}
+export function SharedConnectionIndicator({
+  integrationId,
+  provider,
+  messenger,
+}: {
+  integrationId: string;
+  provider: string;
+  messenger: boolean;
+}) {
+  const result = useSharedFlowData<AutomationReadiness>(
+    integrationId
+      ? `/flows-v2/channels/${integrationId}/readiness${
+          messenger ? '?triggerType=messenger_message' : ''
+        }`
+      : null
+  );
+  return integrationId ? (
+    <AutomationConnectionIndicator
+      integrationId={integrationId}
+      provider={provider}
+      ready={result.data?.ready === true}
+      loading={!result.data && !result.error}
+    />
+  ) : null;
+}

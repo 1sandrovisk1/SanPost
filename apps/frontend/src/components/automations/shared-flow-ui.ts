@@ -25,7 +25,8 @@ export function validateSharedDraft(
   if (!name.trim()) problems.push({ field: 'name', code: 'NAME_REQUIRED' });
   if (!channels.length)
     problems.push({ field: 'channels', code: 'CHANNEL_REQUIRED' });
-  if (channels.some(c => c.postMode === 'scheduled' && !c.scheduledPostId)) problems.push({ field: 'posts', code: 'POST_REQUIRED' });
+  if (channels.some((c) => c.postMode === 'scheduled' && !c.scheduledPostId))
+    problems.push({ field: 'posts', code: 'POST_REQUIRED' });
   if (channels.some((c) => c.postMode === 'specific' && !c.postIds.length))
     problems.push({ field: 'posts', code: 'POST_REQUIRED' });
   try {
@@ -46,7 +47,12 @@ export function validateSharedDraft(
                   (message: unknown) =>
                     typeof message !== 'string' ||
                     !message.trim() ||
-                    message.length > 2200
+                    message.length >
+                      (node.type === 'SEND_DM'
+                        ? cfg.buttonText
+                          ? 640
+                          : 2000
+                        : 2200)
                 ))) ||
             cfg.message?.length >
               (node.type === 'SEND_DM'

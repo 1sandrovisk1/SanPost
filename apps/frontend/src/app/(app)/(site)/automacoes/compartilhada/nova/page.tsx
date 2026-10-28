@@ -1,3 +1,14 @@
-import { SharedFlowCreator } from '@gitroom/frontend/components/automations/shared-flow-creator.component';
+import { redirect } from 'next/navigation';
+import { legacyAutomationDestination } from '@gitroom/frontend/components/automations/shared-routes';
 export const dynamic = 'force-dynamic';
-export default function Page() { return <SharedFlowCreator />; }
+export default async function Page({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  redirect(
+    legacyAutomationDestination(['compartilhada', 'nova'], await searchParams)
+  );
+}

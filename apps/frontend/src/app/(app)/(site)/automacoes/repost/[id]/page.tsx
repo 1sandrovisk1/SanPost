@@ -1,21 +1,13 @@
+import { redirect } from 'next/navigation';
+import { legacyAutomationDestination } from '@gitroom/frontend/components/automations/shared-routes';
 export const dynamic = 'force-dynamic';
-import { RepostEditComponent } from '@gitroom/frontend/components/automations/repost/repost-edit.component';
-import { Metadata } from 'next';
-
-export const metadata: Metadata = {
-  title: 'Repost Rule',
-  description: 'Configure a repost rule',
-};
-
-export default async function Index({
+export default async function Page({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { id } = await params;
-  return (
-    <div className="bg-newBgColorInner flex-1 flex-col flex">
-      <RepostEditComponent id={id} />
-    </div>
-  );
+  redirect(legacyAutomationDestination(['repost', id], await searchParams));
 }

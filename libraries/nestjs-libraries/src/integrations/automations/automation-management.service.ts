@@ -82,6 +82,7 @@ export class AutomationManagementService {
       'keywords',
       'matchMode',
       'dmMessage',
+      'dmMessages',
       'dmButtonText',
       'dmButtonUrl',
     ];
@@ -210,7 +211,7 @@ export class AutomationManagementService {
           ],
           CONDITION: ['keywords', 'matchMode'],
           REPLY_COMMENT: ['message', 'messages'],
-          SEND_DM: ['message', 'buttonText', 'buttonUrl'],
+          SEND_DM: ['message', 'messages', 'buttonText', 'buttonUrl'],
           DELAY: ['duration', 'unit'],
         },
         delayUnits: ['seconds', 'minutes', 'hours'],
@@ -224,6 +225,11 @@ export class AutomationManagementService {
         scheduledTargets: 1,
         publicReplyVariants: 10,
         publicReplyLength: 2200,
+        privateReplyVariants: 10,
+        privateReplyLength: 2000,
+        privateReplyVariantsWithButtonLength: 640,
+        facebookPrivateReplyWithButtonLength: 640,
+        facebookButtonTitleLength: 20,
       },
       controls: {
         create: ['activate'],
@@ -280,12 +286,13 @@ export class AutomationManagementService {
       matchMode: c.matchMode,
       priority: c.priority,
       message: c.dmMessage || '',
+      dmMessages: c.dmMessages,
       reply: c.replyMessage,
       replyMessages: c.replyMessages,
       buttonText: c.dmButtonText,
       buttonUrl: c.dmButtonUrl,
     });
-    if (!c.dmMessage?.trim()) {
+    if (!c.dmMessage?.trim() && !c.dmMessages?.length) {
       definition.nodes = definition.nodes.filter((n) => n.type !== 'SEND_DM');
       const ids = new Set(definition.nodes.map((n) => n.id));
       definition.edges = definition.edges.filter(
@@ -428,7 +435,9 @@ export class AutomationManagementService {
       ...(reply ? { replyMessages: r.messages || [r.message] } : {}),
       ...(dm
         ? {
-            dmMessage: d.message,
+            ...(d.messages
+              ? { dmMessages: d.messages }
+              : { dmMessage: d.message }),
             dmButtonText: d.buttonText,
             dmButtonUrl: d.buttonUrl,
           }
@@ -451,6 +460,11 @@ export class AutomationManagementService {
       .safeParse(input.configuration);
     if (!patch.success || !Object.keys(patch.data).length)
       failAutomation('INVALID_AUTOMATION_PATCH');
+    if (
+      patch.data.dmMessage !== undefined &&
+      patch.data.dmMessages !== undefined
+    )
+      failAutomation('AMBIGUOUS_PRIVATE_REPLY');
     const old = await this.detail(scope, id, version);
     if (!old.configuration) failAutomation('CANVAS_EDIT_REQUIRED', 409);
     if (
@@ -471,6 +485,11 @@ export class AutomationManagementService {
     const c = validateAutomationConfiguration({
       ...old.configuration,
       ...patch.data,
+      ...(patch.data.dmMessages !== undefined
+        ? { dmMessage: undefined }
+        : patch.data.dmMessage !== undefined
+        ? { dmMessages: undefined }
+        : {}),
       activate: false,
     });
     if (version === 2) {

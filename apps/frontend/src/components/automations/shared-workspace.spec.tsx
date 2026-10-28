@@ -165,3 +165,21 @@ describe('compatibilidade do editor rapido legado', () => {
     ).toBe(false);
   });
 });
+
+it('mostra pendencias no corpo sem accordion dentro da barra superior', () => {
+  render(
+    <AutomationWorkspace
+      {...base}
+      valid={false}
+      problems={['Falta conta', 'Falta mensagem']}
+    >
+      <p>Formulario</p>
+    </AutomationWorkspace>
+  );
+  expect(screen.getByText('Falta conta').closest('header')).toBeNull();
+  expect(screen.getByText('Falta mensagem').closest('details')).toBeNull();
+  expect(screen.getByRole('button', { name: 'save_flow' })).toHaveProperty(
+    'disabled',
+    true
+  );
+});

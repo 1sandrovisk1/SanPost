@@ -85,6 +85,7 @@ Story do Facebook não é um gatilho com origem comprovada. Não o apresentar co
 | `replyMessage` | string, 2200 | Uma resposta pública |
 | `replyMessages` | até 10 strings não vazias, 2200 cada | Variações públicas; não enviar junto de `replyMessage` |
 | `dmMessage` | string, 2000 | Mensagem privada/final |
+| `dmMessages` | string[], 1–10 | Alternativas de uma única mensagem privada; 640 por alternativa com botão |
 | `dmButtonText` | string, IG 80/FB 20 | Texto do botão; enviar com URL e mensagem |
 | `dmButtonUrl` | HTTPS público, IG 2048/FB 2000 | URL do botão; redes privadas, credenciais na URL e protocolo inseguro são recusados |
 | `requireFollow` | boolean | Habilita verificação de seguidor nos fluxos Instagram suportados |
@@ -173,7 +174,7 @@ Cada nó tem `id`, `type`, `data` (**string JSON**), `positionX`, `positionY` e 
 | TRIGGER | triggerType, keywords, matchMode; priority só Messenger. V1 também mode, postIds, storyIds, scheduledPostId e campos Instagram do gate/reações |
 | CONDITION | keywords, matchMode |
 | REPLY_COMMENT | message, messages |
-| SEND_DM | message, buttonText, buttonUrl |
+| SEND_DM | message ou messages, buttonText, buttonUrl |
 | DELAY | duration inteiro 0–86400, unit seconds/minutes/hours |
 
 `sourceHandle="match"`/`"no_match"` só em condição. Um gatilho, sem ciclos, nós conectados e ações compatíveis com o canal. V1: até 100 nós/200 arestas/128 KiB; V2: 30 nós/60 arestas/64 KiB. Limites de mensagem e URLs continuam aplicáveis. Campos fora da lista são recusados.
@@ -273,3 +274,22 @@ Mutações e consultas remotas da API aplicam o guard de requisições por organ
 
 
 Na prévia retornada por `resolve_post`, `isPublished?: boolean` é metadado opcional, somente leitura: aparece apenas quando a Meta confirma `is_published` como booleano. `false` significa Page Post não publicado, não comprova anúncio pago/veiculação. Não enviar esse metadado em `configuration`; `postIds` continua aceitando juntos posts normais e Dark Posts canônicos no modo `specific`, sem tipo separado.
+
+
+## Alternativas de mensagem privada (28/10)
+
+`dmMessages: string[]` é uma alternativa a `dmMessage`, com 1–10 textos não vazios de até 2.000 caracteres. Uma única alternativa é escolhida por execução, e o botão/link é comum a todas. Com botão, novas alternativas têm limite de 640 caracteres, inclusive após interpolação. O singular antigo mantém compatibilidade; não envie os dois campos na mesma criação ou edição. `capabilities` anuncia a lista e os limites.
+
+Na edição parcial, omitir ambos preserva a mensagem existente; informar `dmMessages` substitui o singular, e informar `dmMessage` substitui a lista. Campos omitidos de botão, escopo, alvo agendado e gate continuam preservados. Exemplo de corpo de PUT V2 (use a revisão real):
+
+```json
+{"expectedRevision": 3, "configuration": {"dmMessages": ["Olá {{comment_name}}, aqui está o conteúdo!", "Obrigado pelo interesse, {{comment_name}}!"]}}
+```
+
+No canvas V1/V2, a representação é `SEND_DM.data = JSON.stringify({messages:[...],buttonText,buttonUrl})`. Não se trata de mensagens em sequência: vários SEND_DM continuam respeitando a composição de uma resposta do motor. As ferramentas MCP de criação, edição e canvas usam o mesmo schema e as mesmas validações.
+
+V2 sorteia na ingestão de comentário ou mensagem do Messenger e persiste a ação escolhida no snapshot; retry e reentrega não sorteiam novamente. V1 protege replays anteriores com `patched('private-message-variants-v1')` e usa seleção estável por execução/nó, sem consumir o sorteio público. No gate, o texto final é congelado antes do PendingPostback. O histórico V1 não passa a comprovar o texto enviado; não reconstruir a alternativa a partir da regra atual.
+
+Tokens V1 continuam `{commenter_name}`, `{commenter_id}`, `{comment_text}`, `{media_id}`. V2 usa `{{comment_name}}`, `{{comment_text}}`, `{{comment_id}}`, `{{media_id}}`; Messenger só oferece texto e ID da mensagem recebida, pois não consulta nome/publicação. A interpolação V2 aplica-se ao texto, não ao botão.
+
+Variar textos não garante evitar bloqueios. Botão de URL abre o site e não cria uma continuação da conversa. Envio após interação depende do evento e da janela aplicável; não existe permissão para mensagens ilimitadas.

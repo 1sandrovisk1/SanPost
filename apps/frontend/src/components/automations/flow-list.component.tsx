@@ -212,7 +212,7 @@ export const FlowListComponent: FC = () => {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
-            onClick={() => router.push('/automacoes/logs')}
+            onClick={() => router.push('/automations/logs')}
             className="rounded-[4px] border border-fifth bg-sixth px-[16px] py-[8px] text-[14px] text-textColor hover:border-btnPrimary/50 transition-colors"
             title={t(
               'logs_button_tooltip',
@@ -321,8 +321,8 @@ export const FlowListComponent: FC = () => {
                   onEdit={() =>
                     router.push(
                       flow.shared
-                        ? `/automacoes/compartilhada/${flow.id}`
-                        : `/automacoes/${flow.id}`
+                        ? `/automations/${flow.id}`
+                        : `/automations/instagram/${flow.id}`
                     )
                   }
                   onDelete={() =>
@@ -414,12 +414,16 @@ const FlowRow: FC<RowProps> = ({
           .map((c) =>
             c.postMode === 'all'
               ? t('shared_all')
-              : c.postMode === 'scheduled' ? t('scheduled_selected_post') : c.postMode === 'next_publication'
+              : c.postMode === 'scheduled'
+              ? t('scheduled_selected_post')
+              : c.postMode === 'next_publication'
               ? t('shared_next')
               : t('shared_selected_count', { count: c.postIds.length })
           )
           .join(' · ')
-      : summary.scheduled ? t('scheduled_selected_post') : summary.postsCount == null
+      : summary.scheduled
+      ? t('scheduled_selected_post')
+      : summary.postsCount == null
       ? t('flow_trigger_all_posts', 'Todos os posts')
       : t('flow_trigger_posts_count', '{{count}} posts').replace(
           '{{count}}',
@@ -521,7 +525,7 @@ const FlowRow: FC<RowProps> = ({
         {flow.shared ? (
           <a
             className="text-sm underline"
-            href={`/automacoes/compartilhada/${flow.id}?tab=history`}
+            href={`/automations/${flow.id}?tab=history`}
           >
             {t('show_history')}
           </a>

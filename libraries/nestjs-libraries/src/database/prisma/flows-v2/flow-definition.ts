@@ -46,7 +46,7 @@ const allowed: Record<CommentNodeType, string[]> = {
   TRIGGER: ['triggerType', 'keywords', 'matchMode', 'priority'],
   CONDITION: ['keywords', 'matchMode'],
   DELAY: ['duration', 'unit'],
-  SEND_DM: ['message', 'buttonText', 'buttonUrl'],
+  SEND_DM: ['message', 'messages', 'buttonText', 'buttonUrl'],
   REPLY_COMMENT: ['message', 'messages'],
 };
 function config(node: CommentNode): Config {
@@ -100,7 +100,10 @@ function config(node: CommentNode): Config {
       !value.messages.length ||
       value.messages.length > 10 ||
       value.messages.some(
-        (m) => typeof m !== 'string' || !m.trim() || m.length > 2200
+        (m) =>
+          typeof m !== 'string' ||
+          !m.trim() ||
+          m.length > (node.type === 'SEND_DM' ? 2000 : 2200)
       ))
   )
     throw new Error('INVALID_MESSAGE');
@@ -230,7 +233,13 @@ export function normalizeDefinition(
       const state = { ...prior };
       if (node.type === 'SEND_DM') {
         if (state.dm && state.gap) throw new Error('PRIVATE_REPLY_ORDER');
-        state.length += (cfg.message || '').length + (state.dm ? 2 : 0);
+        state.length +=
+          Math.max(
+            0,
+            ...(cfg.messages || [cfg.message || '']).map(
+              (message) => message.length
+            )
+          ) + (state.dm ? 2 : 0);
         state.dm = true;
         state.button ||= !!cfg.buttonUrl;
       }
@@ -333,8 +342,13 @@ export function planCommentActions(
         cfg.duration *
         { seconds: 1, minutes: 60, hours: 3600 }[cfg.unit || 'seconds'];
     if (node.type === 'SEND_DM') {
-      if (cfg.message?.trim()) {
-        messages.push(render(cfg.message));
+      const alternatives = cfg.messages || [cfg.message || ''];
+      const index =
+        alternatives.length > 1 ? chooseReplyIndex(alternatives.length) : 0;
+      if (!Number.isInteger(index) || index < 0 || index >= alternatives.length)
+        throw new Error('INVALID_MESSAGE');
+      if (alternatives[index]?.trim()) {
+        messages.push(render(alternatives[index]));
         if (!privateAction) {
           privateAction = {
             key: messenger ? 'messenger_reply' : 'private_reply',
@@ -402,6 +416,7 @@ export function simpleDefinition(input: {
   keywords?: string[];
   matchMode?: string;
   message: string;
+  dmMessages?: string[];
   reply?: string;
   replyMessages?: string[];
   buttonText?: string;
@@ -441,7 +456,9 @@ export function simpleDefinition(input: {
     id: 'dm',
     type: 'SEND_DM',
     data: JSON.stringify({
-      message: input.message,
+      ...(input.dmMessages?.length
+        ? { messages: input.dmMessages }
+        : { message: input.message }),
       ...(input.buttonUrl
         ? { buttonText: input.buttonText, buttonUrl: input.buttonUrl }
         : {}),

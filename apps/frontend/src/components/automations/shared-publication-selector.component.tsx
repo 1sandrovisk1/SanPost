@@ -276,14 +276,42 @@ export function AutomationPublicationSelector({
           scoped ? 'border-btnPrimary bg-btnPrimary/5' : 'border-newTableBorder'
         }`}
       >
-        {radio(
-          'specific',
-          t(
-            platform === 'facebook'
-              ? 'automation_facebook_specific_post'
-              : 'wizard_specific_post'
-          )
-        )}
+        <div className="flex items-center justify-between gap-2">
+          {radio(
+            'specific',
+            t(
+              platform === 'facebook'
+                ? 'automation_facebook_specific_post'
+                : 'wizard_specific_post'
+            )
+          )}
+          {scoped && (
+            <button
+              type="button"
+              disabled={disabled}
+              aria-label={t('automation_select_publications')}
+              title={t('automation_select_publications')}
+              onClick={() => {
+                setCursor(null);
+                void result.mutate();
+                setOpen(true);
+              }}
+              className="shrink-0 rounded-md p-1.5 hover:bg-boxHover focus-visible:ring-2 focus-visible:ring-btnPrimary disabled:opacity-40"
+            >
+              <svg
+                aria-hidden="true"
+                width="17"
+                height="17"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.7"
+              >
+                <path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5" />
+              </svg>
+            </button>
+          )}
+        </div>
         {scoped && (
           <div className="mt-3 space-y-2">
             <div className="grid grid-cols-4 gap-1.5">
@@ -306,18 +334,7 @@ export function AutomationPublicationSelector({
                 </button>
               ))}
             </div>
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={() => {
-                setCursor(null);
-                void result.mutate();
-                setOpen(true);
-              }}
-              className="text-[13px] text-btnPrimary font-medium disabled:opacity-50"
-            >
-              {t('automation_select_publications')}
-            </button>
+
             {mode === 'scheduled' &&
               scheduled.find((p) => p.id === scheduledPostId)?.status !==
                 'published' && (

@@ -49,3 +49,10 @@ DTO e tipos: `libraries/nestjs-libraries/src/dtos/flows/automation-history.dto.t
 ## Validação
 
 Testes cobrem autorização, filtros/cursor, contrato HTTP, projeção sem dados brutos, semântica do ledger/log, drawer, datas, estados de erro/vazio/carregamento e proteção de rascunho. Conferência real apenas no navegador local do perfil Escorpiano, usando consultas e sem salvar, ativar, pausar ou enviar mensagens. Não há migração de banco nem nova imagem Docker; o backend precisa ser recompilado e o app local reiniciado para disponibilizar a nova leitura.
+
+
+### Ajustes de interação (28/10)
+
+Atualizar agora mostra estado ocupado, animação, sucesso ou falha, mantendo os registros já carregados em caso de erro. O resultado de uma consulta antiga não é anunciado em outro filtro/página. A atualização automática continua no intervalo existente enquanto a aba está montada.
+
+O fuso aparece somente na ajuda do cabeçalho Início e corresponde ao fuso usado para formatar as datas no navegador. Tooltips usam portal ancorado sem alterar o layout, com hover, foco, fixação por clique, fechamento externo/Escape e limite da viewport. Dentro de drawer modal, o portal permanece na camada do próprio diálogo; Escape fecha primeiro a ajuda.
