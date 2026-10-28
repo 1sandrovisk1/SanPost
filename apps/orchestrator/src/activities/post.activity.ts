@@ -427,7 +427,8 @@ export class PostActivity {
             true,
             false,
             !/<\/?[a-z][\s\S]*>/i.test(p.content),
-            getIntegration.mentionFormat
+            getIntegration.mentionFormat,
+            this.inlineImages(getIntegration, p.settings)
           ),
           settings: JSON.parse(p.settings || '{}'),
           media: await this._postService.updateMedia(
@@ -553,6 +554,12 @@ export class PostActivity {
     };
   }
 
+  // figuras no corpo so para quem as publica (WordPress, ListMonk); os outros
+  // providers seguem recebendo o texto sem <img> (upstream 2aae02fe)
+  private inlineImages(getIntegration: any, settings?: string | null) {
+    return !!getIntegration?.inlineImages?.(JSON.parse(settings || '{}'));
+  }
+
   private mapPosts(getIntegration: any, posts: Post[]) {
     return Promise.all(
       posts.map(async (post) => ({
@@ -563,7 +570,8 @@ export class PostActivity {
           true,
           false,
           !/<\/?[a-z][\s\S]*>/i.test(post.content),
-          getIntegration.mentionFormat
+          getIntegration.mentionFormat,
+          this.inlineImages(getIntegration, post.settings)
         ),
         settings: JSON.parse(post.settings || '{}'),
         media: await this._postService.updateMedia(

@@ -14,6 +14,7 @@ import {
   managedMediaSchema,
   managedSettingsSchema,
   managedTagsSchema,
+  POST_CONTENT_DESCRIPTION,
 } from '../../dtos/posts/post-management.dto';
 import { CreatePostDto } from '../../dtos/posts/create.post.dto';
 import { HttpException } from '@nestjs/common';
@@ -52,7 +53,10 @@ export const schedulePostInputSchema = z
               .array(
                 z
                   .object({
-                    content: z.string().max(100000),
+                    content: z
+                      .string()
+                      .max(100000)
+                      .describe(POST_CONTENT_DESCRIPTION),
                     attachments: z
                       .array(z.string().max(4096))
                       .max(100)

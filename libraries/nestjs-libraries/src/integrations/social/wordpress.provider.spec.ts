@@ -300,3 +300,49 @@ describe('WordpressProvider post settings', () => {
     expect(payload).not.toHaveProperty('tags');
   });
 });
+
+// imagem inline no corpo do artigo (upstream 2aae02fe + 28701a98)
+describe('WordpressProvider imagem inline', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('declara inlineImages e a regra para o agente com as tools do fork', () => {
+    const provider = new WordpressProvider();
+    expect(provider.inlineImages()).toBe(true);
+    const rules = Reflect.getMetadata(
+      'custom:rules:description',
+      WordpressProvider
+    );
+    expect(rules).toContain('<img src="...">');
+    expect(rules).toContain('mediaListTool');
+    expect(rules).not.toContain('uploadFromUrlTool');
+  });
+
+  it('publica o HTML com a imagem no lugar como corpo do artigo', async () => {
+    const provider = new WordpressProvider();
+    const fetch = jest
+      .spyOn(provider, 'fetch')
+      .mockResolvedValue(
+        responseWith({ body: { id: 45, link: 'https://example.com/post/45' } })
+      );
+    const message =
+      '<p>Antes</p><img src="https://app.exemplo.com/uploads/a.png" alt="capa"><p>Depois</p>';
+
+    await provider.post(
+      'site-1',
+      code,
+      [
+        {
+          id: 'post-1',
+          message,
+          settings: { title: 'Com imagem', type: 'posts' },
+        },
+      ] as any,
+      {} as any
+    );
+
+    const payload = JSON.parse(String(fetch.mock.calls[0][1]?.body));
+    expect(payload.content).toBe(message);
+  });
+});

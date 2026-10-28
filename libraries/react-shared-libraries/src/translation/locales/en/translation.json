@@ -971,6 +971,7 @@
   "delete_post_tooltip": "Delete Post",
   "drop_files_here_to_upload": "Drop your files here to upload",
   "insert_emoji": "Insert Emoji",
+  "only_images_can_be_added_to_the_content": "Only images can be added to the content",
   "write_something": "Write something …",
   "click_channel_to_add": "Click a channel to add it",
   "connect_your_channels": "Connect Your Channels",
@@ -2786,5 +2787,6 @@
   "delete_only_from": "Only from",
   "batch_save_partial_failure": "Some channels were saved but others failed. Open the post again to review them.",
   "post_channel_date_in_past": "Choose a future date for this channel",
-  "batch_delete_partial_failure": "The post was deleted from some channels but not from others. Check the calendar."
+  "batch_delete_partial_failure": "The post was deleted from some channels but not from others. Check the calendar.",
+  "inline_image_not_from_media_library": "Only pictures from the media library can go in the content"
 }

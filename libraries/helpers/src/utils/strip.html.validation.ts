@@ -1,5 +1,6 @@
 import striptags from 'striptags';
 import { parseFragment, serialize } from 'parse5';
+import { rewriteInlineImages } from '@gitroom/helpers/utils/inline.images';
 
 const bold = {
   a: '𝗮',
@@ -137,7 +138,8 @@ export const stripHtmlValidation = (
   replaceBold = false,
   none = false,
   plain = false,
-  convertMentionFunction?: (idOrHandle: string, name: string) => string
+  convertMentionFunction?: (idOrHandle: string, name: string) => string,
+  inlineImages = false
 ): string => {
   if (plain) {
     return val;
@@ -156,17 +158,24 @@ export const stripHtmlValidation = (
   }
 
   if (type === 'html') {
-    return striptags(convertMention(value, convertMentionFunction), [
-      'ul',
-      'li',
-      'h1',
-      'h2',
-      'h3',
-      'p',
-      'strong',
-      'u',
-      'a',
-    ])
+    return striptags(
+      convertMention(
+        inlineImages ? convertImages(value) : value,
+        convertMentionFunction
+      ),
+      [
+        'ul',
+        'li',
+        'h1',
+        'h2',
+        'h3',
+        'p',
+        'strong',
+        'u',
+        'a',
+        ...(inlineImages ? ['img'] : []),
+      ]
+    )
       .replace(/&gt;/gi, '>')
       .replace(/&lt;/gi, '<')
       .replace(/&amp;/gi, '&')
@@ -267,6 +276,13 @@ export const stripHtmlValidation = (
     .replace(/&gt;/gi, '>')
     .replace(/&lt;/gi, '<');
 };
+
+// Imagem inline (upstream 2aae02fe): so a midia da propria instancia, com
+// src normalizado e alt sem aspas/`&` — o resto do modo html decodifica
+// entidades depois do striptags. O upstream aceita qualquer http(s) e reescreve
+// por regex; aqui a reescrita e na arvore (ver inline.images.ts).
+export const convertImages = (value: string) =>
+  rewriteInlineImages(value, { plainAlt: true });
 
 export const convertMention = (
   value: string,

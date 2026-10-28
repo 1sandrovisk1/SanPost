@@ -98,6 +98,7 @@ The `--color-custom*` variables are **deprecated**. Use `--new-*` tokens and Tai
 | `src/app/global-error.tsx` | Next.js error boundary + Sentry capture |
 | `src/components/launches/` | Largest surface — composer, calendar, AI modals (~60 components) |
 | `src/components/new-launch/providers/wordpress/` | WordPress composer settings: post type, status, categories, tags and cover image |
+| `src/components/new-launch/editor.tsx` | Composer editor (TipTap). Inline pictures (upstream `2aae02fe`) are on only for the first value of a customized channel whose `withProvider({ inlineImages })` is true (WordPress, ListMonk) and whose editor is `html`: uploads/paste/drop/library insert into the content; the `image` node and pasted HTML accept only own media via `useOwnMedia()` (`useVariables().frontEndUrl`/`cloudflareUrl` + `helpers/utils/inline.images.ts`) |
 | `src/components/launches/helpers/mode.tab.component.tsx` | Shared `ModeTab` for T2X/I2X tabs in AI modals (image, video) |
 | `src/components/launches/helpers/reference.image.dropzone.component.tsx` | Shared dropzone for I2I/I2V reference image (drag-drop + URL fallback, POSTs to `/media/upload-server`). Reuse instead of inlining file-upload logic in new modals |
 | `src/components/automations/logs/logs.component.tsx` | Unbound IG comment inbox (Dark Posts / Logs page at `/automacoes/logs`) — destino dos comentários em mídias não monitoradas por nenhuma automação |

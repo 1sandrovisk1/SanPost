@@ -33,6 +33,7 @@ export interface SelectedIntegrations {
 
 interface StoreState {
   editor: undefined | 'none' | 'normal' | 'markdown' | 'html';
+  inlineImages: boolean;
   loaded: boolean;
   date: dayjs.Dayjs;
   // os outros canais de um post existente, cada um com a data dele
@@ -139,6 +140,7 @@ interface StoreState {
   setActivateExitButton?: (activateExitButton: boolean) => void;
   setDummy: (dummy: boolean) => void;
   setEditor: (editor: 'none' | 'normal' | 'markdown' | 'html') => void;
+  setInlineImages: (inlineImages: boolean) => void;
   setLoaded?: (loaded: boolean) => void;
   setChars: (id: string, chars: number) => void;
   chars: Record<string, number>;
@@ -147,6 +149,7 @@ interface StoreState {
 
 const initialState = {
   editor: undefined as undefined,
+  inlineImages: false,
   loaded: true,
   dummy: false,
   comments: true,
@@ -198,6 +201,7 @@ export const useLaunchStore = create<StoreState>()((set) => ({
             ? {
                 current: 'global',
                 editor: 'normal',
+                inlineImages: false,
               }
             : {}),
         };
@@ -634,6 +638,10 @@ export const useLaunchStore = create<StoreState>()((set) => ({
   setEditor: (editor: 'none' | 'normal' | 'markdown' | 'html') =>
     set((state) => ({
       editor,
+    })),
+  setInlineImages: (inlineImages: boolean) =>
+    set((state) => ({
+      inlineImages,
     })),
   setLoaded: (loaded: boolean) =>
     set((state) => ({

@@ -31,4 +31,5 @@ export default withProvider({
   dto: ListmonkDto,
   checkValidity: undefined,
   maximumCharacters: 300000,
+  inlineImages: true,
 });

@@ -2,7 +2,11 @@ jest.mock('../../../integrations/integration.manager', () => ({
   socialIntegrationList: [{ identifier: 'instagram', maxLength: () => 2200 }, { identifier: 'threads', maxLength: () => 500 }],
 }));
 jest.mock('file-type', () => ({ fileTypeFromBuffer: jest.fn() }));
-import { IntegrationSchedulePostTool } from '../integration.schedule.post';
+import {
+  IntegrationSchedulePostTool,
+  schedulePostInputSchema,
+} from '../integration.schedule.post';
+import { managedMessageSchema } from '../../../dtos/posts/post-management.dto';
 describe('criacao MCP completa de posts', () => {
   const posts = {
     mapTypeToPost: jest.fn(async (body) => body),
@@ -152,5 +156,55 @@ describe('criacao MCP completa de posts', () => {
     } finally {
       process.env.FRONTEND_URL = previous;
     }
+  });
+
+  // upstream 28701a98: o contrato do conteudo cita a imagem inline; o fork
+  // aponta para as tools que ele tem (mediaListTool/generateImageTool) e
+  // mantem o escopo por perfil.
+  it('descreve <img> no conteudo so para canais cujas regras pedem', () => {
+    const content =
+      schedulePostInputSchema.shape.socialPost.element.shape.postsAndComments
+        .element.shape.content;
+    for (const description of [
+      content.description,
+      managedMessageSchema.shape.content.description,
+    ]) {
+      expect(description).toContain('<img src="...">');
+      expect(description).toContain('integrationSchema');
+      expect(description).toContain('mediaListTool');
+      expect(description).not.toContain('uploadFromUrlTool');
+    }
+  });
+
+  it('repassa a imagem do conteudo ao DTO (o sanitizer decide) e mantem o perfil', async () => {
+    const tool: any = new IntegrationSchedulePostTool(posts as any, integration as any, management as any).run();
+    const content =
+      '<p>a</p><img src="https://multi.example.com/uploads/2026/10/28/a.png" alt="x">';
+    await tool.execute(
+      { socialPost: [{ integrationId: 'i', isPremium: false, date: '2026-11-01T15:00:00Z', shortLink: false, type: 'schedule', settings: [], postsAndComments: [{ content, attachments: [] }] }] },
+      options
+    );
+    expect(posts.mapTypeToPost).toHaveBeenCalledWith(
+      expect.objectContaining({
+        posts: [
+          expect.objectContaining({
+            value: [expect.objectContaining({ content })],
+          }),
+        ],
+      }),
+      'org'
+    );
+    expect(posts.createPost).toHaveBeenCalledWith('org', expect.anything(), 'perfil');
+  });
+
+  it('canal de outro perfil continua recusado', async () => {
+    integration.getIntegrationById.mockResolvedValueOnce({ id: 'i', profileId: 'outro', providerIdentifier: 'instagram' });
+    const tool: any = new IntegrationSchedulePostTool(posts as any, integration as any, management as any).run();
+    const result = await tool.execute(
+      { socialPost: [{ integrationId: 'i', isPremium: false, date: '2026-11-01T15:00:00Z', shortLink: false, type: 'schedule', settings: [], postsAndComments: [{ content: '<img src="https://multi.example.com/uploads/a.png">', attachments: [] }] }] },
+      options
+    );
+    expect(result.errors).toContain('CHANNEL_PROFILE_MISMATCH');
+    expect(posts.createPost).not.toHaveBeenCalled();
   });
 });

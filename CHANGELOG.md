@@ -7,6 +7,13 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 
 ## [Unreleased]
 
+### Adicionado — imagem dentro do conteúdo no WordPress e no ListMonk (2026-10-28)
+
+- Ao personalizar um canal **WordPress** ou **ListMonk**, as imagens vão para dentro do texto, no ponto do cursor: enviar arquivo, colar imagem, arrastar para o editor ou escolher na biblioteca de mídia (inclusive imagem gerada por IA ou criada no editor de design) insere a imagem no conteúdo, que pode ser arrastada para outra posição. O artigo do WordPress e o e-mail do ListMonk saem com as imagens no lugar em que aparecem; nos outros canais nada muda e o texto segue sem imagem. Vídeo não entra no conteúdo (aviso na tela).
+- Só imagens da biblioteca de mídia da própria instância entram no conteúdo: imagem de outro site colada no editor é descartada com aviso, e o servidor remove ao salvar qualquer `<img>` de outra origem, `data:`, caminho relativo e atributos como `onerror` — o preview público e os links de revisão não carregam pixel de terceiros nem abrem brecha de script.
+- API pública e agente MCP: o conteúdo aceita `<img src="...">` com mídia da biblioteca nos canais que levam imagem no corpo; as regras do WordPress e do ListMonk orientam o agente a usar `mediaListTool`/`generateImageTool`.
+- Arrastar texto e imagens dentro do editor de posts volta a funcionar (o arrastar do calendário não cancela mais o do editor).
+
 ### Melhorado — ferramentas de texto das automações (28/10/2026)
 
 - Resposta pública usa diretamente a etapa verde; pedido para seguir vira switch com apenas suas subetapas expansíveis. Alternativas privadas ganham boxes próprios para texto e botão/link.
