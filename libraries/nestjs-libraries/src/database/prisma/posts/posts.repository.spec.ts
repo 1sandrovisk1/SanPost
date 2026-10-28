@@ -339,3 +339,163 @@ describe('PostsRepository.updateReleaseId (link do post conectado)', () => {
     });
   });
 });
+
+// Porte do upstream 23beddcd: post no ar com falha num passo seguinte.
+describe('PostsRepository.updatePublishedRelease', () => {
+  it('grava id e link restrito a org, sem mexer no estado', async () => {
+    const post = createPrismaRepositoryMock('post');
+    (post.model.post as any).update = jest.fn().mockResolvedValue({ id: 'p' });
+    const repo = new PostsRepository(post as any, {} as any, {} as any, {} as any, {} as any, {} as any);
+
+    await repo.updatePublishedRelease('p', 'o', 'vid-1', 'https://www.youtube.com/watch?v=vid-1');
+
+    expect((post.model.post as any).update).toHaveBeenCalledWith({
+      where: { id: 'p', organizationId: 'o' },
+      data: { releaseId: 'vid-1', releaseURL: 'https://www.youtube.com/watch?v=vid-1' },
+      select: { id: true },
+    });
+  });
+});
+
+// Porte do upstream a194e3f4: lote de posts salvos juntos para varios canais.
+describe('PostsRepository - lote (batchId)', () => {
+  const build = () => {
+    const post = createPrismaRepositoryMock('post');
+    const tags = createPrismaRepositoryMock('tags');
+    const tagsPosts = createPrismaRepositoryMock('tagsPosts');
+    post.model.post.upsert.mockResolvedValue({ id: 'novo' } as any);
+    (post.model.post as any).updateMany = jest.fn().mockResolvedValue({ count: 0 });
+    const repo = new PostsRepository(post as any, {} as any, {} as any, tags as any, tagsPosts as any, {} as any);
+    return { repo, post };
+  };
+  const body = (group?: string) =>
+    ({
+      group,
+      integration: { id: 'int-1' },
+      value: [{ id: 'v-1', content: 'a', image: [] }],
+      settings: { __type: 'x' },
+    } as any);
+
+  it('post novo grava o lote recebido', async () => {
+    const { repo, post } = build();
+
+    await repo.createOrUpdatePost('schedule', 'org-1', '2026-11-10T12:00:00Z', body(), [], undefined, 'perfil-1', 'lote-novo');
+
+    const arg = post.model.post.upsert.mock.calls[0][0] as any;
+    expect(arg.create.batchId).toBe('lote-novo');
+    expect(post.model.post.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('editado fica no lote em que nasceu, achado pelo grupo na org e no perfil', async () => {
+    const { repo, post } = build();
+    post.model.post.findFirst.mockResolvedValueOnce({ batchId: 'lote-antigo' } as any);
+
+    await repo.createOrUpdatePost('update', 'org-1', '2026-11-10T12:00:00Z', body('g-1'), [], undefined, 'perfil-1', 'lote-novo');
+
+    expect(post.model.post.findFirst.mock.calls[0][0]).toEqual({
+      where: { group: 'g-1', organizationId: 'org-1', deletedAt: null, batchId: { not: null }, profileId: 'perfil-1' },
+      select: { batchId: true },
+    });
+    const arg = post.model.post.upsert.mock.calls[0][0] as any;
+    expect(arg.update.batchId).toBe('lote-antigo');
+  });
+
+  it('post antigo sem lote continua sem lote', async () => {
+    const { repo, post } = build();
+    post.model.post.findFirst.mockResolvedValue(null);
+
+    await repo.createOrUpdatePost('update', 'org-1', '2026-11-10T12:00:00Z', body('g-1'), [], undefined, 'perfil-1');
+
+    const arg = post.model.post.upsert.mock.calls[0][0] as any;
+    expect('batchId' in arg.update).toBe(false);
+  });
+
+  it('irmaos: raizes do lote no perfil e canal vivos, cadeias pelo grupo + canal', async () => {
+    const { repo, post } = build();
+    post.model.post.findMany
+      .mockResolvedValueOnce([{ group: 'g-2', integrationId: 'int-2' }] as any)
+      .mockResolvedValueOnce([{ id: 'p-2' }] as any);
+
+    await expect(repo.getPostsByBatch('org-1', 'b-1', 'g-1', 'perfil-1')).resolves.toEqual([{ id: 'p-2' }]);
+
+    expect((post.model.post.findMany.mock.calls[0][0] as any).where).toEqual({
+      organizationId: 'org-1',
+      batchId: 'b-1',
+      parentPostId: null,
+      deletedAt: null,
+      group: { not: 'g-1' },
+      profileId: 'perfil-1',
+      integration: { deletedAt: null, disabled: false, profileId: 'perfil-1' },
+    });
+    expect((post.model.post.findMany.mock.calls[1][0] as any).where).toEqual({
+      organizationId: 'org-1',
+      deletedAt: null,
+      OR: [{ group: 'g-2', integrationId: 'int-2' }],
+    });
+  });
+
+  it('sem raizes nao busca cadeias', async () => {
+    const { repo, post } = build();
+    post.model.post.findMany.mockResolvedValueOnce([] as any);
+
+    await expect(repo.getPostsByBatch('org-1', 'b-1', 'g-1', null)).resolves.toEqual([]);
+    expect(post.model.post.findMany).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('PostsRepository - escopo do grupo enviado pelo cliente', () => {
+  const build = () => {
+    const post = createPrismaRepositoryMock('post');
+    post.model.post.upsert.mockResolvedValue({ id: 'novo' } as any);
+    post.model.post.findFirst.mockResolvedValue(null);
+    (post.model.post as any).updateMany = jest.fn().mockResolvedValue({ count: 0 });
+    const repo = new PostsRepository(
+      post as any,
+      {} as any,
+      {} as any,
+      createPrismaRepositoryMock('tags') as any,
+      createPrismaRepositoryMock('tagsPosts') as any,
+      {} as any
+    );
+    return { repo, post };
+  };
+  const body = { group: 'g-alheio', integration: { id: 'int-1' }, value: [{ id: 'v', content: 'a', image: [] }], settings: {} } as any;
+
+  it('com perfil, a troca do grupo so apaga linhas do perfil (ou legadas sem perfil)', async () => {
+    const { repo, post } = build();
+
+    await repo.createOrUpdatePost('schedule', 'org-1', '2026-11-10T12:00:00Z', body, [], undefined, 'perfil-1');
+
+    expect((post.model.post as any).updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          group: 'g-alheio',
+          organizationId: 'org-1',
+          deletedAt: null,
+          OR: [{ profileId: 'perfil-1' }, { profileId: null }],
+        },
+      })
+    );
+  });
+
+  it('sem perfil, o lote existente so e procurado entre posts sem perfil', async () => {
+    const { repo, post } = build();
+
+    await repo.createOrUpdatePost('schedule', 'org-1', '2026-11-10T12:00:00Z', body, []);
+
+    expect((post.model.post.findFirst.mock.calls[0][0] as any).where.profileId).toBeNull();
+  });
+
+  it('mudar a data devolve so id, data e estado (sem error cru nem batchId)', async () => {
+    const { repo, post } = build();
+    post.model.post.update.mockResolvedValue({ id: 'p' } as any);
+
+    await repo.changeDate('org-1', 'p', '2026-11-10T12:00:00Z', false, 'update');
+
+    expect((post.model.post.update.mock.calls[0][0] as any).select).toEqual({
+      id: true,
+      publishDate: true,
+      state: true,
+    });
+  });
+});

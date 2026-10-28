@@ -192,6 +192,7 @@ logger.fatal('Database connection pool exhausted', { activeConnections: 100 });
 ```bash
 pnpm dev                  # Frontend + backend + orchestrator
 pnpm build:frontend       # Production build of the frontend
+pnpm exec vitest run -c tools/vitest.composer.config.mts  # composer pure rules (new-launch/*.spec.ts)
 pnpm lint                 # Always from repo root
 ```
 

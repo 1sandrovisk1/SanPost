@@ -95,6 +95,9 @@ ou envie `republish: true` quando a nova publicação for intencional. Texto com
 - `settings.cover` — **capa do Reels**: um `MediaDto` `{ id, path }` (mídia de `POST /upload`). O `path` (URL pública) é enviado como `cover_url` à Meta. Só vale para **Reels** (um único vídeo `.mp4`, não story); em foto/carrossel/story é ignorado. Exige `id` **e** `path` válidos — senão a API responde **400**. Sem `settings.cover`, a **thumbnail da própria mídia** (`image[].thumbnail`, quando existir na biblioteca) é usada como `cover_url`.
 - `settings.collaborators` — lista `[{ label }]` de contas a marcar como colaboradoras; o `@` inicial é removido. Em carrossel os colaboradores vão no container, não nos itens.
 
+No YouTube:
+- `settings.thumbnail` — miniatura própria do YouTube (`MediaDto`); continua aceita e **vence** a capa da mídia. Sem ela, a miniatura é a capa do vídeo (`image[0].thumbnail`). Se o YouTube recusar a miniatura (canal não verificado por telefone, imagem grande demais), o vídeo continua publicado: o post fica com erro, mas guarda o id e o link do vídeo — não publique de novo.
+
 No Facebook:
 - `settings.post_type` — `"post"` (feed/Reel) ou `"story"`.
 - `settings.title` — título opcional para **posts de vídeo** (não story); ignorado em foto/texto.

@@ -2725,5 +2725,16 @@
   "history_status_waiting_click": "Waiting for click",
   "history_trigger_waiting_click": "Trigger · Waiting for click",
   "history_step_help": "About sending records",
-  "history_timezone_help": "Time zone of displayed times"
+  "history_timezone_help": "Time zone of displayed times",
+  "thumbnails_and_alt_text": "Thumbnails & alt text",
+  "media_settings_section_description": "Click a media item to set its alt text, or its thumbnail if it is a video.",
+  "media_settings_section_tooltip": "Thumbnails apply to videos in the main post and are sent to every channel that supports them. YouTube may ignore them on videos it treats as Shorts (vertical, up to 3 minutes) without failing the publish, and requires a phone-verified channel for custom thumbnails. If YouTube rejects the thumbnail the video is still published, and Robô MultiPost cannot check eligibility in advance.",
+  "youtube_thumbnail_overrides_media": "This post has a YouTube-specific thumbnail, which overrides the thumbnail set in the media settings.",
+  "media_settings_main_post": "Main post",
+  "delete_post_from_all_channels_question": "This post was created for more than one channel. Do you want to delete it from all of them?",
+  "delete_from_all_channels": "Delete from all channels",
+  "delete_only_from": "Only from",
+  "batch_save_partial_failure": "Some channels were saved but others failed. Open the post again to review them.",
+  "post_channel_date_in_past": "Choose a future date for this channel",
+  "batch_delete_partial_failure": "The post was deleted from some channels but not from others. Check the calendar."
 }

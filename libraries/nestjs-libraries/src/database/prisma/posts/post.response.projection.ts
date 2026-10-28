@@ -45,19 +45,28 @@ export function toPublicIntegration(
 // Post.error guarda a excecao crua do provider (pode trazer refresh_token /
 // client_secret) e nenhuma tela le esse campo nas leituras por id. childrenPost
 // sai pelo mesmo motivo (linhas Post completas, com error): a resposta ja traz
-// a thread achatada em posts[].
+// a thread achatada em posts[]. batchId so liga os posts no backend (os irmaos
+// do lote vao prontos em `siblings`).
 export function toPublicPost<
   T extends {
     error?: unknown;
     childrenPost?: unknown;
+    batchId?: unknown;
     integration?: Partial<Integration> | null;
   }
->(post: T): Omit<T, 'error' | 'childrenPost' | 'integration'> & {
+>(post: T): Omit<T, 'error' | 'childrenPost' | 'batchId' | 'integration'> & {
   integration?: PublicIntegration | null;
 } {
-  const { error: _error, childrenPost: _children, integration, ...rest } = post;
+  const {
+    error: _error,
+    childrenPost: _children,
+    batchId: _batch,
+    integration,
+    ...rest
+  } = post;
   void _error;
   void _children;
+  void _batch;
   return {
     ...rest,
     ...(integration !== undefined

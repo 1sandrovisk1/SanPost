@@ -51,6 +51,10 @@ import { SubscriptionService } from '@gitroom/nestjs-libraries/database/prisma/s
 import { FlowsService } from '@gitroom/nestjs-libraries/database/prisma/flows/flows.service';
 import { EncryptionService } from '@gitroom/nestjs-libraries/crypto/encryption.service';
 import { PostActivity } from './post.activity';
+import {
+  BadBody,
+  PublishedWithError,
+} from '@gitroom/nestjs-libraries/integrations/social.abstract';
 
 const integration = {
   id: 'integration-1',
@@ -326,3 +330,78 @@ describe('PostActivity V112', () => {
     );
   });
 });
+
+// Porte do upstream 23beddcd: post no ar com falha num passo seguinte.
+describe('PostActivity - PublishedWithError', () => {
+  const published = () =>
+    new PublishedWithError(
+      'youtube',
+      'post-1',
+      'vid-1',
+      'https://www.youtube.com/watch?v=vid-1',
+      'Video publicado, miniatura recusada'
+    );
+
+  it('V112 guarda o link do post e falha como BadBody', async () => {
+    const { activity, provider, postService } = buildActivity();
+    provider.postPending = undefined as any;
+    provider.post.mockRejectedValue(published());
+
+    const err = await activity
+      .postSocialPending('org-1', 'integration-1', [post as any])
+      .catch((e) => e);
+
+    expect(err).toBeInstanceOf(BadBody);
+    expect(err.message).toBe('Video publicado, miniatura recusada');
+    expect(postService.updatePublishedRelease).toHaveBeenCalledWith(
+      'post-1',
+      'org-1',
+      'vid-1',
+      'https://www.youtube.com/watch?v=vid-1'
+    );
+  });
+
+  it('V102 faz o mesmo e falha como BadBody mesmo se gravar o link falhar', async () => {
+    const { activity, provider, postService } = buildActivity();
+    provider.post.mockRejectedValue(published());
+    postService.updatePublishedRelease.mockRejectedValue(new Error('db'));
+
+    await expect(
+      activity.postSocial({ ...integration } as any, [post as any])
+    ).rejects.toBeInstanceOf(BadBody);
+    expect(postService.updatePublishedRelease).toHaveBeenCalledWith(
+      'post-1',
+      'org-1',
+      'vid-1',
+      'https://www.youtube.com/watch?v=vid-1'
+    );
+  });
+
+  it('V112 com postPending tambem guarda o link', async () => {
+    const { activity, provider, postService } = buildActivity();
+    provider.postPending.mockRejectedValue(published());
+
+    await expect(
+      activity.postSocialPending('org-1', 'integration-1', [post as any])
+    ).rejects.toBeInstanceOf(BadBody);
+    expect(postService.updatePublishedRelease).toHaveBeenCalledWith(
+      'post-1',
+      'org-1',
+      'vid-1',
+      'https://www.youtube.com/watch?v=vid-1'
+    );
+  });
+
+  it('outros erros seguem sem gravar link', async () => {
+    const { activity, provider, postService } = buildActivity();
+    provider.postPending = undefined as any;
+    const boom = new Error('rede');
+    provider.post.mockRejectedValue(boom);
+
+    await expect(
+      activity.postSocialPending('org-1', 'integration-1', [post as any])
+    ).rejects.toBe(boom);
+    expect(postService.updatePublishedRelease).not.toHaveBeenCalled();
+  });
+});
+

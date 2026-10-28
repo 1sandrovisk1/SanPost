@@ -33,7 +33,7 @@ Everything the user schedules and publishes.
 
 | Model | Repo dir | Purpose | Rules |
 |---|---|---|---|
-| `Post` | `posts/` | Scheduled / published post. Relates to `Integration`, `Profile`, `Organization`. | Parent + [`apps/orchestrator/CLAUDE.md`](../../apps/orchestrator/CLAUDE.md) (publishing pipeline) |
+| `Post` | `posts/` | Scheduled / published post. Relates to `Integration`, `Profile`, `Organization`. `group` links a thread (post + comments) of one channel; `batchId` (optional) links the threads saved together for several channels of the same profile (editor opens them as `siblings`). | Parent + [`apps/orchestrator/CLAUDE.md`](../../apps/orchestrator/CLAUDE.md) (publishing pipeline) |
 | `Mentions` | `posts/` | User mentions inside a post body. | Parent |
 | `Tags` / `TagsPosts` | `posts/` | Tag and post↔tag join (`@@id([postId, tagId])`). | Parent |
 | `Sets` | `sets/` | Named collections / templates of posts. Carries `profileId`. | Parent |

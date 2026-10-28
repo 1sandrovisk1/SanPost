@@ -53,7 +53,9 @@ export function managedPostVersion(rows: ManagedPostRow[]): string {
   return createHash('sha256')
     .update(
       JSON.stringify(
-        rows.map(({ integration, tags, ...post }) => ({
+        // batchId fica fora: a coluna nova nao muda a versao de quem ja a
+        // tinha (409 em todos os agentes depois do deploy)
+        rows.map(({ integration, tags, batchId: _batch, ...post }) => ({
           ...post,
           tags: tags.map((t) => t.tag.id).sort(),
         }))
@@ -245,6 +247,8 @@ export class PostManagementRepository {
                 ...scope,
                 integrationId: root.integrationId,
                 group: root.group,
+                // comentario novo entra no lote da raiz (editor do lote)
+                ...(root.batchId ? { batchId: root.batchId } : {}),
                 state: change.state || root.state,
                 publishDate: change.date
                   ? new Date(change.date)

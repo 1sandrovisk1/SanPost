@@ -73,6 +73,28 @@ export class BadBody extends ApplicationFailure {
   }
 }
 
+// A plataforma ja aceitou o post (esta no ar), mas um passo seguinte falhou
+// (ex.: o YouTube recusou a miniatura depois do upload): o post termina em
+// ERROR, mas o id/URL na plataforma ficam salvos para o usuario abrir o post em
+// vez de publicar de novo. A activity grava o link e relanca como BadBody
+// (upstream 23beddcd).
+export class PublishedWithError extends ApplicationFailure {
+  constructor(
+    identifier: string,
+    public readonly postDbId: string,
+    public readonly releaseId: string,
+    public readonly releaseURL: string,
+    message = ''
+  ) {
+    super(
+      truncateForTemporal(message, MAX_FAILURE_MESSAGE),
+      'published_with_error',
+      true,
+      [{ identifier, postDbId, releaseId, releaseURL }]
+    );
+  }
+}
+
 export class NotEnoughScopes {
   constructor(
     public message = 'Not enough scopes, when choosing a provider, please add all the scopes'
