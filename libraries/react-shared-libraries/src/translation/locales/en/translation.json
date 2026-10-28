@@ -1,11 +1,9 @@
 {
   "automation_stage_selected_one": "{count} selected",
   "automation_stage_keywords_pending": "Set a keyword",
-
   "automation_stage_variations_one": "{count} variation",
   "automation_stage_enabled": "Enabled",
   "automation_stage_disabled": "Disabled",
-
   "automation_requirements_title": "Automation requirements",
   "automation_connection_action_hint": "This account authorization needs attention. Click the alert to review Credentials in a new tab.",
   "automation_stage_variations_count": "{count} variations",
@@ -13,7 +11,6 @@
   "automation_stage_public_title": "Comment reply",
   "automation_stage_private_title": "Private message (DM)",
   "automation_stage_followers_title": "Follower verification",
-
   "automation_instagram_aliases_scope_hint": "Linked Dark Post IDs remain active. Manage them under Specific posts.",
   "meta_system_user_token_label": "System User Token",
   "meta_system_user_token_hint": "This token’s expiry is not recorded here. It may have a deadline or no scheduled expiry; revoked permissions can still interrupt access.",
@@ -2763,5 +2760,16 @@
   "automation_private_variant": "Private message alternative",
   "preview_message_placeholder": "Message…",
   "automation_variable_message_text": "Message text",
-  "automation_variable_message_id": "Message ID"
+  "automation_variable_message_id": "Message ID",
+  "thumbnails_and_alt_text": "Thumbnails & alt text",
+  "media_settings_section_description": "Click a media item to set its alt text, or its thumbnail if it is a video.",
+  "media_settings_section_tooltip": "Thumbnails apply to videos in the main post and are sent to every channel that supports them. YouTube may ignore them on videos it treats as Shorts (vertical, up to 3 minutes) without failing the publish, and requires a phone-verified channel for custom thumbnails. If YouTube rejects the thumbnail the video is still published, and Robô MultiPost cannot check eligibility in advance.",
+  "youtube_thumbnail_overrides_media": "This post has a YouTube-specific thumbnail, which overrides the thumbnail set in the media settings.",
+  "media_settings_main_post": "Main post",
+  "delete_post_from_all_channels_question": "This post was created for more than one channel. Do you want to delete it from all of them?",
+  "delete_from_all_channels": "Delete from all channels",
+  "delete_only_from": "Only from",
+  "batch_save_partial_failure": "Some channels were saved but others failed. Open the post again to review them.",
+  "post_channel_date_in_past": "Choose a future date for this channel",
+  "batch_delete_partial_failure": "The post was deleted from some channels but not from others. Check the calendar."
 }

@@ -12,6 +12,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { GlobalIcon } from '@gitroom/frontend/components/ui/icons';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { Integrations } from '@gitroom/frontend/components/launches/calendar.context';
+import { useExistingData } from '@gitroom/frontend/components/launches/helpers/use.existing.data';
 import {
   useDecisionModal,
   useModals,
@@ -53,6 +54,7 @@ export function useHasScroll(ref: RefObject<HTMLElement | null>): boolean {
 
 export const SelectCurrent: FC = () => {
   const modals = useDecisionModal();
+  const existingData = useExistingData();
   const {
     selectedIntegrations,
     current,
@@ -103,22 +105,25 @@ export const SelectCurrent: FC = () => {
             locked && 'opacity-50 pointer-events-none'
           )}
         >
-          <div
-            onClick={() => {
-              setHide(true);
-              setCurrent('global');
-            }}
-            className={clsx(
-              'cursor-pointer flex gap-[8px] rounded-[8px] w-[40px] h-[40px] justify-center items-center bg-newBgLineColor',
-              current !== 'global'
-                ? 'text-[#A3A3A3]'
-                : 'border border-[#FC69FF] text-[#FC69FF]'
-            )}
-          >
-            <div>
-              <GlobalIcon />
+          {/* post existente abre nos canais dele, sem o modo global */}
+          {!existingData.integration && (
+            <div
+              onClick={() => {
+                setHide(true);
+                setCurrent('global');
+              }}
+              className={clsx(
+                'cursor-pointer flex gap-[8px] rounded-[8px] w-[40px] h-[40px] justify-center items-center bg-newBgLineColor',
+                current !== 'global'
+                  ? 'text-[#A3A3A3]'
+                  : 'border border-[#FC69FF] text-[#FC69FF]'
+              )}
+            >
+              <div>
+                <GlobalIcon />
+              </div>
             </div>
-          </div>
+          )}
           {selectedIntegrations.map(({ integration }) => (
             <div
               onClick={() => {
@@ -133,13 +138,18 @@ export const SelectCurrent: FC = () => {
                   : 'border-transparent'
               )}
             >
-              <div
-                onClick={removeSocial(integration)}
-                className="absolute justify-center items-center flex w-[8px] h-[8px] -top-[1px] -start-[3px] bg-red-500 rounded-full text-white text-[8px]"
-              >
-                X
-              </div>
-              <IsGlobal id={integration.id} />
+              {/* post existente mantem os canais, cada um com seu conteudo */}
+              {!existingData.integration && (
+                <>
+                  <div
+                    onClick={removeSocial(integration)}
+                    className="absolute justify-center items-center flex w-[8px] h-[8px] -top-[1px] -start-[3px] bg-red-500 rounded-full text-white text-[8px]"
+                  >
+                    X
+                  </div>
+                  <IsGlobal id={integration.id} />
+                </>
+              )}
               <div
                 {...{
                   'data-tooltip-id': 'tooltip',

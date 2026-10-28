@@ -390,6 +390,53 @@ export class PostsRepository {
     });
   }
 
+  // Os outros canais do lote, sem o grupo aberto (upstream a194e3f4). Raizes
+  // pelo batchId no perfil do post aberto (canal vivo e do mesmo perfil);
+  // cadeias inteiras pelo grupo + canal da raiz, porque comentarios criados
+  // depois (post-management) podem nao ter batchId.
+  async getPostsByBatch(
+    orgId: string,
+    batchId: string,
+    exceptGroup: string,
+    profileId: string | null
+  ) {
+    const roots = await this._post.model.post.findMany({
+      where: {
+        organizationId: orgId,
+        batchId,
+        parentPostId: null,
+        deletedAt: null,
+        group: { not: exceptGroup },
+        profileId,
+        integration: { deletedAt: null, disabled: false, profileId },
+      },
+      select: { group: true, integrationId: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (!roots.length) {
+      return [];
+    }
+
+    return this._post.model.post.findMany({
+      where: {
+        organizationId: orgId,
+        deletedAt: null,
+        OR: roots.map((root) => ({
+          group: root.group,
+          integrationId: root.integrationId,
+        })),
+      },
+      include: {
+        integration: true,
+        tags: {
+          where: { tag: { deletedAt: null } },
+          select: { tag: true },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
   getPostsByGroup(orgId: string, group: string) {
     return this._post.model.post.findMany({
       where: {
@@ -459,6 +506,21 @@ export class PostsRepository {
         releaseId: postId,
         error: null,
       },
+    });
+  }
+
+  // post que entrou no ar mas falhou num passo seguinte (PublishedWithError):
+  // grava id/URL na plataforma sem mexer no estado (o workflow marca ERROR)
+  updatePublishedRelease(
+    id: string,
+    orgId: string,
+    releaseId: string,
+    releaseURL: string
+  ) {
+    return this._post.model.post.update({
+      where: { id, organizationId: orgId },
+      data: { releaseId, releaseURL },
+      select: { id: true },
     });
   }
 
@@ -590,6 +652,9 @@ export class PostsRepository {
             }
           : {}),
       },
+      // a resposta vai ao dashboard: nunca a linha inteira (error cru do
+      // provider, batchId)
+      select: { id: true, publishDate: true, state: true },
     });
   }
 
@@ -622,10 +687,33 @@ export class PostsRepository {
     body: PostBody,
     tags: { value: string; label: string }[],
     inter?: number,
-    profileId?: string
+    profileId?: string,
+    // posts salvos juntos para varios canais (upstream a194e3f4): abrir um no
+    // editor traz os outros
+    batchId?: string
   ) {
     const posts: Post[] = [];
     const uuid = uuidv4();
+
+    // um post editado fica no lote em que nasceu, mesmo salvo sozinho; achado
+    // pelo grupo enviado (o editor gera ids novos para os valores) antes do
+    // loop, que move as linhas para o grupo novo
+    const existingBatchId = body.group
+      ? (
+          await this._post.model.post.findFirst({
+            where: {
+              group: body.group,
+              organizationId: orgId,
+              deletedAt: null,
+              batchId: { not: null },
+              // sem perfil: so lote de posts sem perfil, nunca o de outro
+              profileId: profileId ?? null,
+            },
+            select: { batchId: true },
+          })
+        )?.batchId
+      : undefined;
+    const resolvedBatchId = existingBatchId || batchId;
 
     for (const value of body.value) {
       const updateData = (type: 'create' | 'update') => ({
@@ -654,6 +742,7 @@ export class PostsRepository {
         content: value.content,
         delay: value.delay || 0,
         group: uuid,
+        ...(resolvedBatchId ? { batchId: resolvedBatchId } : {}),
         intervalInDays: inter ? +inter : null,
         approvedSubmitForOrder: APPROVED_SUBMIT_FOR_ORDER.NO,
         ...(state === 'update'
@@ -732,15 +821,22 @@ export class PostsRepository {
       }
     }
 
-    // group vem do cliente: sem organizationId aqui, um usuario de outra org
-    // (ou perfil) que soubesse o id do grupo apagava o grupo alheio
+    // group vem do cliente: sem organizationId (e perfil) aqui, quem soubesse o
+    // id do grupo apagava o grupo alheio. Post legado sem perfil continua
+    // substituivel por qualquer perfil, como ja e legivel por todos.
+    const groupScope = {
+      group: body.group,
+      organizationId: orgId,
+      deletedAt: null as Date | null,
+      ...(profileId
+        ? { OR: [{ profileId }, { profileId: null as string | null }] }
+        : {}),
+    };
     const previousPost = body.group
       ? (
           await this._post.model.post.findFirst({
             where: {
-              group: body.group,
-              organizationId: orgId,
-              deletedAt: null,
+              ...groupScope,
               parentPostId: null,
             },
             select: {
@@ -752,11 +848,7 @@ export class PostsRepository {
 
     if (body.group) {
       await this._post.model.post.updateMany({
-        where: {
-          group: body.group,
-          organizationId: orgId,
-          deletedAt: null,
-        },
+        where: groupScope,
         data: {
           parentPostId: null,
           deletedAt: new Date(),

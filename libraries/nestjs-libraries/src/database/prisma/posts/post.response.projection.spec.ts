@@ -67,6 +67,12 @@ describe('toPublicPost', () => {
     expect(JSON.stringify(result)).not.toMatch(/client_secret/);
   });
 
+  it('batchId (liga o lote no backend) nao sai na resposta', () => {
+    expect(toPublicPost({ id: 'p1', batchId: 'b-1' } as any)).not.toHaveProperty(
+      'batchId'
+    );
+  });
+
   it('post sem integracao carregada fica sem a chave', () => {
     expect(toPublicPost({ id: 'p1', content: 'x' } as any)).not.toHaveProperty(
       'integration'

@@ -10,7 +10,10 @@ jest.mock('googleapis', () => ({
 }));
 
 import { YoutubeProvider } from './youtube.provider';
-import { RefreshToken } from '@gitroom/nestjs-libraries/integrations/social.abstract';
+import {
+  PublishedWithError,
+  RefreshToken,
+} from '@gitroom/nestjs-libraries/integrations/social.abstract';
 
 // Lote de providers out/2026 — portes dos PRs upstream #2257 e #2294.
 describe('YoutubeProvider.handleErrors', () => {
@@ -105,3 +108,93 @@ describe('YoutubeProvider.postAnalytics', () => {
     ).rejects.toBeInstanceOf(RefreshToken);
   });
 });
+
+// Porte do upstream #2285 + 23beddcd: capa da midia como miniatura e video no
+// ar preservado quando a miniatura e recusada.
+describe('YoutubeProvider.post (miniatura)', () => {
+  const { google } = jest.requireMock('googleapis');
+  const VIDEO = 'vid-123';
+
+  const setup = (thumbnailsSet: jest.Mock) => {
+    google.auth.OAuth2.mockImplementation(() => ({ setCredentials: jest.fn() }));
+    google.youtube.mockReturnValue({
+      videos: { insert: jest.fn().mockResolvedValue({ data: { id: VIDEO } }) },
+      thumbnails: { set: thumbnailsSet },
+    });
+    const provider = new YoutubeProvider();
+    const axios = jest.fn().mockResolvedValue({ data: 'stream' });
+    jest.spyOn(provider as any, 'getSsrfSafeAxios').mockReturnValue(axios);
+    return { provider, axios };
+  };
+
+  const post = (settings: any, media: any[]) => [
+    {
+      id: 'post-db-1',
+      message: 'descricao',
+      settings: { title: 'Titulo', type: 'public', ...settings },
+      media,
+    },
+  ];
+
+  it('miniatura do proprio YouTube vence a capa da midia', async () => {
+    const set = jest.fn().mockResolvedValue({});
+    const { provider, axios } = setup(set);
+
+    await provider.post('id', 'tok', post({ thumbnail: { path: 'https://x/yt.png' } }, [
+      { path: 'https://x/v.mp4', thumbnail: 'https://x/capa.png' },
+    ]) as any);
+
+    expect(axios).toHaveBeenLastCalledWith(expect.objectContaining({ url: 'https://x/yt.png' }));
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({ videoId: VIDEO }));
+  });
+
+  it('sem miniatura do YouTube usa a capa da midia; sem nenhuma nao chama thumbnails.set', async () => {
+    const set = jest.fn().mockResolvedValue({});
+    const { provider, axios } = setup(set);
+
+    await provider.post('id', 'tok', post({}, [
+      { path: 'https://x/v.mp4', thumbnail: 'https://x/capa.png' },
+    ]) as any);
+    expect(axios).toHaveBeenLastCalledWith(expect.objectContaining({ url: 'https://x/capa.png' }));
+
+    set.mockClear();
+    await expect(
+      provider.post('id', 'tok', post({}, [{ path: 'https://x/v.mp4' }]) as any)
+    ).resolves.toEqual([
+      expect.objectContaining({ postId: VIDEO, releaseURL: `https://www.youtube.com/watch?v=${VIDEO}` }),
+    ]);
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  it('miniatura recusada depois do upload mantem id e URL do video (PublishedWithError)', async () => {
+    const set = jest
+      .fn()
+      .mockRejectedValue({ errors: [{ domain: 'youtube.thumbnail', reason: 'forbidden' }] });
+    const { provider } = setup(set);
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const err = await provider
+      .post('id', 'tok', post({}, [{ path: 'https://x/v.mp4', thumbnail: 'https://x/capa.png' }]) as any)
+      .catch((e) => e);
+
+    expect(err).toBeInstanceOf(PublishedWithError);
+    expect(err.postDbId).toBe('post-db-1');
+    expect(err.releaseId).toBe(VIDEO);
+    expect(err.releaseURL).toBe(`https://www.youtube.com/watch?v=${VIDEO}`);
+    expect(err.message).toMatch(/youtube\.com\/verify/);
+  });
+
+  it('erro nao mapeado na miniatura usa a explicacao generica, nao Unknown Error', async () => {
+    const set = jest.fn().mockRejectedValue(new Error('ECONNRESET'));
+    const { provider } = setup(set);
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const err = await provider
+      .post('id', 'tok', post({}, [{ path: 'https://x/v.mp4', thumbnail: 'https://x/capa.png' }]) as any)
+      .catch((e) => e);
+
+    expect(err).toBeInstanceOf(PublishedWithError);
+    expect(err.message).toMatch(/Set it manually in YouTube Studio/);
+  });
+});
+

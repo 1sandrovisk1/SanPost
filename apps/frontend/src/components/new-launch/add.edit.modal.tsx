@@ -2,6 +2,7 @@
 import 'reflect-metadata';
 import { useLaunchStore } from '@gitroom/frontend/components/new-launch/store';
 import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
 import { FC, useEffect } from 'react';
 import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import { ManageModal } from '@gitroom/frontend/components/new-launch/manage.modal';
@@ -12,6 +13,9 @@ import { newDayjs } from '@gitroom/frontend/components/layout/set.timezone';
 import { useModals } from '@gitroom/frontend/components/layout/new-modal';
 import { useToaster } from '@gitroom/react/toaster/toaster';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
+import { Post } from '@prisma/client';
+
+dayjs.extend(utc);
 
 export interface AddEditModalProps {
   dummy?: boolean;
@@ -108,6 +112,17 @@ export const AddEditModalInner: FC<AddEditModalProps> = (props) => {
         return;
       }
       addOrRemoveSelectedIntegration(integration, existingData.settings);
+
+      // os outros canais com que o post foi criado (agendamento por grupo,
+      // upstream a194e3f4); canal que nao carregou fica de fora
+      for (const sibling of existingData.siblings || []) {
+        const siblingIntegration = integrations.find(
+          (i) => i.id === sibling.integration
+        );
+        if (siblingIntegration) {
+          addOrRemoveSelectedIntegration(siblingIntegration, sibling.settings);
+        }
+      }
     }
 
     if (props?.selectedChannels?.length) {
@@ -127,6 +142,22 @@ export const AddEditModalInner: FC<AddEditModalProps> = (props) => {
   return <AddEditModalInnerInner {...props} />;
 };
 
+// post existente como valores do editor
+const postValues = (posts: Post[]) =>
+  posts.map((post) => ({
+    delay: post.delay,
+    content:
+      post.content.indexOf('<p>') > -1
+        ? post.content
+        : post.content
+            .split('\n')
+            .map((line: string) => `<p>${line}</p>`)
+            .join(''),
+    id: post.id,
+    // @ts-ignore
+    media: post.image as any[],
+  }));
+
 export const AddEditModalInnerInner: FC<AddEditModalProps> = (props) => {
   const existingData = useExistingData();
   const {
@@ -139,6 +170,8 @@ export const AddEditModalInnerInner: FC<AddEditModalProps> = (props) => {
     setTags,
     setEditor,
     setRepeater,
+    selectedIntegrations,
+    setChannelDate,
   } = useLaunchStore(
     useShallow((state) => ({
       reset: state.reset,
@@ -150,6 +183,8 @@ export const AddEditModalInnerInner: FC<AddEditModalProps> = (props) => {
       setTags: state.setTags,
       setEditor: state.setEditor,
       setRepeater: state.setRepeater,
+      selectedIntegrations: state.selectedIntegrations,
+      setChannelDate: state.setChannelDate,
     }))
   );
 
@@ -168,20 +203,23 @@ export const AddEditModalInnerInner: FC<AddEditModalProps> = (props) => {
       addInternalValue(
         0,
         existingData.integration,
-        existingData.posts.map((post) => ({
-          delay: post.delay,
-          content:
-            post.content.indexOf('<p>') > -1
-              ? post.content
-              : post.content
-                  .split('\n')
-                  .map((line: string) => `<p>${line}</p>`)
-                  .join(''),
-          id: post.id,
-          // @ts-ignore
-          media: post.image as any[],
-        }))
+        postValues(existingData.posts)
       );
+
+      // os outros canais do lote, cada um com seu conteudo e sua data
+      for (const sibling of existingData.siblings || []) {
+        if (
+          selectedIntegrations.some(
+            (p) => p.integration.id === sibling.integration
+          )
+        ) {
+          addInternalValue(0, sibling.integration, postValues(sibling.posts));
+          setChannelDate(
+            sibling.integration,
+            dayjs.utc(sibling.posts[0].publishDate).local()
+          );
+        }
+      }
       setCurrent(existingData.integration);
     } else {
       setEditor('normal');

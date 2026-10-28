@@ -1,11 +1,9 @@
 {
   "automation_stage_selected_one": "{count} selecionada",
   "automation_stage_keywords_pending": "Defina a palavra-chave",
-
   "automation_stage_variations_one": "{count} variação",
   "automation_stage_enabled": "Ativado",
   "automation_stage_disabled": "Desativado",
-
   "automation_requirements_title": "Pendências da automação",
   "automation_connection_action_hint": "A autorização desta conta precisa de atenção. Clique no alerta para revisar Credenciais em outra aba.",
   "automation_stage_variations_count": "{count} variações",
@@ -13,7 +11,6 @@
   "automation_stage_public_title": "Resposta ao comentário",
   "automation_stage_private_title": "Mensagem privada (DM)",
   "automation_stage_followers_title": "Verificação de seguidores",
-
   "automation_instagram_aliases_scope_hint": "Os IDs de Dark Posts vinculados continuam ativos. Gerencie-os em Publicações específicas.",
   "meta_system_user_token_label": "Token Usuário do Sistema",
   "meta_system_user_token_hint": "A validade deste token não está registrada aqui. Ele pode ter prazo ou não ter vencimento programado; permissões revogadas ainda podem interromper o acesso.",
@@ -2763,5 +2760,16 @@
   "automation_private_variant": "Variação de mensagem privada",
   "preview_message_placeholder": "Mensagem…",
   "automation_variable_message_text": "Texto da mensagem",
-  "automation_variable_message_id": "ID da mensagem"
+  "automation_variable_message_id": "ID da mensagem",
+  "thumbnails_and_alt_text": "Miniaturas e texto alternativo",
+  "media_settings_section_description": "Clique em uma mídia para definir o texto alternativo ou, se for vídeo, a miniatura.",
+  "media_settings_section_tooltip": "As miniaturas valem para vídeos da publicação principal e vão para todos os canais que as aceitam. O YouTube pode ignorá-las em vídeos que trata como Shorts (verticais, até 3 minutos) sem falhar a publicação, e exige canal verificado por telefone para miniatura personalizada. Se o YouTube recusar a miniatura, o vídeo continua publicado, e o Robô MultiPost não consegue checar isso antes.",
+  "youtube_thumbnail_overrides_media": "Este post tem uma miniatura própria do YouTube, que vale no lugar da miniatura definida na mídia.",
+  "media_settings_main_post": "Publicação principal",
+  "delete_post_from_all_channels_question": "Esta publicação foi criada para mais de um canal. Quer excluí-la de todos?",
+  "delete_from_all_channels": "Excluir de todos os canais",
+  "delete_only_from": "Só de",
+  "batch_save_partial_failure": "Alguns canais foram salvos, mas outros falharam. Abra a publicação de novo para revisá-los.",
+  "post_channel_date_in_past": "Escolha uma data futura para este canal",
+  "batch_delete_partial_failure": "A publicação foi excluída de alguns canais, mas não de outros. Confira o calendário."
 }

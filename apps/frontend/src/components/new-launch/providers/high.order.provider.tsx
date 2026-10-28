@@ -20,6 +20,7 @@ import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import useSWR from 'swr';
 import { InternalChannels } from '@gitroom/frontend/components/launches/internal.channels';
 import { createPortal } from 'react-dom';
+import { useMediaSettingsValues } from '@gitroom/frontend/components/new-launch/media.settings.values';
 import clsx from 'clsx';
 import SafeImage from '@gitroom/react/helpers/safe.image';
 import { getPlatformIconPath } from '@gitroom/frontend/components/launches/helpers/platform-icon.helper';
@@ -105,7 +106,8 @@ export const withProvider = function <T extends object>(params: {
       setHide,
     } = useLaunchStore(
       useShallow((state) => ({
-        date: state.date,
+        // canal com data propria (lote de um post existente)
+        date: state.channelDates[props.id] || state.date,
         tab: state.tab,
         global: state.global,
         dummy: state.dummy,
@@ -168,6 +170,12 @@ export const withProvider = function <T extends object>(params: {
         );
       }
     }, [justCurrent, current, isGlobal, setTotalChars]);
+
+    // com midia, o painel de miniaturas mantem as configuracoes visiveis
+    // mesmo sem configuracao do canal (upstream #2285)
+    const hasMediaSettings = useMediaSettingsValues().some(
+      (p) => p.media?.length
+    );
 
     const getInternalPlugs = useCallback(async () => {
       return (
@@ -363,6 +371,7 @@ export const withProvider = function <T extends object>(params: {
               )}
             {current &&
               !SettingsComponent &&
+              !hasMediaSettings &&
               createPortal(
                 <style>{`#wrapper-settings {display: none !important;} #social-empty {display: block !important;}`}</style>,
                 document.querySelector('#social-settings') ||

@@ -1,6 +1,9 @@
 import { createMock } from '../../../test';
 import { PrismaService } from '../prisma.service';
-import { PostManagementRepository } from './post-management.repository';
+import {
+  managedPostVersion,
+  PostManagementRepository,
+} from './post-management.repository';
 describe('repositorio de posts gerenciados', () => {
   const db = createMock<PrismaService>();
   const scope = { organizationId: 'org', profileId: 'perfil' };
@@ -46,5 +49,10 @@ describe('repositorio de posts gerenciados', () => {
     expect(findMany.mock.calls[0][0].include.tags.where).toEqual({
       tag: { deletedAt: null },
     });
+  });
+  it('versao ignora o batchId (coluna nova nao invalida a versao dos agentes)', () => {
+    const row = (batchId: string | null) =>
+      ({ id: 'p', content: 'a', integration: { id: 'i' }, tags: [], batchId } as any);
+    expect(managedPostVersion([row(null)])).toBe(managedPostVersion([row('b-1')]));
   });
 });

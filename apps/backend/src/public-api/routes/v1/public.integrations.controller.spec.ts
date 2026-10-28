@@ -291,6 +291,7 @@ const makePostsService = () => ({
   getPost: jest.fn(),
   deletePost: jest.fn().mockResolvedValue({ id: 'post-1' }),
   mapTypeToPost: jest.fn(),
+  stripEditorOnlyFields: jest.fn((body: any) => ({ ...body, stripped: true })),
   createPost: jest.fn().mockResolvedValue([]),
   checkPostAnalytics: jest.fn().mockResolvedValue([]),
   findFreeDateTime: jest.fn().mockResolvedValue('2026-07-05T10:00:00'),
@@ -356,6 +357,18 @@ describe('PublicIntegrationsController - posts (escopo por perfil)', () => {
       controller.createPost({ id: 'org-1' } as any, 'prof-1', { type: 'now' })
     ).rejects.toThrow('Integration does not belong to this profile');
     expect(postsService.createPost).not.toHaveBeenCalled();
+  });
+
+  it('remove data por canal e lote antes de mapear o post (so o editor usa)', async () => {
+    postsService.mapTypeToPost.mockResolvedValue({ posts: [] });
+    const raw = { type: 'now', posts: [{ date: '2026-01-01' }] };
+
+    await controller.createPost({ id: 'org-1' } as any, undefined, raw);
+
+    expect(postsService.stripEditorOnlyFields).toHaveBeenCalledWith(raw);
+    expect(postsService.mapTypeToPost.mock.calls[0][0]).toEqual(
+      expect.objectContaining({ stripped: true })
+    );
   });
 
   it('chave de perfil cria post estampado com o proprio perfil', async () => {

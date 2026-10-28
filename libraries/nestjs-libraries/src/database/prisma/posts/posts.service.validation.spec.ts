@@ -94,4 +94,22 @@ describe('PostsService.mapTypeToPost - tipos estritos', () => {
     );
     expect(result.republish).toBe(true);
   });
+
+  it('data por canal (editor do lote) precisa ser data valida', async () => {
+    const withDate = (date: unknown) => {
+      const body = makeBody(false) as any;
+      body.posts[0].date = date;
+      return body;
+    };
+
+    const ok = await buildService().mapTypeToPost(
+      withDate('2026-11-12T09:00:00.000Z'),
+      'org-1'
+    );
+    expect(ok.posts[0].date).toBe('2026-11-12T09:00:00.000Z');
+    await expect(
+      buildService().mapTypeToPost(withDate('amanha'), 'org-1')
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
 });
+

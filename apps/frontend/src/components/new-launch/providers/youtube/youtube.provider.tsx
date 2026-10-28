@@ -9,7 +9,8 @@ import { YoutubeSettingsDto } from '@gitroom/nestjs-libraries/dtos/posts/provide
 import { useSettings } from '@gitroom/frontend/components/launches/helpers/use.values';
 import { Input } from '@gitroom/react/form/input';
 import { MediumTags } from '@gitroom/frontend/components/new-launch/providers/medium/medium.tags';
-import { MediaComponent } from '@gitroom/frontend/components/media/media.component';
+import { useWatch } from 'react-hook-form';
+import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { Select } from '@gitroom/react/form/select';
 import { YoutubePreview } from '@gitroom/frontend/components/new-launch/providers/youtube/youtube.preview';
 const type = [
@@ -38,7 +39,12 @@ const madeForKids = [
   },
 ];
 const YoutubeSettings: FC = () => {
-  const { register, control } = useSettings();
+  const translate = useT();
+  const { register, control, setValue } = useSettings();
+  // a miniatura agora vem da capa da midia (painel "Miniaturas e texto
+  // alternativo"); posts antigos ainda podem ter uma aqui, e ela vence
+  // (upstream #2285)
+  const thumbnail = useWatch({ control, name: 'thumbnail' });
   return (
     <div className="flex flex-col">
       <Input label="Title" {...register('title')} maxLength={100} />
@@ -67,16 +73,24 @@ const YoutubeSettings: FC = () => {
         ))}
       </Select>
       <MediumTags label="Tags" {...register('tags')} />
-      <div className="mt-[20px]">
-        <MediaComponent
-          type="image"
-          width={1280}
-          height={720}
-          label="Thumbnail"
-          description="Thumbnail picture (optional)"
-          {...register('thumbnail')}
-        />
-      </div>
+      {!!thumbnail?.path && (
+        <div className="mt-[20px] flex items-center gap-[10px] text-[12px]">
+          <div className="flex-1">
+            {translate(
+              'youtube_thumbnail_overrides_media',
+              'This post has a YouTube-specific thumbnail, which overrides the thumbnail set in the media settings.'
+            )}
+          </div>
+          <div
+            onClick={() =>
+              setValue('thumbnail', undefined, { shouldDirty: true })
+            }
+            className="cursor-pointer text-[#FF3F3F] font-[600]"
+          >
+            {translate('remove', 'Remove')}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
