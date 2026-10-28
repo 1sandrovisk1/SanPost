@@ -11,6 +11,7 @@ import type {
 
 const feedback: Record<string, string> = {
   INVALID_POST_REFERENCE: 'fb_post_error_reference',
+  POST_VIDEO_RELATION_REQUIRED: 'fb_post_error_video_relation',
   POST_CHANNEL_MISMATCH: 'fb_post_error_owner',
   POST_LOOKUP_ACCESS_REQUIRED: 'fb_post_error_access',
   POST_LOOKUP_RETRY: 'fb_post_error_retry',

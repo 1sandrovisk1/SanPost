@@ -1,3 +1,4 @@
+import { SWRConfig } from 'swr';
 import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -13,7 +14,11 @@ import { SharedChannelPosts } from './shared-channel-posts.component';
 const state = vi.hoisted(() => ({
   fetchApi: vi.fn(),
   profileId: 'profile',
+  userId: 'user',
   posts: { posts: [] as any[] },
+}));
+vi.mock('@gitroom/frontend/components/layout/user.context', () => ({
+  useUser: () => ({ id: state.userId }),
 }));
 vi.mock('@gitroom/helpers/utils/custom.fetch', () => ({
   useFetch: () => state.fetchApi,
@@ -27,7 +32,11 @@ vi.mock('@gitroom/react/translation/get.transation.service.client', () => ({
 }));
 vi.mock('./hooks/use-shared-flows', () => ({
   useSharedFlowData: (path: string) => ({
-    data: path?.startsWith('/automation-scheduled-posts/') ? { posts: [] as any[], nextCursor: null as string | null } : path?.includes('readiness') ? { ready: true } : state.posts,
+    data: path?.startsWith('/automation-scheduled-posts/')
+      ? { posts: [] as any[], nextCursor: null as string | null }
+      : path?.includes('readiness')
+      ? { ready: true }
+      : state.posts,
     mutate: vi.fn(),
   }),
 }));
@@ -58,6 +67,7 @@ function locate() {
 beforeEach(() => {
   vi.clearAllMocks();
   state.profileId = 'profile';
+  state.userId = 'user';
   state.posts = { posts: [] };
   state.fetchApi.mockResolvedValue({
     ok: true,
@@ -85,6 +95,9 @@ describe('publicacao de anuncio no seletor compartilhado', () => {
       screen.getByRole('button', { name: 'fb_post_added' })
     ).toHaveProperty('disabled', true);
     expect(state.fetchApi).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByRole('button', { name: 'Dark post fixture' })
+    ).toBeTruthy();
     fireEvent.click(screen.getByText('shared_selected_count'));
     fireEvent.click(
       screen.getByRole('button', { name: 'fb_post_remove 123_456' })
@@ -93,6 +106,33 @@ describe('publicacao de anuncio no seletor compartilhado', () => {
       'disabled',
       false
     );
+  });
+  it('recarrega a miniatura ausente da galeria publicada sem mudar a selecao', async () => {
+    state.fetchApi.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        post: {
+          id: '123_456',
+          caption: 'Dark video restored',
+          thumbnailUrl: 'https://scontent.test.fbcdn.net/video.jpg',
+        },
+      }),
+    });
+    render(
+      <SWRConfig value={{ provider: () => new Map() }}>
+        <Harness ids={['123_456']} />
+      </SWRConfig>
+    );
+    const post = await screen.findByRole('button', {
+      name: 'Dark video restored',
+    });
+    expect(post.querySelector('img')?.getAttribute('src')).toBe(
+      'https://scontent.test.fbcdn.net/video.jpg'
+    );
+    fireEvent.click(screen.getByText('shared_selected_count'));
+    expect(screen.getByText('123_456')).toBeTruthy();
+    expect(screen.queryByText('shared_posts_not_loaded')).toBeNull();
+    expect(state.fetchApi).toHaveBeenCalledTimes(1);
   });
   it('mantem texto durante consulta e informa erro sem exibir resposta bruta', async () => {
     let done: (value: any) => void;
@@ -115,7 +155,7 @@ describe('publicacao de anuncio no seletor compartilhado', () => {
       false
     );
   });
-  it.each(['page', 'profile', 'trigger'])(
+  it.each(['page', 'profile', 'user', 'trigger'])(
     'descarta consulta antiga ao trocar %s',
     async (change) => {
       let done: (value: any) => void;
@@ -128,6 +168,7 @@ describe('publicacao de anuncio no seletor compartilhado', () => {
       fireEvent.click(screen.getByText('fb_post_lookup_title'));
       locate();
       if (change === 'profile') state.profileId = 'other';
+      if (change === 'user') state.userId = 'other';
       view.rerender(
         <Harness
           id={change === 'page' ? 'fb2' : 'fb'}
@@ -202,8 +243,13 @@ describe('publicacao de anuncio no seletor compartilhado', () => {
     render(
       <Harness ids={Array.from({ length: 100 }, (_, i) => `123_${i + 1}`)} />
     );
-    expect(screen.getByRole('button', { name: 'Public post' })).toHaveProperty('disabled', true);
-    expect(screen.getByRole('button', { name: 'Selected post' })).toHaveProperty('disabled', false);
+    expect(screen.getByRole('button', { name: 'Public post' })).toHaveProperty(
+      'disabled',
+      true
+    );
+    expect(
+      screen.getByRole('button', { name: 'Selected post' })
+    ).toHaveProperty('disabled', false);
     fireEvent.click(screen.getByText('fb_post_lookup_title'));
     locate();
     await screen.findByText('Dark post fixture');

@@ -4,6 +4,7 @@ describe('referencia de publicacao do Facebook', () => {
   it.each([
     '123_456',
     '456',
+    'https://www.facebook.com/reel/456/',
     ' 123_456 ',
     'https://www.facebook.com/123/posts/456/',
     'https://www.facebook.com/789/posts/456/',
@@ -25,6 +26,9 @@ describe('referencia de publicacao do Facebook', () => {
   });
   it.each([
     '',
+    'https://facebook.com/reel/456?id=789',
+    'https://facebook.com/reel/456/comments',
+    'https://facebook.com/reel/pfbidExample',
     'me',
     '../me',
     '123_456/comments',

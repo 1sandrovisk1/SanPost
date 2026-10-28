@@ -2457,7 +2457,7 @@
   "fb_post_remove": "Remove post",
   "fb_post_help_title": "Where can I find the ID?",
   "fb_post_lookup_help": "In Ads Manager, open the ad preview and its post with comments. Copy the post ID or permanent link. Use the post ID, not the ad or campaign ID.",
-  "fb_post_lookup_formats": "Accepts numeric IDs, full ID (Page_Post), and /posts/ID or permalink.php links. Short links (share), pfbid and some formats, such as Reels, may not be retrievable; in those cases, find the ID of the post used in the ad.",
+  "fb_post_lookup_formats": "Accepts numeric IDs, full ID (Page_Post), and /posts/ID, permalink.php or /reel/ID links. For videos, Meta must confirm the related Page post. Short links (share), pfbid and ad IDs are not accepted.",
   "fb_post_lookup_hint": "Use for ad posts that are missing from the list above.",
   "fb_post_lookup_confirmed": "Page post confirmed",
   "fb_post_error_reference": "We could not recognize this format. Use the post ID or a permanent link with a numeric ID.",
@@ -2725,5 +2725,11 @@
   "history_status_waiting_click": "Waiting for click",
   "history_trigger_waiting_click": "Trigger · Waiting for click",
   "history_step_help": "About sending records",
-  "history_timezone_help": "Time zone of displayed times"
+  "history_timezone_help": "Time zone of displayed times",
+  "fb_post_error_video_relation": "Meta could not confirm the relationship between the video and its post. Find it using the post ID used in the ad or check Page permissions.",
+  "shared_error_post_reference_not_canonical": "This selection uses the video ID instead of the post ID. Remove it and locate the post again before saving or activating.",
+  "shared_error_post_video_relation_required": "The post linked to this video could not be confirmed. Check its ID and Page access before activating.",
+  "fb_selected_posts_recovery_help": "Your selection is preserved. Some thumbnails have not been recovered yet. If the lookup limit is reached, wait a minute before retrying. To correct a reference, remove it and locate the post again.",
+  "fb_selected_posts_load_more": "Load more thumbnails",
+  "fb_selected_posts_retry": "Retry thumbnail recovery"
 }

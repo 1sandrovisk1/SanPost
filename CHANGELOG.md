@@ -16,6 +16,8 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 
 ### Corrigido
 
+- **Dark Post de vídeo do Facebook:** localização por vídeo/Reel comprova o Page Post usado no webhook, evitando regras ativas com ID que nunca corresponde aos comentários. Ativação e edição ativa recusam referência não canônica; miniaturas selecionadas ausentes da galeria são recuperadas ao reabrir o editor, sem alterar a seleção nem reprocessar comentários.
+
 - Stories do Instagram com palavras-chave e reações combinadas permanecem no construtor visual, evitando que um salvamento no editor rápido desative reações que ele não representa.
 - **Miniatura de Reel agendado no Facebook:** após publicar, a galeria deixa de repetir o mesmo Reel quando o ID de vídeo do agendamento difere do ID composto do post. Deduplicação visual pelo permalink validado preserva a seleção, o vínculo e as regras de execução, sem consultas extras à Meta.
 - **Histórico das automações:** Instagram, Facebook e Messenger compartilham tabela com filtros, paginação e drawer de detalhes na mesma aba. Datas pt-BR/fuso local, distinção entre processamento, espera por interação e aceite da Meta, causas conhecidas e registros indisponíveis explícitos. Consulta preserva o rascunho, oculta Salvar e impede ativação que o gravaria indiretamente. Nova leitura autenticada restringe organização/perfil/fluxo/execução e projeta apenas dados permitidos, sem payload ou erro bruto e sem reenvio.

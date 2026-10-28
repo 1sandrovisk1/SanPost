@@ -5,7 +5,9 @@ import {
 } from './shared-publication-selector.component';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import type { AutomationTriggerType } from '@gitroom/nestjs-libraries/database/prisma/flows-v2/flow-definition';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useUser } from '@gitroom/frontend/components/layout/user.context';
+import { useSelectedFacebookPosts } from './shared-selected-facebook-posts';
 import { useCurrentProfile } from '@gitroom/frontend/hooks/use-current-profile.hook';
 import { SharedFacebookPostLookup } from './shared-facebook-post-lookup.component';
 import {
@@ -35,9 +37,10 @@ type SharedChannelPostsProps = {
 };
 export function SharedChannelPosts(props: SharedChannelPostsProps) {
   const { profile } = useCurrentProfile();
+  const user = useUser();
   return (
     <SharedChannelPostsContent
-      key={`${profile?.id}:${props.channel.integrationId}:${
+      key={`${user?.id}:${profile?.id}:${props.channel.integrationId}:${
         props.triggerType || 'comment_on_post'
       }`}
       {...props}
@@ -105,6 +108,26 @@ function SharedChannelPostsContent({
   }, [result.data]);
   const missing = channel.postIds.filter(
     (id) => !posts.some((p) => p.id === id)
+  );
+  const selected = useSelectedFacebookPosts(
+    provider === 'facebook' &&
+      !messenger &&
+      channel.postMode === 'specific' &&
+      !result.isLoading
+      ? channel.integrationId
+      : null,
+    missing
+  );
+  const catalog = useMemo(
+    () => [
+      ...new Map(
+        [...posts, ...selected.posts].map((post) => [post.id, post])
+      ).values(),
+    ],
+    [posts, selected.posts]
+  );
+  const unavailable = channel.postIds.filter(
+    (id) => !catalog.some((p) => p.id === id)
   );
   return (
     <div className="space-y-4">
@@ -225,7 +248,7 @@ function SharedChannelPostsContent({
             mode={channel.postMode}
             postIds={channel.postIds}
             scheduledPostId={channel.scheduledPostId}
-            posts={posts}
+            posts={catalog}
             disabled={disabled}
             loading={result.isLoading}
             error={!!result.error}
@@ -249,20 +272,49 @@ function SharedChannelPostsContent({
               integrationId={channel.integrationId}
               selectedIds={channel.postIds}
               disabled={disabled}
-              onAdd={(post) =>
+              onAdd={(post) => {
+                setPosts((old) => [
+                  ...new Map([...old, post].map((p) => [p.id, p])).values(),
+                ]);
                 onChange({
                   ...channel,
                   postIds: [...new Set([...channel.postIds, post.id])],
-                })
-              }
+                });
+              }}
             />
           )}
+          {provider === 'facebook' &&
+            (selected.error ||
+              selected.failedIds.length > 0 ||
+              selected.hasMore) && (
+              <div className="space-y-2 text-xs text-newTextColor/70">
+                <p>{t('fb_selected_posts_recovery_help')}</p>
+                {selected.hasMore && (
+                  <button
+                    type="button"
+                    className="underline"
+                    onClick={() => void selected.loadMore()}
+                  >
+                    {t('fb_selected_posts_load_more')}
+                  </button>
+                )}
+                {(selected.error || selected.failedIds.length > 0) && (
+                  <button
+                    type="button"
+                    className="underline"
+                    onClick={() => void selected.retry()}
+                  >
+                    {t('fb_selected_posts_retry')}
+                  </button>
+                )}
+              </div>
+            )}
           {channel.postMode === 'specific' && channel.postIds.length > 0 && (
             <details className="text-xs text-newTextColor/60">
               <summary className="cursor-pointer">
                 {t('shared_selected_count', { count: channel.postIds.length })}
               </summary>
-              {missing.length > 0 && (
+              {unavailable.length > 0 && (
                 <p className="mt-2">{t('shared_posts_not_loaded')}</p>
               )}
               <ul className="mt-2 break-all">

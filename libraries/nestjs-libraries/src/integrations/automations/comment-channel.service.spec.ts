@@ -80,15 +80,35 @@ describe('canal de comentarios', () => {
     delete process.env.SHARED_AUTOMATION_TEST_INTEGRATION;
   });
   it('resolve video somente pela relacao comprovada nas anexacoes do post', async () => {
-    read.mockResolvedValue({ data: [{ id:'123_456', attachments:{data:[{target:{id:'777'}}]} }] });
-    expect(await service.scheduledPublishedIds(scope,'channel','777')).toEqual(['123_456']);
-    expect(read).toHaveBeenCalledWith('123/published_posts','fixture',expect.objectContaining({fields:expect.stringContaining('attachments')}));
+    read.mockResolvedValue({
+      data: [
+        { id: '123_456', attachments: { data: [{ target: { id: '777' } }] } },
+      ],
+    });
+    expect(
+      await service.scheduledPublishedIds(scope, 'channel', '777')
+    ).toEqual(['123_456']);
+    expect(read).toHaveBeenCalledWith(
+      '123/published_posts',
+      'fixture',
+      expect.objectContaining({
+        fields: expect.stringContaining('attachments'),
+      })
+    );
     expect(write).not.toHaveBeenCalled();
   });
   it('recusa video sem prova e id composto de outra Pagina', async () => {
-    read.mockResolvedValue({ data:[{id:'999_456',attachments:{data:[{target:{id:'777'}}]}}] });
-    await expect(service.scheduledPublishedIds(scope,'channel','777')).rejects.toThrow('PUBLICATION_ID_PENDING');
-    await expect(service.scheduledPublishedIds(scope,'channel','999_456')).rejects.toThrow('PUBLICATION_ID_PENDING');
+    read.mockResolvedValue({
+      data: [
+        { id: '999_456', attachments: { data: [{ target: { id: '777' } }] } },
+      ],
+    });
+    await expect(
+      service.scheduledPublishedIds(scope, 'channel', '777')
+    ).rejects.toThrow('PUBLICATION_ID_PENDING');
+    await expect(
+      service.scheduledPublishedIds(scope, 'channel', '999_456')
+    ).rejects.toThrow('PUBLICATION_ID_PENDING');
   });
   it.each(['456', 'https://www.facebook.com/789/posts/456'])(
     'localiza publicacao %s sem salvar, enviar ou listar anuncios',
@@ -125,12 +145,18 @@ describe('canal de comentarios', () => {
   it('preserva o ID do Page Post quando o permalink retornado aponta para Reel', async () => {
     // Formato observado na consulta real do Escorpiano; IDs e texto substituidos.
     // Nao representa captura de webhook nem homologa comentarios de Reels.
-    read.mockResolvedValue({
-      id: '123_456',
-      from: { id: '123' },
-      message: 'Video de teste',
-      permalink_url: 'https://www.facebook.com/reel/789/',
-    });
+    read
+      .mockResolvedValueOnce({
+        id: '123_456',
+        from: { id: '123' },
+        message: 'Video de teste',
+        permalink_url: 'https://www.facebook.com/reel/789/',
+      })
+      .mockResolvedValueOnce({
+        id: '789',
+        from: { id: '123' },
+        post_id: '456',
+      });
 
     const { post } = await service.resolvePost(scope, 'channel', '456');
 
@@ -139,10 +165,108 @@ describe('canal de comentarios', () => {
       caption: 'Video de teste',
       permalink: 'https://www.facebook.com/reel/789/',
     });
-    expect(read).toHaveBeenCalledTimes(1);
-    expect(read.mock.calls[0].slice(0, 2)).toEqual(['123_456', 'fixture']);
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(read.mock.calls[1].slice(0, 2)).toEqual(['789', 'fixture']);
     expect(write).not.toHaveBeenCalled();
     expect(resolveIgRoute).not.toHaveBeenCalled();
+  });
+  const videoPost = (id: string) => ({
+    id,
+    from: { id: '123' },
+    message: 'Dark video',
+    attachments: { data: [{ media_type: 'video', target: { id: '789' } }] },
+    permalink_url: 'https://www.facebook.com/reel/789/',
+  });
+  it.each(['789', '123_789', 'https://www.facebook.com/reel/789/'])(
+    'resolve %s pelo post_id mesmo quando Meta aceita Pagina_video',
+    async (reference) => {
+      read
+        .mockResolvedValueOnce(videoPost('123_789'))
+        .mockResolvedValueOnce({
+          id: '789',
+          from: { id: '123' },
+          post_id: '456',
+        })
+        .mockResolvedValueOnce(videoPost('123_456'));
+      expect(
+        await service.resolvePost(scope, 'channel', reference)
+      ).toMatchObject({ post: { id: '123_456', caption: 'Dark video' } });
+      expect(read.mock.calls.map((call) => call[0])).toEqual([
+        '123_789',
+        '789',
+        '123_456',
+      ]);
+      expect(write).not.toHaveBeenCalled();
+    }
+  );
+  it('consulta video quando a referencia composta nao existe no Graph', async () => {
+    read
+      .mockRejectedValueOnce(new MetaAutomationError('META_REJECTED', 100))
+      .mockResolvedValueOnce({
+        id: '789',
+        from: { id: '123' },
+        post_id: '123_456',
+      })
+      .mockResolvedValueOnce(videoPost('123_456'));
+    expect(await service.resolvePost(scope, 'channel', '789')).toMatchObject({
+      post: { id: '123_456' },
+    });
+  });
+  it.each([
+    { id: '789', from: { id: '999' }, post_id: '456' },
+    { id: '888', from: { id: '123' }, post_id: '456' },
+    { id: '789', from: { id: '123' } },
+    { id: '789', from: { id: '123' }, post_id: '999_456' },
+    { id: '789', from: { id: '123' }, post_id: 'https://evil.test/456' },
+  ])('recusa relacao de video nao comprovada %j', async (video) => {
+    read
+      .mockResolvedValueOnce(videoPost('123_789'))
+      .mockResolvedValueOnce(video);
+    await expect(
+      service.resolvePost(scope, 'channel', '789')
+    ).rejects.toThrow();
+    expect(write).not.toHaveBeenCalled();
+  });
+  it.each([
+    { ...videoPost('123_456'), from: { id: '999' } },
+    { ...videoPost('123_999') },
+    {
+      ...videoPost('123_456'),
+      attachments: { data: [] },
+      permalink_url: 'https://facebook.com/123/posts/456',
+    },
+  ])('recusa Page Post sem relacao com o video %j', async (post) => {
+    read
+      .mockResolvedValueOnce(videoPost('123_789'))
+      .mockResolvedValueOnce({ id: '789', from: { id: '123' }, post_id: '456' })
+      .mockResolvedValueOnce(post);
+    await expect(
+      service.resolvePost(scope, 'channel', '789')
+    ).rejects.toThrow();
+  });
+  it('bloqueia ativacao com alias de video sem consumir budget de lookup', async () => {
+    read
+      .mockResolvedValueOnce(videoPost('123_789'))
+      .mockResolvedValueOnce({ id: '789', from: { id: '123' }, post_id: '456' })
+      .mockResolvedValueOnce(videoPost('123_456'));
+    await expect(
+      service.assertPost(scope, 'channel', '123_789')
+    ).rejects.toThrow('POST_REFERENCE_NOT_CANONICAL');
+    expect(facebook.authorizedPostLookup).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
+  });
+  it('aceita Page Post canonico na ativacao sem consumir budget de lookup', async () => {
+    read
+      .mockResolvedValueOnce(videoPost('123_456'))
+      .mockResolvedValueOnce({
+        id: '789',
+        from: { id: '123' },
+        post_id: '456',
+      });
+    await expect(
+      service.assertPost(scope, 'channel', '123_456')
+    ).resolves.toBeUndefined();
+    expect(facebook.authorizedPostLookup).not.toHaveBeenCalled();
   });
   it('rejeita outro perfil, Instagram e outra Pagina antes da consulta Graph', async () => {
     repo.integration.mockRejectedValueOnce(new Error('CHANNEL_NOT_FOUND'));
