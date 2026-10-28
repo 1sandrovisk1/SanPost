@@ -7,6 +7,14 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 
 ## [Unreleased]
 
+### Alterado — Farcaster com managed signers da Neynar (28/10/2026)
+
+- **Conexão do Farcaster por QR code** (porte do Postiz #2078/#2080): Adicionar canal, Reconectar canal e o login com Farcaster abrem um modal com QR code e "Copiar link do Farcaster"; o usuário aprova o acesso no app do Farcaster pelo celular e o modal conclui sozinho. Substitui o "Sign In With Neynar", que abria uma janela em branco.
+- **Novas variáveis** `NEYNAR_APP_FID`, `NEYNAR_APP_MNEMONIC` e `NEYNAR_SPONSOR_SIGNERS` (além de `NEYNAR_SECRET_KEY`); `NEYNAR_CLIENT_ID` agora só liga o botão de login e `NEYNAR_LOGIN_URL` deixou de existir. Sem a configuração, o modal avisa que o Farcaster não está configurado. Guia em `docs/operations/farcaster-neynar.md`.
+- **Canais já conectados continuam publicando** enquanto a chave da Neynar for a mesma. Se a autorização do canal for revogada (ou a chave trocar de app), o post falha com o motivo, o canal fica como "precisa reconectar" com notificação e a reconexão é feita pelo novo modal. Chave da API recusada ou sem créditos aparece como erro do post, sem desconectar os canais.
+- **Reconectar canal** de Farcaster, Telegram e Moltbook passa a abrir o modal de conexão (antes o botão abria uma URL quebrada).
+- **Segurança:** a conexão confirma na Neynar que o acesso foi aprovado e lê dela a conta e o perfil, em vez de confiar nos dados enviados pelo navegador; login com Farcaster sem acesso aprovado deixa de gerar identidade vazia. As rotas públicas do login com Farcaster só existem com o botão ligado e têm limite por cliente e teto global.
+
 ### Melhorado — ferramentas de texto das automações (28/10/2026)
 
 - Resposta pública usa diretamente a etapa verde; pedido para seguir vira switch com apenas suas subetapas expansíveis. Alternativas privadas ganham boxes próprios para texto e botão/link.

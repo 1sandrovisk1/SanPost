@@ -2786,5 +2786,13 @@
   "delete_only_from": "Só de",
   "batch_save_partial_failure": "Alguns canais foram salvos, mas outros falharam. Abra a publicação de novo para revisá-los.",
   "post_channel_date_in_past": "Escolha uma data futura para este canal",
-  "batch_delete_partial_failure": "A publicação foi excluída de alguns canais, mas não de outros. Confira o calendário."
+  "batch_delete_partial_failure": "A publicação foi excluída de alguns canais, mas não de outros. Confira o calendário.",
+  "farcaster_scan_instructions": "Escaneie o QR code com o celular ou copie o link e abra no celular; depois aprove o pedido de acesso no app do Farcaster.",
+  "farcaster_copy_link": "Copiar link do Farcaster",
+  "farcaster_waiting_for_approval": "Aguardando sua aprovação...",
+  "farcaster_signer_revoked": "A aprovação do Farcaster foi revogada. Tente de novo.",
+  "farcaster_signer_failed": "Não foi possível iniciar a conexão com o Farcaster",
+  "farcaster_approval_timeout": "A aprovação do Farcaster expirou. Tente de novo.",
+  "farcaster_not_configured": "O Farcaster não está configurado nesta instância. Peça ao administrador para definir as variáveis da Neynar.",
+  "farcaster_qr_alt": "QR code para aprovar o acesso no app do Farcaster"
 }

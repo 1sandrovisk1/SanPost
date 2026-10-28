@@ -105,9 +105,12 @@ services:
       MEWE_APP_ID: ''
       MEWE_HOST: ''
       WHOP_CLIENT_ID: ''
-      NEYNAR_CLIENT_ID: ''
-      NEYNAR_LOGIN_URL: ''
+      # Farcaster (Neynar managed signers) — docs/operations/farcaster-neynar.md
       NEYNAR_SECRET_KEY: ''
+      NEYNAR_APP_FID: ''
+      NEYNAR_APP_MNEMONIC: ''
+      NEYNAR_SPONSOR_SIGNERS: 'false'
+      NEYNAR_CLIENT_ID: '' # só liga o botão de login com Farcaster
       DATAFAST_API_KEY: ''
 
       # Chrome Extension Settings

@@ -808,6 +808,63 @@ em post existente; textos de exclusão). Sem backfill: posts antigos abrem
 sozinhos. Observação aceita: o canal aberto movido para o passado segue o
 comportamento antigo (pergunta só atualizar/republicar).
 
+### Farcaster — Neynar managed signers (28/10/2026)
+
+Branch `feat/farcaster-neynar-2026-10`. Portados #2078 (`6dbaadb1`) e #2080
+(`9b06ea22`): o SIWN (janela da Neynar + `postMessage`) dá lugar a managed
+signers — o backend cria o signer, assina o `SignedKeyRequest` (EIP-712) com
+`NEYNAR_APP_MNEMONIC` e registra; o modal mostra QR + "Copiar link" e consulta o
+status até a aprovação. Saíram `nayner.auth.button.tsx`, o CSS do
+`@neynar/react` e `NEYNAR_LOGIN_URL`; entraram `NEYNAR_APP_FID`,
+`NEYNAR_APP_MNEMONIC`, `NEYNAR_SPONSOR_SIGNERS` e
+`docs/operations/farcaster-neynar.md`. O commit posterior no provider
+(`4c835138`, `makeSecureId`) já estava no fork.
+
+Divergências:
+- Chamadas à Neynar por `this.fetch` (host fixo, `ssrfSafeFetch`) em vez do
+  `@neynar/nodejs-sdk`, com `handleErrors`: 403/"signer" → `refresh-token`
+  (canal "precisa reconectar" com motivo curado, via `refreshToken` que lança
+  `FARCASTER_RECONNECT_MESSAGE`); 401/402 → `bad-body` (chave/créditos da
+  instância não desconectam todos os canais); busca de canais engole falha em
+  `[]`. O login (`apps/backend/.../auth/providers/farcaster.provider.ts`) usa o
+  mesmo provider.
+- Conexão de canal por rotas **autenticadas** `/integrations/farcaster/signer`
+  (o upstream usa as públicas de `/auth` também no canal); org/perfil seguem
+  pelo `profile:${state}` do `/social/wrapcast`. Login pelas públicas
+  `/auth/farcaster/signer`, que respondem 404 sem `NEYNAR_CLIENT_ID`. Ambas via
+  `FarcasterSignerService` (códigos de erro estáveis, `summarizeError`) e
+  `ThrottlerRealIpGuard` (porte do upstream + teto global 10× por rota, já que o
+  `x-forwarded-for` é forjável).
+- `authenticate` não confia mais no fid/nome do code enviado pelo navegador
+  (relê signer e perfil na Neynar); `getUser` do login devolve `false` para
+  signer não aprovado (antes `{ id: '' }` deixava o registro seguir com
+  `providerId` vazio) — tipo de `AuthProviderAbstract.getUser` ampliado.
+- "Fix login state" não se aplica: depende do cookie `oauth_state` do login do
+  upstream (`14c3a2f8`), que o fork não tem; o login com Farcaster segue sem
+  `state` — entra no follow-up de CSRF de login junto com o Google
+  (`state: 'login'`).
+- Credenciais da instância (env), não por workspace: o signer só vale com a
+  chave que o criou e o post não tem credencial por workspace; registrado no
+  `CLAUDE.md` de social (pitfall 22).
+- `qrcode`/`@types/qrcode` entraram à mão no `package.json`/lockfile (o
+  `pnpm add` re-resolvia `@opentelemetry/api` 1.9 → 1.10; `qrcode@1.5.4` já
+  estava no lockfile como transitiva). `@neynar/react` fica no `package.json`
+  sem uso e `@neynar/nodejs-sdk` sem import — remoção no PR de dependências.
+- "Reconectar canal" de providers web3 (Farcaster, Telegram, Moltbook) abria
+  `window.location.href = nonce`; agora usa o hook `useOpenWeb3` (o mesmo do
+  Adicionar canal), com `?refresh=` e `code`/`state` codificados.
+
+Canais conectados pelo SIWN: nada é migrado; seguem publicando com o
+`signer_uuid` salvo enquanto `NEYNAR_SECRET_KEY` for do mesmo app da Neynar.
+Signer revogado ou chave de outro app → post falha com o motivo, canal marcado
+para reconexão com notificação e evento em Status.
+
+Follow-ups: CSRF de login (Farcaster e Google) com nonce ligado ao navegador;
+remover `@neynar/react` e `@neynar/nodejs-sdk` no PR de dependências; o
+`x-forwarded-for` como chave de limite só é confiável com proxy que sobrescreve
+o header (configuração de `trust proxy`); limite de 2 embeds por cast da Neynar
+não é validado no compositor (a Neynar recusa com `bad-body`).
+
 ## Apêndice — classificação 1 por 1 (171 PRs + 74 commits diretos)
 
 Legenda: **P0** segurança (nesta branch) · **ADOPT** cherry-pick/porte leve ·

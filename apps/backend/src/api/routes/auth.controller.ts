@@ -2,12 +2,17 @@ import {
   Body,
   Controller,
   Get,
+  HttpException,
   Param,
   Post,
   Query,
   Req,
   Res,
+  UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
+import { ThrottlerRealIpGuard } from '@gitroom/nestjs-libraries/throttler/throttler.provider';
+import { FarcasterSignerService } from '@gitroom/nestjs-libraries/integrations/social/farcaster.signer.service';
 import { Response, Request } from 'express';
 
 import { CreateOrgUserDto } from '@gitroom/nestjs-libraries/dtos/auth/create.org.user.dto';
@@ -32,7 +37,8 @@ import * as Sentry from '@sentry/nestjs';
 export class AuthController {
   constructor(
     private _authService: AuthService,
-    private _emailService: EmailService
+    private _emailService: EmailService,
+    private _farcasterSignerService: FarcasterSignerService
   ) {}
 
   @Get('/can-register')
@@ -207,6 +213,33 @@ export class AuthController {
   @Get('/oauth/:provider')
   async oauthLink(@Param('provider') provider: string, @Query() query: any) {
     return this._authService.oauthLink(provider, query);
+  }
+
+  // Login com Farcaster (upstream #2078/#2080): rotas publicas que criam e
+  // consultam um managed signer na Neynar. Cada POST cria um signer (custo na
+  // conta da Neynar), entao ha limite por cliente + teto global, e as rotas so
+  // existem com o login ligado.
+  @UseGuards(ThrottlerRealIpGuard)
+  @Throttle({ default: { limit: 30, ttl: 3600000 } })
+  @Post('/farcaster/signer')
+  async farcasterSigner() {
+    this.assertFarcasterLogin();
+    return this._farcasterSignerService.start();
+  }
+
+  // o modal consulta a cada 2 s por ate 10 min
+  @UseGuards(ThrottlerRealIpGuard)
+  @Throttle({ default: { limit: 1000, ttl: 3600000 } })
+  @Get('/farcaster/signer')
+  async farcasterSignerStatus(@Query('signerUuid') signerUuid: string) {
+    this.assertFarcasterLogin();
+    return this._farcasterSignerService.status(signerUuid);
+  }
+
+  private assertFarcasterLogin() {
+    if (!this._farcasterSignerService.isLoginEnabled()) {
+      throw new HttpException('Farcaster login is disabled', 404);
+    }
   }
 
   @Post('/activate')

@@ -8,7 +8,11 @@ import {
   Put,
   Query,
   Logger,
+  UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
+import { ThrottlerRealIpGuard } from '@gitroom/nestjs-libraries/throttler/throttler.provider';
+import { FarcasterSignerService } from '@gitroom/nestjs-libraries/integrations/social/farcaster.signer.service';
 import { summarizeError } from '@gitroom/nestjs-libraries/services/error.summary';
 import { ioRedis } from '@gitroom/nestjs-libraries/redis/redis.service';
 import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
@@ -54,7 +58,8 @@ export class IntegrationsController {
     private _refreshIntegrationService: RefreshIntegrationService,
     private _organizationService: OrganizationService,
     private _profileService: ProfileService,
-    private _encryption: EncryptionService
+    private _encryption: EncryptionService,
+    private _farcasterSignerService: FarcasterSignerService
   ) {}
 
   @Post('/provider/:id/connect')
@@ -708,6 +713,27 @@ export class IntegrationsController {
   @Get('/telegram/updates')
   async getUpdates(@Query() query: TelegramUpdatesDto) {
     return new TelegramProvider().getBotId(query);
+  }
+
+  // Conexao de canal Farcaster (managed signer, upstream #2078/#2080). O
+  // upstream usa as rotas publicas de /auth tambem aqui; no fork o canal passa
+  // pela rota autenticada (org/perfil do state continuam vindo do
+  // /social/wrapcast) e o login publico fica so para o login.
+  @Post('/farcaster/signer')
+  @CheckPolicies([AuthorizationActions.Create, Sections.CHANNEL])
+  @UseGuards(ThrottlerRealIpGuard)
+  @Throttle({ default: { limit: 30, ttl: 3600000 } })
+  async farcasterSigner() {
+    return this._farcasterSignerService.start();
+  }
+
+  // o modal consulta a cada 2 s por ate 10 min
+  @Get('/farcaster/signer')
+  @CheckPolicies([AuthorizationActions.Create, Sections.CHANNEL])
+  @UseGuards(ThrottlerRealIpGuard)
+  @Throttle({ default: { limit: 1000, ttl: 3600000 } })
+  async farcasterSignerStatus(@Query('signerUuid') signerUuid: string) {
+    return this._farcasterSignerService.status(signerUuid);
   }
 
   @Post('/moltbook/register')

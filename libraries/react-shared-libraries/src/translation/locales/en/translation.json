@@ -2786,5 +2786,13 @@
   "delete_only_from": "Only from",
   "batch_save_partial_failure": "Some channels were saved but others failed. Open the post again to review them.",
   "post_channel_date_in_past": "Choose a future date for this channel",
-  "batch_delete_partial_failure": "The post was deleted from some channels but not from others. Check the calendar."
+  "batch_delete_partial_failure": "The post was deleted from some channels but not from others. Check the calendar.",
+  "farcaster_scan_instructions": "Scan the QR code with your phone, or copy the link and open it on your phone, then approve the access request in the Farcaster app.",
+  "farcaster_copy_link": "Copy Farcaster link",
+  "farcaster_waiting_for_approval": "Waiting for your approval...",
+  "farcaster_signer_revoked": "The Farcaster approval was revoked, please try again",
+  "farcaster_signer_failed": "Failed to start the Farcaster connection",
+  "farcaster_approval_timeout": "Farcaster approval timed out, please try again",
+  "farcaster_not_configured": "Farcaster is not configured on this instance. Ask the administrator to set the Neynar variables.",
+  "farcaster_qr_alt": "QR code to approve the access in the Farcaster app"
 }
