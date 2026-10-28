@@ -1,6 +1,9 @@
 'use client';
-import { AutomationRequirements } from './shared-requirements.component';
-import { useEffect, type ReactNode } from 'react';
+import {
+  AutomationRequirements,
+  AutomationRequirementsContext,
+} from './shared-requirements.component';
+import { useContext, useEffect, type ReactNode } from 'react';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 
 export function AutomationPreviewPanel({
@@ -51,8 +54,16 @@ export function AutomationEditorLayout({ children }: { children: ReactNode }) {
 }
 
 export function AutomationPhoneFrame({ children }: { children: ReactNode }) {
+  const { valid, problems } = useContext(AutomationRequirementsContext);
+  const hasRequirements = !valid && !!problems?.length;
   return (
-    <div className="[zoom:0.93] [@media(min-height:1050px)]:[zoom:1]">
+    <div
+      className={
+        hasRequirements
+          ? '[zoom:0.78] [@media(min-height:1050px)]:[zoom:0.93]'
+          : '[zoom:0.93] [@media(min-height:1050px)]:[zoom:1]'
+      }
+    >
       {children}
     </div>
   );

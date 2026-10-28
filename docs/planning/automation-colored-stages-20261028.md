@@ -17,4 +17,9 @@ Backup privado das views antes de editar. TDD nos componentes e integrações: g
 
 Implementado nos três editores rápidos com os recursos efetivamente suportados. Grupos mantêm filhos montados e resumos acessíveis; pluralização dos contadores e pendência de palavra-chave do Messenger são explícitas. O alerta é link real, sem elementos interativos aninhados, com tooltip por portal.
 
-Validação: suíte visual completa 326/326 (45 arquivos), seguida das cinco suítes afetadas 53/53 incluindo a nova regressão Messenger; frontend TypeScript e build Next aprovados. Plano, código, documentação e aceitação revisados, sem bloqueadores nem alterações de CLAUDE. Backup privado em `.secrets/colored-stages-20261028/views-before.tgz`. Não houve alteração de API, execução, status ou gravação de automações reais.
+Validação: suíte visual completa após sincronizar main 327/327 (45 arquivos), incluindo a nova regressão Messenger; frontend TypeScript e build Next aprovados. Plano, código, documentação e aceitação revisados, sem bloqueadores nem alterações de CLAUDE. Backup privado em `.secrets/colored-stages-20261028/views-before.tgz`. Não houve alteração de API, execução, status ou gravação de automações reais.
+
+
+Navegador local: grupos Instagram recolhidos preservaram os valores e Salvar desabilitado; rascunho não salvo do Messenger exibiu pendência de palavra-chave, depois de resposta e ocultou o card ao preencher os campos. A escala do telefone se reduz somente com pendências reais para deixar o card visível. Não foi gravada ou ativada nenhuma regra. Evidências em `output/automation-colored-stages-20261028.png` e `output/automation-requirements-card-20261028.png` (fora do Git).
+
+Branch sincronizada com origin/main, preservando as novas traduções de ambas as linhas por resolução de três vias. Build frontend e testes passaram após a integração; não foi realizada mudança de banco nesta rodada.
