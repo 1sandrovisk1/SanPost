@@ -1,6 +1,13 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { useT, useTranslationSettings } from '@gitroom/react/translation/get.transation.service.client';
+import {
+  useT,
+  useTranslationSettings,
+} from '@gitroom/react/translation/get.transation.service.client';
+import {
+  selectedPublicationPreviews,
+  isPublishedScheduledPreview,
+} from './shared-publication-preview';
 import { useSharedFlowData } from './hooks/use-shared-flows';
 import type {
   AutomationPostMode,
@@ -14,6 +21,7 @@ export interface PublicationChoice {
 }
 export interface PublicationPreview {
   id: string;
+  permalink?: string;
   caption?: string;
   thumbnailUrl?: string;
   mediaUrl?: string;
@@ -22,6 +30,7 @@ export interface PublicationPreview {
 }
 export function AutomationPublicationSelector({
   integrationId,
+  platform = 'instagram',
   mode,
   postIds,
   scheduledPostId,
@@ -33,8 +42,10 @@ export function AutomationPublicationSelector({
   onRetry,
   onLoadMore,
   loadingMore = false,
+  onPreviewChange,
 }: PublicationChoice & {
   integrationId: string;
+  platform?: 'instagram' | 'facebook';
   posts: PublicationPreview[];
   onChange: (value: PublicationChoice) => void;
   disabled?: boolean;
@@ -43,6 +54,7 @@ export function AutomationPublicationSelector({
   onRetry?: () => void;
   onLoadMore?: () => void;
   loadingMore?: boolean;
+  onPreviewChange?: (posts: PublicationPreview[]) => void;
 }) {
   const t = useT();
   const { resolvedLanguage } = useTranslationSettings();
@@ -110,6 +122,19 @@ export function AutomationPublicationSelector({
       previous?.focus();
     };
   }, [open]);
+  const previewItems = selectedPublicationPreviews(
+    { mode, postIds, scheduledPostId },
+    posts,
+    scheduled
+  );
+  const previewSignature = JSON.stringify([integrationId, previewItems]);
+  const notifiedPreview = useRef('');
+  useEffect(() => {
+    if (onPreviewChange && notifiedPreview.current !== previewSignature) {
+      notifiedPreview.current = previewSignature;
+      onPreviewChange(previewItems);
+    }
+  }, [previewSignature, onPreviewChange]);
   const choices = [
     ...scheduled.map((p) => ({
       ...p,
@@ -117,7 +142,11 @@ export function AutomationPublicationSelector({
       timestamp: p.publishDate,
     })),
     ...posts
-      .filter((p) => !scheduled.some((s) => s.publishedPostIds?.includes(p.id)))
+      .filter(
+        (p) =>
+          (mode === 'specific' && postIds.includes(p.id)) ||
+          !scheduled.some((s) => isPublishedScheduledPreview(s, p, platform))
+      )
       .map((p) => ({ ...p, scheduled: false, status: undefined })),
   ];
   const selected = (p: (typeof choices)[number]) =>
@@ -203,7 +232,14 @@ export function AutomationPublicationSelector({
           scoped ? 'border-btnPrimary bg-btnPrimary/5' : 'border-newTableBorder'
         }`}
       >
-        {radio('specific', t('wizard_specific_post'))}
+        {radio(
+          'specific',
+          t(
+            platform === 'facebook'
+              ? 'automation_facebook_specific_post'
+              : 'wizard_specific_post'
+          )
+        )}
         {scoped && (
           <div className="mt-3 space-y-2">
             <div className="grid grid-cols-4 gap-1.5">
@@ -238,16 +274,18 @@ export function AutomationPublicationSelector({
             >
               {t('automation_select_publications')}
             </button>
-            {mode === 'scheduled' && (
-              <p role="status" className="text-xs text-newTextColor/70">
-                {t(
-                  `scheduled_status_${
-                    scheduled.find((p) => p.id === scheduledPostId)?.status ||
-                    'unavailable'
-                  }`
-                )}
-              </p>
-            )}
+            {mode === 'scheduled' &&
+              scheduled.find((p) => p.id === scheduledPostId)?.status !==
+                'published' && (
+                <p role="status" className="text-xs text-newTextColor/70">
+                  {t(
+                    `scheduled_status_${
+                      scheduled.find((p) => p.id === scheduledPostId)?.status ||
+                      'unavailable'
+                    }`
+                  )}
+                </p>
+              )}
             {postIds.length >= 100 && (
               <p role="status" className="text-xs text-newTextColor/60">
                 {t('shared_posts_limit')}
@@ -263,7 +301,14 @@ export function AutomationPublicationSelector({
             : 'border-newTableBorder'
         }`}
       >
-        {radio('all', t('wizard_all_posts'))}
+        {radio(
+          'all',
+          t(
+            platform === 'facebook'
+              ? 'automation_facebook_all_posts'
+              : 'wizard_all_posts'
+          )
+        )}
       </div>
       <div
         className={`rounded-lg border p-3 ${
@@ -359,7 +404,9 @@ export function AutomationPublicationSelector({
                           dateTime={p.timestamp}
                         >
                           {new Date(p.timestamp).toLocaleString(
-                            resolvedLanguage === 'pt' ? 'pt-BR' : resolvedLanguage
+                            resolvedLanguage === 'pt'
+                              ? 'pt-BR'
+                              : resolvedLanguage
                           )}
                         </time>
                       )}

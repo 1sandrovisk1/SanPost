@@ -7,7 +7,7 @@ vi.mock('@gitroom/react/translation/get.transation.service.client', () => ({
 }));
 afterEach(cleanup);
 describe('condicoes comuns Instagram e Facebook', () => {
-  it('exige escolha explicita de palavras e limpa termos ao voltar para qualquer palavra', () => {
+  it('exige escolha explicita de palavras e limpa termos ao voltar para qualquer comentario', () => {
     const change = vi.fn();
     function Editor() {
       const [specific, setSpecific] = useState(false);
@@ -34,7 +34,7 @@ describe('condicoes comuns Instagram e Facebook', () => {
     });
     fireEvent.blur(screen.getByLabelText('trigger_keywords'));
     expect(change).toHaveBeenLastCalledWith(['quero', 'link']);
-    fireEvent.click(screen.getByRole('radio', { name: 'wizard_any_word' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'automation_any_comment' }));
     expect(change).toHaveBeenLastCalledWith([]);
     expect(screen.queryByRole('textbox')).toBeNull();
   });

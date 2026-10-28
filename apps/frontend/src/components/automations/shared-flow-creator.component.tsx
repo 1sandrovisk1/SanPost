@@ -1,11 +1,25 @@
 'use client';
+import { AutomationContextHelp } from './shared-context-help.component';
+import { PublicationPreviewControls } from './shared-response-controls.component';
+import type { PublicationPreview } from './shared-publication-selector.component';
+import { EditorPendingAction } from './shared-editor-footer.component';
+import {
+  saveEditorChanges,
+  setEditorStatus,
+  EditorRecord,
+  EditorStatus,
+} from './shared-editor-actions';
+import { AutomationWorkspace } from './shared-workspace.component';
+import { useWorkspaceMode } from './shared-workspace-navigation';
+import { ReplyPreviewControls } from './shared-response-controls.component';
 import {
   AutomationPreviewPanel,
+  AutomationEditorLayout,
   AutomationPhoneFrame,
 } from './shared-editor-preview.component';
 import { AutomationAccountSelect } from './shared-account-select.component';
 import { MessengerPriority } from './messenger-priority.component';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
@@ -98,11 +112,20 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
   const availableResult =
     useSharedFlowData<AutomationChannelView[]>('/flows-v2/channels');
   const {
-    data: flow,
+    data: remoteFlow,
     mutate,
     error,
     isLoading,
   } = useSharedFlowData<SharedFlowView>(id ? `/flows-v2/${id}` : null);
+  const [savedRecord, setSavedRecord] = useState<EditorRecord | undefined>(
+    undefined
+  );
+  const currentRecord = useRef<EditorRecord | undefined>(undefined);
+  const flow = remoteFlow;
+  const recordStatus = ((savedRecord &&
+  (!flow || (savedRecord.revision ?? 0) >= flow.revision)
+    ? savedRecord.status
+    : flow?.status) || 'DRAFT') as EditorStatus;
   // New entries are Facebook-only; saved V2 flows retain their original networks.
   const platforms = useMemo(
     () => new Set(id ? flow?.channels.map((c) => c.platform) : ['facebook']),
@@ -118,7 +141,6 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
     [availableResult.data, platforms]
   );
   const facebookOnly = platforms.size === 1 && platforms.has('facebook');
-  const instagramOnly = platforms.size === 1 && platforms.has('instagram');
   const initialChannel = params.get('channel');
   const initialTrigger =
     !id && params.get('trigger') === 'messenger_message'
@@ -137,13 +159,14 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
   const [definition, setDefinition] = useState<CommentDefinition>(() =>
     simpleDefinition({ message: '', triggerType: initialTrigger })
   );
-  const [advanced, setAdvanced] = useState(false);
+
   const [busy, setBusy] = useState(false);
+  const [pendingAction, setPendingAction] =
+    useState<EditorPendingAction>('save');
+
   const [dirty, setDirty] = useState(false);
   usePreventWindowUnload(dirty);
-  const [showHistory, setShowHistory] = useState(
-    params.get('tab') === 'history'
-  );
+
   const [problems, setProblems] = useState<DraftProblem[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
   const [keywordSpecific, setKeywordSpecific] = useState(false);
@@ -156,12 +179,20 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
     'post' | 'comments' | 'dm' | 'story'
   >('dm');
   useEffect(() => {
-    if (flow && !dirty) {
+    if (
+      flow &&
+      !dirty &&
+      (!currentRecord.current ||
+        flow.revision > (currentRecord.current.revision ?? 0))
+    ) {
+      currentRecord.current = { ...flow, status: flow.status as EditorStatus };
       setName(flow.name);
       setChannels(flow.channels);
       setDefinition(flow.definition);
-      setKeywordSpecific(simpleValues(flow.definition).values.keywords.length > 0);
-      setAdvanced(!simpleValues(flow.definition).compatible);
+      setKeywordSpecific(
+        simpleValues(flow.definition).values.keywords.length > 0
+      );
+
       setPublicReply(
         flow.definition.nodes.some((n) => n.type === 'REPLY_COMMENT')
       );
@@ -170,6 +201,7 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
   useEffect(() => {
     if (
       !id &&
+      !currentRecord.current &&
       !dirty &&
       initialChannel &&
       available?.some((c) => c.id === initialChannel)
@@ -182,9 +214,18 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
         },
       ]);
   }, [available, initialChannel, initialTrigger, id, dirty]);
-  const disabled =
-    busy || flow?.status === 'ARCHIVED';
+  const disabled = busy || recordStatus === 'ARCHIVED';
   const { values, compatible } = simpleValues(definition);
+  const navigation = useWorkspaceMode(
+    'quick',
+    (next) =>
+      !busy && (next !== 'quick' || compatible) && (next !== 'history' || !!id)
+  );
+  const workspaceMode =
+    navigation.mode === 'quick' && !compatible ? 'flow' : navigation.mode;
+  const editorOwner = useRef<'quick' | 'flow'>('quick');
+  if (workspaceMode !== 'history') editorOwner.current = workspaceMode;
+  const advanced = editorOwner.current === 'flow';
   const messenger = values.triggerType === 'messenger_message';
   const replyMessages = values.replyMessages || [values.reply];
   const hasPublicReply =
@@ -209,6 +250,10 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
       picture: account?.picture,
     };
   });
+  const [publicationPreviews, setPublicationPreviews] = useState<
+    Record<string, PublicationPreview[]>
+  >({});
+  const [previewPublicationId, setPreviewPublicationId] = useState('');
   const preview =
     channelViews.find((c) => c.integrationId === previewChannel) ||
     channelViews[0];
@@ -222,82 +267,112 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
     setGraph(simpleDefinition({ ...values, ...value }));
   const errorMessage = (code: string) =>
     t(`shared_error_${code.toLowerCase()}`, t('shared_save_failed'));
-  const perform = async (path: string, method: string, body: unknown) => {
-    const response = await fetchApi(path, {
-      method,
-      body: JSON.stringify(body),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const code = sharedFailureCode(response.status, data);
-      const failure = new Error(code);
-      if (
-        ['MESSENGER_RULE_CONFLICT', 'MESSENGER_PRIORITY_CONFLICT'].includes(
-          code
-        ) &&
-        typeof data.conflictingFlowName === 'string'
-      )
-        Object.assign(failure, {
-          conflictingFlowName: data.conflictingFlowName.slice(0, 200),
-        });
-      throw failure;
-    }
-    return data;
+  const remember = (
+    record: EditorRecord,
+    phase: 'prepared' | 'saved' | 'status'
+  ) => {
+    currentRecord.current = record;
+    setSavedRecord(record);
+    if (phase === 'saved') setDirty(false);
+    void mutate();
   };
-  const save = async () => {
+  const showFailure = (err: unknown) =>
+    setActionError(
+      errorMessage(err instanceof Error ? err.message : '') +
+        (err && typeof err === 'object' && 'conflictingFlowName' in err
+          ? ` · ${String(err.conflictingFlowName)}`
+          : '')
+    );
+  const save = async (activate = false) => {
+    if (busy) return;
     const invalid = validateSharedDraft(name, channels, definition);
     setProblems(invalid);
     setActionError(null);
     if (invalid.length) return;
+    setPendingAction(activate ? 'activate' : 'save');
     setBusy(true);
+    let configurationSaved = false;
     try {
-      const saved = await perform(
-        id ? `/flows-v2/${id}` : '/flows-v2',
-        id ? 'PUT' : 'POST',
+      const saved = await saveEditorChanges(
+        fetchApi,
         {
-          name: name.trim(),
-          channels: channels.map((c) => ({
-            integrationId: c.integrationId,
-            postMode: c.postMode,
-            postIds: c.postIds,
-            ...(c.postMode === 'scheduled' ? { scheduledPostId: c.scheduledPostId } : {}),
-          })),
-          definition: normalizeDefinition(definition),
-          expectedRevision: flow?.revision,
+          engine: 'facebook',
+          current:
+            currentRecord.current ||
+            (flow
+              ? { ...flow, status: flow.status as EditorStatus }
+              : undefined),
+          body: {
+            name: name.trim(),
+            channels: channels.map((c) => ({
+              integrationId: c.integrationId,
+              postMode: c.postMode,
+              postIds: c.postIds,
+              ...(c.postMode === 'scheduled'
+                ? { scheduledPostId: c.scheduledPostId }
+                : {}),
+            })),
+            definition: normalizeDefinition(definition),
+          },
+          activate,
+        },
+        (record, phase) => {
+          remember(record, phase);
+          if (phase === 'saved') configurationSaved = true;
         }
       );
-      setDirty(false);
-      if (!id) router.replace(`/automacoes/compartilhada/${saved.id}`);
-      else await mutate(saved, false);
+      if (!id)
+        router.replace(
+          `/automacoes/compartilhada/${saved.id}${
+            workspaceMode === 'flow' ? '?view=flow' : ''
+          }`
+        );
       toaster.show(t('flow_saved'), 'success');
     } catch (err) {
-      setActionError(
-        errorMessage(err instanceof Error ? err.message : '') +
-          (err && typeof err === 'object' && 'conflictingFlowName' in err
-            ? ` · ${String(err.conflictingFlowName)}`
-            : '')
-      );
+      if (configurationSaved && activate) {
+        const message = `${t(
+          'automation_activation_failed_saved'
+        )} ${errorMessage(err instanceof Error ? err.message : '')}`;
+        setActionError(message);
+        if (!id && currentRecord.current) {
+          toaster.show(message, 'warning');
+          router.replace(
+            `/automacoes/compartilhada/${currentRecord.current.id}${
+              workspaceMode === 'flow' ? '?view=flow' : ''
+            }`
+          );
+        }
+      } else showFailure(err);
     } finally {
       setBusy(false);
     }
   };
-  const status = async () => {
-    if (!flow) return;
+  const status = async (target: EditorStatus) => {
+    if (busy) return;
+    const record =
+      currentRecord.current ||
+      (flow ? { ...flow, status: flow.status as EditorStatus } : undefined);
+    if (target === 'ACTIVE' && (dirty || !record)) return save(true);
+    if (!record) return;
+    setPendingAction(target === 'ACTIVE' ? 'activate' : 'pause');
     setBusy(true);
     setActionError(null);
     try {
-      const updated = await perform(`/flows-v2/${flow.id}/status`, 'POST', {
-        expectedRevision: flow.revision,
-        status: flow.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE',
-      });
-      await mutate(updated, false);
-    } catch (err) {
-      setActionError(
-        errorMessage(err instanceof Error ? err.message : '') +
-          (err && typeof err === 'object' && 'conflictingFlowName' in err
-            ? ` · ${String(err.conflictingFlowName)}`
-            : '')
+      const updated = await setEditorStatus(
+        fetchApi,
+        'facebook',
+        record,
+        target,
+        remember
       );
+      if (!id)
+        router.replace(
+          `/automacoes/compartilhada/${updated.id}${
+            workspaceMode === 'flow' ? '?view=flow' : ''
+          }`
+        );
+    } catch (err) {
+      showFailure(err);
     } finally {
       setBusy(false);
     }
@@ -314,6 +389,11 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
         {t('loading')}
       </p>
     );
+  const previewPosts = preview
+    ? publicationPreviews[preview.integrationId] || []
+    : [];
+  const selectedPost =
+    previewPosts.find((p) => p.id === previewPublicationId) || previewPosts[0];
   const channelEditor = (
     <section id="shared-channels" className="space-y-4">
       {availableResult.isLoading && <p>{t('loading')}</p>}
@@ -393,9 +473,22 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
           />
         );
       })}
+      {id && facebookOnly && (
+        <p className="text-xs text-newTextColor/60">
+          {t('automation_page_change_hint')}
+        </p>
+      )}
       {channelViews.map((channel) => (
         <div key={channel.integrationId} className="space-y-3">
           <SharedChannelPosts
+            onPreviewChange={(posts) =>
+              setPublicationPreviews((old) =>
+                JSON.stringify(old[channel.integrationId]) ===
+                JSON.stringify(posts)
+                  ? old
+                  : { ...old, [channel.integrationId]: posts }
+              )
+            }
             channel={channel}
             triggerType={values.triggerType}
             provider={channel.platform}
@@ -414,133 +507,30 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
       ))}
     </section>
   );
-  const quickEditor = !showHistory && !advanced;
-  const editorHeader = (
-    <>
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <a
-            href="/automacoes"
-            className="text-sm text-newTextColor/60 hover:underline"
-          >
-            ← {t('automacoes')}
-          </a>
-          <h1 className="text-xl font-semibold mt-2">
-            {facebookOnly
-              ? t(
-                  id
-                    ? 'facebook_automation_edit_title'
-                    : 'facebook_automation_create_title'
-                )
-              : quickEditor
-              ? t(id ? 'wizard_editing_title' : 'wizard_title')
-              : flow?.name || t('shared_creator_title')}
-          </h1>
-          <p className="text-sm text-newTextColor/60 mt-1">
-            {t(
-              facebookOnly
-                ? 'facebook_automation_creator_intro'
-                : instagramOnly
-                ? 'instagram_automation_creator_intro'
-                : 'shared_creator_intro'
-            )}
-          </p>
-        </div>
-        {flow && (
-          <span
-            className={`rounded-full px-3 py-1 text-xs ${
-              flow.status === 'ACTIVE'
-                ? 'bg-green-500/10 text-green-600'
-                : 'bg-boxHover text-newTextColor/70'
-            }`}
-          >
-            {t(`flow_status_${flow.status.toLowerCase()}`)}
-          </span>
-        )}
-      </header>
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-newTableBorder pb-3">
-        <nav className="flex gap-2" aria-label={t('shared_editor_sections')}>
-          <button
-            className={`px-3 py-2 rounded-lg text-sm ${
-              !showHistory
-                ? 'bg-boxHover font-semibold'
-                : 'text-newTextColor/60'
-            }`}
-            aria-pressed={!showHistory}
-            onClick={() => setShowHistory(false)}
-          >
-            {t('shared_configuration')}
-          </button>
-          {id && (
+  const visibleProblems = validateSharedDraft(name, channels, definition);
+  const quickEditor = !advanced;
+  const editorHeader = problems.length > 0 && (
+    <div
+      role="alert"
+      className="rounded-xl border border-amber-600/40 bg-amber-500/5 p-4 text-sm space-y-2"
+    >
+      {problems.map((problem, index) => (
+        <p key={index}>
+          {errorMessage(problem.code)}{' '}
+          {problem.nodeId && (
             <button
-              className={`px-3 py-2 rounded-lg text-sm ${
-                showHistory
-                  ? 'bg-boxHover font-semibold'
-                  : 'text-newTextColor/60'
-              }`}
-              aria-pressed={showHistory}
-              onClick={() => setShowHistory(true)}
+              className="underline"
+              onClick={() => {
+                navigation.onModeChange('flow');
+                setFocusNode(problem.nodeId);
+              }}
             >
-              {t('show_history')}
+              {t('shared_review_node')}
             </button>
           )}
-        </nav>
-        {!showHistory && (
-          <button
-            type="button"
-            className="text-sm underline disabled:opacity-50"
-            disabled={advanced && !compatible}
-            onClick={() => setAdvanced(!advanced)}
-          >
-            {advanced ? t('shared_simple') : t('shared_canvas')}
-          </button>
-        )}
-      </div>
-      {!showHistory && flow?.status === 'ACTIVE' && (
-        <p className="text-sm text-newTextColor/70">{t('automation_active_edit_hint')}</p>
-      )}
-      {(problems.length > 0 || actionError) && (
-        <div
-          role="alert"
-          className="rounded-xl border border-amber-600/40 bg-amber-500/5 p-4 text-sm space-y-2"
-        >
-          {actionError && <p>{actionError}</p>}
-          {problems.map((problem, index) => (
-            <p key={index}>
-              {errorMessage(problem.code)}{' '}
-              {problem.nodeId && (
-                <button
-                  className="underline"
-                  onClick={() => {
-                    setAdvanced(true);
-                    setFocusNode(problem.nodeId);
-                  }}
-                >
-                  {t('shared_review_node')}
-                </button>
-              )}
-            </p>
-          ))}
-        </div>
-      )}
-    </>
-  );
-  const nameField = (
-    <label className="block max-w-xl text-sm space-y-2" id="shared-name">
-      {t('flow_name')}
-      <input
-        className={inputClass}
-        disabled={disabled}
-        maxLength={200}
-        value={name}
-        aria-invalid={problems.some((p) => p.field === 'name')}
-        onChange={(e) => {
-          setName(e.target.value);
-          setDirty(true);
-          setProblems([]);
-        }}
-      />
-    </label>
+        </p>
+      ))}
+    </div>
   );
   const triggerField = facebookOnly && (
     <label className="block text-sm space-y-2">
@@ -610,7 +600,34 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
       </section>
       <section className="border-t border-newTableBorder pt-6 space-y-3">
         <h2 className="font-semibold">{t('automation_section_conditions')}</h2>
-        <AutomationKeywordConditions specific={keywordSpecific || values.keywords.length > 0} keywords={values.keywords} onSpecificChange={setKeywordSpecific} onKeywordsChange={keywords => editSimple({ keywords })} requireKeywords={messenger} disabled={disabled} matchMode={values.matchMode} onMatchModeChange={matchMode => editSimple({ matchMode })} onFocus={() => setPreviewTab(messenger ? 'dm' : 'comments')} />
+        <AutomationKeywordConditions
+          specific={keywordSpecific || values.keywords.length > 0}
+          keywords={values.keywords}
+          onSpecificChange={setKeywordSpecific}
+          onKeywordsChange={(keywords) => editSimple({ keywords })}
+          requireKeywords={messenger}
+          disabled={disabled}
+          matchMode={values.matchMode}
+          onMatchModeChange={(matchMode) => editSimple({ matchMode })}
+          onFocus={() => setPreviewTab(messenger ? 'dm' : 'comments')}
+        />
+        {messenger && (
+          <details className="rounded-lg border border-newTableBorder p-3 text-sm">
+            <summary className="cursor-pointer font-medium">
+              {t('automation_advanced')}
+            </summary>
+            <div className="pt-3">
+              <MessengerPriority
+                disabled={disabled}
+                value={values.priority}
+                onChange={(priority) => editSimple({ priority })}
+              />
+            </div>
+          </details>
+        )}
+      </section>
+      <section className="border-t border-newTableBorder pt-6 space-y-4">
+        <h2 className="font-semibold">{t('automation_section_response')}</h2>
         {!messenger && (
           <AutomationPublicReplyToggle
             enabled={hasPublicReply}
@@ -618,6 +635,7 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
             label={t('shared_add_public_reply')}
             onChange={(enabled) => {
               setPublicReply(enabled);
+              setPreviewTab('comments');
               if (!enabled) {
                 editSimple({ reply: '', replyMessages: undefined });
                 setPreviewTab('dm');
@@ -638,23 +656,15 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
             }}
           />
         )}
-        {messenger && (
-          <details className="rounded-lg border border-newTableBorder p-3 text-sm">
-            <summary className="cursor-pointer font-medium">
-              {t('automation_advanced')}
-            </summary>
-            <div className="pt-3">
-              <MessengerPriority
-                disabled={disabled}
-                value={values.priority}
-                onChange={(priority) => editSimple({ priority })}
-              />
-            </div>
-          </details>
+        {!messenger && (
+          <div className="flex items-center justify-between text-xs text-newTextColor/70">
+            <span>{t('automation_direct_delivery')}</span>
+            <AutomationContextHelp label={t('automation_delivery_help')}>
+              {t('automation_direct_delivery_hint')}
+            </AutomationContextHelp>
+          </div>
         )}
-      </section>
-      <section className="border-t border-newTableBorder pt-6 space-y-4">
-        <h2 className="font-semibold">{t('automation_section_response')}</h2>
+
         <label className="block text-sm space-y-2">
           {t('shared_message')}
           <textarea
@@ -669,54 +679,103 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
           />
         </label>
         <div className="flex justify-between gap-3 text-xs text-newTextColor/60">
-          <p>{t(messenger ? 'messenger_message_hint' : 'shared_link_hint')}</p>
+          <AutomationContextHelp
+            align="start"
+            label={t('automation_link_help')}
+          >
+            {t(messenger ? 'messenger_message_hint' : 'shared_link_hint')}
+          </AutomationContextHelp>
           <span className="shrink-0">
             {values.message.length}/{values.buttonText ? 640 : 2000}
           </span>
         </div>
-        <button type="button" disabled={disabled} onClick={() => setShowAddLink(true)} className="rounded border border-dashed border-newTableBorder text-[12px] text-textColor px-3.5 py-2 hover:bg-boxHover disabled:opacity-50">{values.buttonText && values.buttonUrl ? `${values.buttonText} · ${values.buttonUrl}` : `+ ${t('story_add_link')}`}</button>
-        <AddLinkModal open={showAddLink} initialText={values.buttonText} initialUrl={values.buttonUrl} maxTextLength={20} onSave={(buttonText, buttonUrl) => editSimple({ buttonText, buttonUrl })} onClose={() => setShowAddLink(false)} onRemove={() => { editSimple({ buttonText: '', buttonUrl: '' }); setShowAddLink(false); }} />
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => {
+            setPreviewTab('dm');
+            setShowAddLink(true);
+          }}
+          className="rounded border border-dashed border-newTableBorder text-[12px] text-textColor px-3.5 py-2 hover:bg-boxHover disabled:opacity-50"
+        >
+          {values.buttonText && values.buttonUrl
+            ? `${values.buttonText} · ${values.buttonUrl}`
+            : `+ ${t('story_add_link')}`}
+        </button>
+        <AddLinkModal
+          open={showAddLink}
+          initialText={values.buttonText}
+          initialUrl={values.buttonUrl}
+          maxTextLength={20}
+          onSave={(buttonText, buttonUrl) =>
+            editSimple({ buttonText, buttonUrl })
+          }
+          onClose={() => setShowAddLink(false)}
+          onRemove={() => {
+            editSimple({ buttonText: '', buttonUrl: '' });
+            setShowAddLink(false);
+          }}
+        />
       </section>
     </div>
   );
-  const actions = (
-    <footer className="sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-3 border-t border-newTableBorder bg-newBgColorInner p-4 shrink-0">
-      <p className="text-xs text-newTextColor/60">
-        {dirty
-          ? t('shared_unsaved')
-          : !id
-          ? t('shared_save_before_activate')
-          : flow?.status === 'ACTIVE'
-          ? t('shared_is_active')
-          : t('shared_review_activate')}
-      </p>
-      <div className="flex gap-2">
-        <Button secondary disabled={disabled} onClick={save}>
-          {busy ? t('saving_flow') : t('save_flow')}
-        </Button>
-        {id && flow?.status !== 'ARCHIVED' && (
-          <Button disabled={busy || dirty} onClick={status}>
-            {flow?.status === 'ACTIVE' ? t('pause_flow') : t('activate_flow')}
-          </Button>
-        )}
-      </div>
-    </footer>
+  const wrap = (content: React.ReactNode) => (
+    <AutomationWorkspace
+      name={name}
+      nameLabel={t('flow_name')}
+      onNameChange={(value) => {
+        setName(value);
+        setDirty(true);
+        setProblems([]);
+      }}
+      subtitle={`${channelViews.map((c) => c.name).join(' / ')} · ${t(
+        messenger
+          ? 'automation_name_message'
+          : 'automation_name_facebook_comment'
+      )}`}
+      status={recordStatus}
+      dirty={dirty}
+      busy={busy}
+      pendingAction={pendingAction}
+      valid={!visibleProblems.length}
+      problems={visibleProblems.map((problem) => errorMessage(problem.code))}
+      impact={t('automation_active_edit_hint')}
+      error={actionError}
+      onSave={() => void save(false)}
+      onStatusChange={(next) => void status(next)}
+      navigation={{
+        ...navigation,
+        mode: workspaceMode,
+        quickDisabled: !compatible,
+        historyDisabled: !id,
+      }}
+      history={id ? <SharedFlowHistory id={id} /> : undefined}
+    >
+      {content}
+    </AutomationWorkspace>
   );
+
   if (quickEditor) {
-    return (
-      <div className="automation-editor flex flex-col lg:flex-row flex-1 min-w-0 w-full text-textColor lg:h-[calc(100dvh-105px)] lg:min-h-[480px]">
+    return wrap(
+      <AutomationEditorLayout>
         <section
           aria-label={t('shared_configuration')}
-          className="flex flex-col min-w-0 w-full lg:w-[600px] lg:max-w-[55%] lg:shrink-0 bg-newBgColorInner"
+          className="flex flex-col min-w-0 w-full lg:w-[600px] lg:max-w-[55%] lg:shrink-0 lg:min-h-0 bg-newBgColorInner"
         >
-          <div className="p-6 space-y-6 lg:flex-1 lg:min-h-0 lg:overflow-y-auto">
+          <div className="p-6 space-y-6 lg:flex-1 lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain">
             {editorHeader}
-            {nameField}
             {quickFields}
           </div>
-          {actions}
         </section>
         <AutomationPreviewPanel>
+          {!messenger &&
+            (previewTab === 'post' || previewTab === 'comments') && (
+              <PublicationPreviewControls
+                posts={previewPosts}
+                value={selectedPost?.id}
+                onChange={setPreviewPublicationId}
+              />
+            )}
           {channelViews.length > 1 && (
             <select
               className={inputClass}
@@ -739,35 +798,38 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
               ? 'Instagram'
               : t('shared_message')}
           </span>
-          {hasPublicReply && replyMessages.length > 1 && (
-            <label className="block w-full text-xs space-y-1">
-              <span>{t('shared_reply_preview')}</span>
-              <select
-                className={inputClass}
-                value={currentReplyIndex}
-                onChange={(e) => {
-                  setReplyPreviewIndex(Number(e.target.value));
-                  setPreviewTab('comments');
-                }}
-              >
-                {replyMessages.map((_, index) => (
-                  <option key={index} value={index}>
-                    {t('shared_reply_variant')} {index + 1}
-                  </option>
-                ))}
-              </select>
-            </label>
+          {previewTab === 'comments' && hasPublicReply && (
+            <ReplyPreviewControls
+              messages={replyMessages}
+              index={currentReplyIndex}
+              onChange={(index) => {
+                setReplyPreviewIndex(index);
+                setPreviewTab('comments');
+              }}
+            />
           )}
           <AutomationPhoneFrame>
             <WizardPhonePreview
+              postSelected={!!selectedPost && !messenger}
+              postThumb={selectedPost?.thumbnailUrl || selectedPost?.mediaUrl}
+              postCaption={selectedPost?.caption}
+              postMediaType={
+                selectedPost?.thumbnailUrl ? undefined : selectedPost?.mediaType
+              }
               singleReply
               replyMessage={
                 hasPublicReply ? replyMessages[currentReplyIndex] : ''
               }
-              activeTab={
-                previewTab === 'comments' && !replyMessages[currentReplyIndex]
-                  ? 'dm'
-                  : previewTab
+              activeTab={previewTab}
+              triggerType={messenger ? 'messenger_message' : 'comment_on_post'}
+              triggerText={values.keywords[0]}
+              journey={
+                messenger
+                  ? {
+                      incomingMessage:
+                        values.keywords[0] || t('automation_preview_incoming'),
+                    }
+                  : undefined
               }
               onTabChange={setPreviewTab}
               dmMessage={values.message}
@@ -778,46 +840,38 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
             />
           </AutomationPhoneFrame>
         </AutomationPreviewPanel>
-      </div>
+      </AutomationEditorLayout>
     );
   }
-  return (
-    <div className="automation-editor p-4 md:p-6 space-y-5 text-textColor max-w-[1280px] w-full mx-auto min-w-0">
+  return wrap(
+    <div className="automation-editor p-4 md:p-6 space-y-5 text-textColor w-full min-w-0 flex-1 overflow-y-auto">
       {editorHeader}
-      {showHistory && id ? (
-        <SharedFlowHistory id={id} />
-      ) : (
-        <>
-          {nameField}
-          {triggerField}
-          <div className="space-y-4">
-            {compatible ? (
-              <details className="rounded-xl border border-newTableBorder p-4">
-                <summary className="cursor-pointer text-sm font-medium">
-                  {t('shared_channels')} ·{' '}
-                  {channelViews.map((c) => c.name).join(' / ')}
-                </summary>
-                <div className="mt-4">{channelEditor}</div>
-              </details>
-            ) : (
-              channelEditor
-            )}
-            {!compatible && (
-              <p className="text-sm text-newTextColor/60">
-                {t('shared_advanced_kept')}
-              </p>
-            )}
-            <SharedFlowCanvas
-              definition={definition}
-              channels={channelViews}
-              onChange={setGraph}
-              disabled={disabled}
-              focusNodeId={focusNode}
-            />
-          </div>
-          {actions}
-        </>
-      )}
+      {triggerField}
+      <div className="space-y-4">
+        {compatible ? (
+          <details className="rounded-xl border border-newTableBorder p-4">
+            <summary className="cursor-pointer text-sm font-medium">
+              {t('shared_channels')} ·{' '}
+              {channelViews.map((c) => c.name).join(' / ')}
+            </summary>
+            <div className="mt-4">{channelEditor}</div>
+          </details>
+        ) : (
+          channelEditor
+        )}
+        {!compatible && (
+          <p className="text-sm text-newTextColor/60">
+            {t('shared_advanced_kept')}
+          </p>
+        )}
+        <SharedFlowCanvas
+          definition={definition}
+          channels={channelViews}
+          onChange={setGraph}
+          disabled={disabled}
+          focusNodeId={focusNode}
+        />
+      </div>
     </div>
   );
 }

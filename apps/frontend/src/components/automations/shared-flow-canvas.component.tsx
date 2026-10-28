@@ -121,7 +121,10 @@ export function SharedFlowCanvas({
     'w-full border border-newTableBorder rounded-lg p-2 bg-newBgColorInner text-textColor';
   return (
     <div className="border border-newTableBorder rounded-lg overflow-hidden">
-      <div className="flex flex-wrap gap-2 p-3">
+      <div className="flex flex-wrap items-center gap-2 p-3">
+        <span className="text-xs text-newTextColor/60">
+          {t('automation_add_step')}
+        </span>
         {(Object.keys(types) as CommentNodeType[])
           .filter(
             (type) =>
@@ -160,94 +163,11 @@ export function SharedFlowCanvas({
           ))}
       </div>
       <div className="flex flex-col lg:flex-row min-h-[600px]">
-        <div className="w-full min-w-0 h-[600px] min-h-[600px] shrink-0 lg:flex-1">
-          <ReactFlowProvider>
-            <ReactFlow
-              nodeTypes={types}
-              nodes={visualNodes.map((n) =>
-                n.type === 'TRIGGER'
-                  ? { ...n, data: { ...n.data, channels } }
-                  : n
-              )}
-              edges={visualEdges}
-              colorMode={colorMode}
-              fitView
-              fitViewOptions={{ maxZoom: 1, padding: 0.25 }}
-              minZoom={0.3}
-              maxZoom={1.5}
-              zoomOnScroll={false}
-              preventScrolling={false}
-              nodesDraggable={!disabled}
-              nodesConnectable={!disabled}
-              elementsSelectable
-              onNodeClick={(_, n) => select(n.id)}
-              onNodesChange={(changes) => {
-                if (disabled) return;
-                const result = applyNodeChanges(changes, visualNodes);
-                setVisualNodes(result);
-                if (
-                  !changes.some(
-                    (c) => c.type === 'remove' || c.type === 'position'
-                  )
-                )
-                  return;
-                publish({
-                  nodes: result.map((n) => ({
-                    ...currentDefinition.current.nodes.find(
-                      (old) => old.id === n.id
-                    )!,
-                    positionX: n.position.x,
-                    positionY: n.position.y,
-                  })),
-                  edges: currentDefinition.current.edges.filter(
-                    (e) =>
-                      result.some((n) => n.id === e.sourceNodeId) &&
-                      result.some((n) => n.id === e.targetNodeId)
-                  ),
-                });
-              }}
-              onEdgesChange={(changes) => {
-                if (!disabled) {
-                  const result = applyEdgeChanges(changes, visualEdges);
-                  setVisualEdges(result);
-                  if (!changes.some((c) => c.type === 'remove')) return;
-                  publish({
-                    ...currentDefinition.current,
-                    edges: result.map((e) => ({
-                      id: e.id,
-                      sourceNodeId: e.source,
-                      targetNodeId: e.target,
-                      sourceHandle: e.sourceHandle || undefined,
-                    })),
-                  });
-                }
-              }}
-              onConnect={(edge) => {
-                if (!disabled && edge.source && edge.target)
-                  publish({
-                    ...definition,
-                    edges: [
-                      ...definition.edges,
-                      {
-                        id: crypto.randomUUID(),
-                        sourceNodeId: edge.source,
-                        targetNodeId: edge.target,
-                        sourceHandle: edge.sourceHandle || undefined,
-                      },
-                    ],
-                  });
-              }}
-            >
-              <Background />
-              <Controls
-                showInteractive={false}
-                fitViewOptions={{ maxZoom: 1, padding: 0.25 }}
-              />
-            </ReactFlow>
-          </ReactFlowProvider>
-        </div>
         {node && (
-          <div className="w-full lg:w-[300px] lg:shrink-0 border-t lg:border-t-0 lg:border-l border-newTableBorder p-4 overflow-y-auto max-h-[600px] space-y-4">
+          <aside
+            aria-label={t('node_config')}
+            className="w-full lg:w-[360px] lg:max-w-[45%] lg:shrink-0 border-b lg:border-b-0 lg:border-r border-newTableBorder p-4 overflow-y-auto max-h-[600px] space-y-4"
+          >
             <fieldset disabled={disabled} className="space-y-4">
               <h3>{t(labels[node.type], node.type)}</h3>
               {['TRIGGER', 'CONDITION'].includes(node.type) && (
@@ -365,8 +285,94 @@ export function SharedFlowCanvas({
             >
               {t('close', 'Fechar')}
             </button>
-          </div>
+          </aside>
         )}
+        <div className="w-full min-w-0 h-[600px] min-h-[600px] shrink-0 lg:flex-1">
+          <ReactFlowProvider>
+            <ReactFlow
+              nodeTypes={types}
+              nodes={visualNodes.map((n) =>
+                n.type === 'TRIGGER'
+                  ? { ...n, data: { ...n.data, channels } }
+                  : n
+              )}
+              edges={visualEdges}
+              colorMode={colorMode}
+              fitView
+              fitViewOptions={{ maxZoom: 1, padding: 0.25 }}
+              minZoom={0.3}
+              maxZoom={1.5}
+              zoomOnScroll={false}
+              preventScrolling={false}
+              nodesDraggable={!disabled}
+              nodesConnectable={!disabled}
+              elementsSelectable
+              onNodeClick={(_, n) => select(n.id)}
+              onNodesChange={(changes) => {
+                if (disabled) return;
+                const result = applyNodeChanges(changes, visualNodes);
+                setVisualNodes(result);
+                if (
+                  !changes.some(
+                    (c) => c.type === 'remove' || c.type === 'position'
+                  )
+                )
+                  return;
+                publish({
+                  nodes: result.map((n) => ({
+                    ...currentDefinition.current.nodes.find(
+                      (old) => old.id === n.id
+                    )!,
+                    positionX: n.position.x,
+                    positionY: n.position.y,
+                  })),
+                  edges: currentDefinition.current.edges.filter(
+                    (e) =>
+                      result.some((n) => n.id === e.sourceNodeId) &&
+                      result.some((n) => n.id === e.targetNodeId)
+                  ),
+                });
+              }}
+              onEdgesChange={(changes) => {
+                if (!disabled) {
+                  const result = applyEdgeChanges(changes, visualEdges);
+                  setVisualEdges(result);
+                  if (!changes.some((c) => c.type === 'remove')) return;
+                  publish({
+                    ...currentDefinition.current,
+                    edges: result.map((e) => ({
+                      id: e.id,
+                      sourceNodeId: e.source,
+                      targetNodeId: e.target,
+                      sourceHandle: e.sourceHandle || undefined,
+                    })),
+                  });
+                }
+              }}
+              onConnect={(edge) => {
+                if (!disabled && edge.source && edge.target)
+                  publish({
+                    ...definition,
+                    edges: [
+                      ...definition.edges,
+                      {
+                        id: crypto.randomUUID(),
+                        sourceNodeId: edge.source,
+                        targetNodeId: edge.target,
+                        sourceHandle: edge.sourceHandle || undefined,
+                      },
+                    ],
+                  });
+              }}
+            >
+              <Background />
+              <Controls
+                showInteractive={false}
+                fitViewOptions={{ maxZoom: 1, padding: 0.25 }}
+              />
+            </ReactFlow>
+          </ReactFlowProvider>
+        </div>
       </div>
     </div>
   );

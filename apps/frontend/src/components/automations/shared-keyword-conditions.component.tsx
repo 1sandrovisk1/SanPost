@@ -1,4 +1,5 @@
 'use client';
+import { AutomationContextHelp } from './shared-context-help.component';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { CommaSeparatedKeywordsInput } from './comma-separated-keywords-input.component';
 export function AutomationKeywordConditions({
@@ -32,6 +33,11 @@ export function AutomationKeywordConditions({
             : 'border-newTableBorder'
         }`}
       >
+        {requireKeywords && (
+          <p className="text-[13px] font-medium">
+            {t('automation_keyword_message')}
+          </p>
+        )}
         {!requireKeywords && (
           <label className="flex gap-2 items-center text-[13px] cursor-pointer">
             <input
@@ -55,9 +61,12 @@ export function AutomationKeywordConditions({
               onKeywordsChange={onKeywordsChange}
               onFocus={onFocus}
             />
-            <p className="text-[11px] text-newTextColor/60 mt-1 mb-2">
-              {t('wizard_keywords_comma_hint')}
-            </p>
+            <div className="flex items-center justify-between text-[11px] text-newTextColor/60 mt-1 mb-2">
+              <span>{t('wizard_keywords_comma_hint')}</span>
+              <AutomationContextHelp label={t('automation_keyword_help')}>
+                {t('automation_keyword_case_hint')}
+              </AutomationContextHelp>
+            </div>
             <div className="flex flex-wrap gap-1.5 items-center">
               <span className="text-[11px] text-newTextColor/60">
                 {t('wizard_example')}
@@ -126,7 +135,7 @@ export function AutomationKeywordConditions({
               onKeywordsChange([]);
             }}
           />
-          {t('wizard_any_word')}
+          {t('automation_any_comment')}
         </label>
       )}
     </div>

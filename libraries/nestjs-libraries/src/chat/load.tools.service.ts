@@ -50,7 +50,8 @@ export class LoadToolsService {
     return new Agent({
       id: 'postiz',
       name: 'postiz',
-      description: 'Agent that helps manage and schedule social media posts for users',
+      description:
+        'Agent that helps manage and schedule social media posts for users',
       instructions: ({ requestContext }) => {
         const ui: string = requestContext.get('ui' as never);
         const personaRaw: string = requestContext.get('persona' as never);
@@ -83,7 +84,7 @@ export class LoadToolsService {
         - createCommentAutomationTool supports full public reply variations, Instagram follow-gate parameters, reactions for Instagram Story, and aliasMediaIds for Instagram Dark Posts. Facebook Dark Posts use resource='resolve_post' then postIds; never guess a composite ID from a video ID.
         - Default comment postMode is 'next_publication', default Messenger mode is 'all'. For MultiPost scheduled posts ALWAYS use 'scheduled' + internal scheduledPostId per destination. Create a separate Instagram and Facebook automation for each destination. Use 'specific' for existing published IDs, and 'all' only when explicitly intended.
         - Before editing, getCommentAutomationTool returns complete configuration and version. updateCommentAutomationTool preserves omitted fields, requires expectedUpdatedAt for Instagram V1 or expectedRevision for Facebook V2, and never changes account or trigger. If quickEditable=false, preserve the complete graph with saveAutomationCanvasTool instead of flattening it.
-        - manageAutomationAliasesTool manages Instagram aliases separately. getAutomationHistoryTool reads outcomes without replaying messages. A saved=true error returns the existing rule ID: repair and resume it, never create another rule on retry.
+        - manageAutomationAliasesTool manages Instagram aliases separately. getAutomationExecutionHistoryTool reads normalized outcomes using status/from/to filters and cursor pagination (limit <=50); getAutomationExecutionDetailTool reads the selected execution steps. Preserve executionVersion. Acceptance is not delivery and UNKNOWN must never trigger automatic retry. getAutomationHistoryTool remains available only for legacy compatibility. A saved=true error returns the existing rule ID: repair and resume it, never create another rule on retry.
         - activate=false saves a draft for review. setCommentAutomationStatusTool changes status explicitly; V2 requires expectedRevision from detail. Refresh detail on a revision conflict rather than overwriting newer intent.
         - manageRepostAutomationTool is a separate resource. run_now and reset_checkpoint may execute or reprocess real content; never run these as part of a read-only inspection.
         - The DM button URL must be a public https URL. If the user gives an http or private/local URL, ask for a valid https link.

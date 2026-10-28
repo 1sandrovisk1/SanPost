@@ -2,6 +2,8 @@
 
 Guia completo para configurar e usar automacoes de comentarios do Instagram no Robo MultiPost.
 
+> **Editor rápido atualizado em 27/10/2026:** consulte [respostas, prévia por etapa e ações de salvar/ativar](operations/editor-rapido-automacoes.md). Resposta pública fica em **Resposta**, junto da mensagem privada. O gate de seguidores tem grupos recolhíveis; a abertura com botão continua exclusiva do fluxo de comentários com gate. Editor rápido, construtor visual e histórico compartilham barra e abas; a troca de editores V1 exige salvar o rascunho, enquanto Histórico o preserva. Repost mantém seu editor próprio.
+
 ## O que e
 
 Permite criar fluxos visuais que respondem automaticamente a comentarios em postagens do Instagram. Por exemplo:
@@ -305,7 +307,7 @@ Campos do wizard de story:
 - **A DM com o link sera enviada**: textarea livre + botao opcional via modal **Adicionar um link** (texto + URL).
 - **Outros recursos**:
   - `Responder reacoes nos stories` (default ON) — emoji reactions contam como gatilho.
-  - `Pedir para seguir antes de enviar` (default OFF) — flag persistida; a verificacao de follow sera implementada em uma feature futura.
+  - `Pedir para seguir antes de enviar` (default OFF) — verifica se a pessoa segue a conta; se não seguir, envia a mensagem configurada, sem a abertura com botão usada em comentários.
 
 ### Fluxo tecnico
 
@@ -331,7 +333,7 @@ A execucao de flow para story usa `igMessageId` como chave de idempotencia (em v
 ### Limitacoes (stories)
 
 - **One-shot** do modo "proximo story": igual ao comment, ao vincular ao primeiro story publicado, a flow passa para `specific` com aquele ID. Se quiser cobrir o proximo proximo, crie outra flow.
-- **`requireFollow`** ainda nao aplica filtro — a configuracao e salva mas a verificacao via Graph API sera adicionada depois.
+- **`requireFollow`** consulta o estado de seguidor usando a rota/token da conta. Se não seguir, envia a mensagem do gate em vez da entrega final. O resultado depende das permissões e da conexão compatível; o editor não oferece abertura com botão nem retomada por clique para Story.
 - **DM direta sem `reply_to.story`** e ignorada pelo webhook controller (fora do escopo deste gatilho — futuro gatilho `dm_direct`).
 - **Janela de 24h**: a DM so sai se o usuario tiver interagido (resposta ao story conta como interacao e abre a janela).
 
@@ -422,3 +424,7 @@ Os scopes sao selecionados no momento da geracao do token — revise o checklist
 - **"O app nao tem acesso avancado a permissao instagram_manage_messages"** → token foi gerado sem a scope de messaging, ou o app Meta ainda esta em Dev Mode. Regerar o token com a scope correta e confirmar que o app esta em Live Mode.
 - **"Token expirado"** → IG User Token nao usado por > 60 dias. Gerar novo no Meta Dashboard e re-adicionar na tela de credenciais.
 - **"Destinatario nao tem funcao no app"** → app ainda em Dev Mode. Mover para Live Mode ou adicionar o usuario como Instagram Tester temporariamente.
+
+## Histórico no ambiente da automação
+
+Consulte [histórico e detalhes de execuções](operations/historico-execucoes-automacoes.md). A tabela e o drawer são comuns às redes, mas os registros V1 não comprovam aceite da DM por etapa nem preservam o texto histórico enviado. A interface mantém essa distinção e não reconstrói mensagens a partir da configuração atual.

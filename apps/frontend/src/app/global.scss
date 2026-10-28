@@ -7,6 +7,12 @@
 @tailwind components;
 @tailwind utilities;
 
+@media (min-width: 1024px) {
+  html:has(.automation-editor--quick), html:has(.automation-workspace) {
+    overflow: hidden;
+  }
+}
+
 .automation-editor select:not([multiple]):is(:not([size]), [size='0'], [size='1']) {
   appearance: none;
   padding-right: 2.5rem;
@@ -810,4 +816,8 @@ html[dir='rtl'] [dir='ltr'] {
 .text-shadow-tags {
   text-shadow: -1px -1px 0 black, 1px -1px 0 black, -1px 1px 0 black,
     1px 1px 0 black;
+}
+
+@media (min-width: 1024px) {
+  .automation-workspace .automation-editor--quick { height: 100%; }
 }

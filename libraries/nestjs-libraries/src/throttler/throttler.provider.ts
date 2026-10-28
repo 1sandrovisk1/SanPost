@@ -22,6 +22,12 @@ export class ThrottlerBehindProxyGuard extends ThrottlerGuard {
       /^(?:\/public\/v1)?\/(?:automations|flows|flows-v2|post-management)(?:\/|$)/.test(
         route
       ) || /^\/facebook-automations(?:\/|$)/.test(route);
+    const historyRead =
+      ['GET', 'HEAD'].includes(req.method) &&
+      (/^\/public\/v1\/automations\/[^/]+\/history(?:\/[^/]+)?$/.test(route) ||
+        /^\/automation-history\/(?:instagram|shared)\/[^/]+(?:\/[^/]+)?$/.test(
+          route
+        ));
     const resource = req.query?.resource;
     const remoteRead =
       req.method === 'GET' &&
@@ -32,7 +38,11 @@ export class ThrottlerBehindProxyGuard extends ThrottlerGuard {
           )));
     // Webhooks have their own signature/authentication; this policy only covers
     // authenticated automation routes and preserves the existing posts budget.
-    if (publicPosts || (automation && (mutation || remoteRead))) {
+    if (
+      publicPosts ||
+      historyRead ||
+      (automation && (mutation || remoteRead))
+    ) {
       return super.canActivate(context);
     }
     return true;
