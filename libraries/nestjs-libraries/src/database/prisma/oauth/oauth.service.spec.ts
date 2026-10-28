@@ -99,3 +99,74 @@ describe('OAuthService.createAuthorizationCode', () => {
     );
   });
 });
+
+describe('OAuthService.exchangeCodeForToken (endurecimento)', () => {
+  const { AuthService } = jest.requireActual('@gitroom/helpers/auth/auth.service');
+  const build = (over: Record<string, jest.Mock> = {}) => {
+    const repo = {
+      getAppByClientId: jest.fn().mockResolvedValue({
+        id: 'app-1',
+        clientSecret: AuthService.fixedEncryption('segredo-certo'),
+      }),
+      findByCode: jest.fn().mockResolvedValue({
+        id: 'auth-1',
+        oauthAppId: 'app-1',
+        codeExpiresAt: new Date(Date.now() + 60_000),
+      }),
+      exchangeCodeForToken: jest.fn().mockResolvedValue({ organizationId: 'org-1' }),
+      ...over,
+    };
+    return { service: new OAuthService(repo as any), repo };
+  };
+
+  it('devolve o token sem o cliente Stripe da org (cus)', async () => {
+    const { service, repo } = build();
+
+    const result = await service.exchangeCodeForToken('codigo', 'pca_1', 'segredo-certo');
+
+    expect(result).toEqual({
+      id: 'org-1',
+      access_token: expect.stringMatching(/^pos_/),
+      token_type: 'bearer',
+    });
+    expect(repo.exchangeCodeForToken).toHaveBeenCalledWith(
+      'auth-1',
+      expect.any(String),
+      AuthService.fixedEncryption('codigo')
+    );
+  });
+
+  it('segredo errado (de qualquer tamanho) responde invalid_client', async () => {
+    const { service, repo } = build();
+
+    for (const secret of ['segredo-errad', 'x', '']) {
+      await expect(
+        service.exchangeCodeForToken('codigo', 'pca_1', secret)
+      ).rejects.toMatchObject({ status: 401 });
+    }
+    expect(repo.findByCode).not.toHaveBeenCalled();
+  });
+
+  it('codigo ja trocado (troca concorrente) responde invalid_grant', async () => {
+    const { service } = build({
+      exchangeCodeForToken: jest
+        .fn()
+        .mockRejectedValue(Object.assign(new Error('not found'), { code: 'P2025' })),
+    });
+
+    await expect(
+      service.exchangeCodeForToken('codigo', 'pca_1', 'segredo-certo')
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it('erro de banco na troca nao vira invalid_grant', async () => {
+    const outage = new Error('connection refused');
+    const { service } = build({
+      exchangeCodeForToken: jest.fn().mockRejectedValue(outage),
+    });
+
+    await expect(
+      service.exchangeCodeForToken('codigo', 'pca_1', 'segredo-certo')
+    ).rejects.toBe(outage);
+  });
+});

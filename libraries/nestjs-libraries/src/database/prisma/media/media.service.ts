@@ -358,7 +358,9 @@ export class MediaService {
     return true;
   }
 
-  async generateVideo(org: Organization, body: VideoDto) {
+  // profileId: o video entra na biblioteca do perfil (chave de perfil ou
+  // membro), nao na da org inteira
+  async generateVideo(org: Organization, body: VideoDto, profileId?: string) {
     const totalCredits = await this._subscriptionService.checkCredits(
       org,
       'ai_videos'
@@ -380,9 +382,7 @@ export class MediaService {
       throw new HttpException('This video is not available in trial mode', 406);
     }
 
-    console.log(body.customParams);
     await video.instance.processAndValidate(body.customParams);
-    console.log('no err');
 
     return await this._subscriptionService.useCredit(
       org,
@@ -394,7 +394,13 @@ export class MediaService {
         );
 
         const file = await this.storage.uploadSimple(loadedData);
-        return this.saveFile(org.id, file.split('/').pop(), file);
+        return this.saveFile(
+          org.id,
+          file.split('/').pop(),
+          file,
+          undefined,
+          profileId
+        );
       }
     );
   }

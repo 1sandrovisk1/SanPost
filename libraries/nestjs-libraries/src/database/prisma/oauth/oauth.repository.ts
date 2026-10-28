@@ -167,16 +167,17 @@ export class OAuthRepository {
     });
   }
 
-  exchangeCodeForToken(id: string, encryptedToken: string) {
+  // o codigo e de uso unico: so troca se ainda for o mesmo (duas trocas
+  // concorrentes nao geram dois tokens); sem match, o Prisma lanca P2025
+  exchangeCodeForToken(
+    id: string,
+    encryptedToken: string,
+    encryptedCode: string
+  ) {
     return this._oauthAuth.model.oAuthAuthorization.update({
-      where: { id },
+      where: { id, authorizationCode: encryptedCode, revokedAt: null },
       select: {
         organizationId: true,
-        organization: {
-          select: {
-            paymentId: true,
-          }
-        }
       },
       data: {
         accessToken: encryptedToken,

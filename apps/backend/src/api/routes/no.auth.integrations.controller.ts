@@ -10,7 +10,10 @@ import {
   Res,
   UseFilters,
   Logger,
+  UsePipes,
+  ValidationPipe,
 } from '@nestjs/common';
+import { ProviderPageDto } from '@gitroom/nestjs-libraries/dtos/integrations/provider.page.dto';
 import { summarizeError } from '@gitroom/nestjs-libraries/services/error.summary';
 import { Response } from 'express';
 import { ioRedis } from '@gitroom/nestjs-libraries/redis/redis.service';
@@ -361,7 +364,12 @@ export class NoAuthIntegrationsController {
   }
 
   @Post('/public/provider/:id/connect')
-  async saveProviderPage(@Param('id') id: string, @Body() body: any) {
+  // rota sem login: so os campos da escolha da pagina chegam ao provider
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
+  async saveProviderPage(
+    @Param('id') id: string,
+    @Body() body: ProviderPageDto
+  ) {
     if (!body.state) {
       // o state vale 1 h e e apagado depois de usado (ex.: recarregar a pagina)
       throw new HttpException(
@@ -377,7 +385,9 @@ export class NoAuthIntegrationsController {
 
     const org = await this._organizationService.getOrgById(organization);
 
-    return this._integrationService.saveProviderPage(org.id, id, body);
+    const { state: _state, ...page } = body;
+    void _state;
+    return this._integrationService.saveProviderPage(org.id, id, page);
   }
 
   @Get('/zernio/callback')

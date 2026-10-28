@@ -30,7 +30,8 @@ export class ProfileRepository {
     private _profileMember: PrismaRepository<'profileMember'>,
     private _profilePersona: PrismaRepository<'profilePersona'>,
     private _userOrganization: PrismaRepository<'userOrganization'>,
-    private _tx: PrismaTransaction
+    private _tx: PrismaTransaction,
+    private _oauthAuth: PrismaRepository<'oAuthAuthorization'>
   ) {}
 
   getProfilesByOrgId(orgId: string) {
@@ -230,7 +231,13 @@ export class ProfileRepository {
     });
   }
 
-  removeMember(profileId: string, userId: string) {
+  async removeMember(profileId: string, userId: string) {
+    // tokens de app OAuth que ele aprovou para este perfil deixam de valer (e
+    // nao voltam se ele for adicionado de novo)
+    await this._oauthAuth.model.oAuthAuthorization.updateMany({
+      where: { userId, profileId, revokedAt: null },
+      data: { revokedAt: new Date(), accessToken: null, authorizationCode: null },
+    });
     return this._profileMember.model.profileMember.delete({
       where: {
         profileId_userId: { profileId, userId },

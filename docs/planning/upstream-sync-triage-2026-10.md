@@ -808,6 +808,38 @@ em post existente; textos de exclusão). Sem backfill: posts antigos abrem
 sozinhos. Observação aceita: o canal aberto movido para o passado segue o
 comportamento antigo (pergunta só atualizar/republicar).
 
+### PR de segurança 5 — follow-ups pós-RC 2 (28/10/2026)
+
+Branch `fix/security-followups-5-2026-10`. Resolvidos:
+- **autopost (HIGH pré-existente):** o item do feed vai ao LLM e ao prompt do
+  DALL-E como dado, envolto em `<source>` (`ai/untrusted.source.ts`:
+  normalização NFKC, sem caracteres de controle, teto de 8000 caracteres,
+  `</source>` do feed neutralizado) com a regra de conteúdo não confiável;
+- **app OAuth:** código de uso único sob troca concorrente (`updateMany`
+  condicionado ao código, só P2025 vira `invalid_grant`), segredo comparado com
+  `timingSafeEqual`, resposta sem `cus`, limite de tentativas no
+  `/oauth/token` por `client_id` (atrás do nginx o IP é o mesmo para todos) e
+  revogação dos tokens aprovados ao remover o membro da org ou do perfil;
+- **escopo de perfil:** `GET /posts/find-slot/:id` confere o canal, vídeo
+  gerado entra na biblioteca do perfil (painel e API pública) e reconectar
+  (`?refresh=`) canal de outro perfil, mesmo desativado, responde 403 no
+  painel (membro USER) e na API pública (chave de perfil);
+- **conectar página (`/provider/:id/connect`):** `ProviderPageDto` com
+  whitelist e ids sem caminho (`page`/`pageId` só `[A-Za-z0-9_-]`), e membro
+  USER só no próprio canal;
+- **Sentry:** logs, eventos, breadcrumbs e spans passam por redação recursiva
+  (chaves e cabeçalhos secretos, URLs com `access_token`, JSON escapado);
+- **throttle:** `POST /autopost/send` com orçamento próprio.
+
+Revisões: `code-reviewer` e `security-auditor` (2 HIGH introduzidos e
+corrigidos: o balde do `/oauth/token` por IP virava um balde global atrás do
+proxy, e a redação do Sentry não alcançava objetos logados). Continuam
+abertos: autopost lê `OPENAI_API_KEY` direto do `process.env` (fora do
+`AiProviderResolverService`); créditos de vídeo legados contados por org;
+`getOrgByOAuthToken` ignora soft-delete de usuário/org; login Google com
+`state` constante e `redirect_uri` do cliente; Sentry do frontend sem redação;
+e o restante da lista do PR de segurança 4 que não entrou aqui.
+
 ## Apêndice — classificação 1 por 1 (171 PRs + 74 commits diretos)
 
 Legenda: **P0** segurança (nesta branch) · **ADOPT** cherry-pick/porte leve ·

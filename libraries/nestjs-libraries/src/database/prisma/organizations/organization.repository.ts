@@ -17,7 +17,8 @@ export class OrganizationRepository {
     private _organization: PrismaRepository<'organization'>,
     private _userOrg: PrismaRepository<'userOrganization'>,
     private _user: PrismaRepository<'user'>,
-    private _profileMember: PrismaRepository<'profileMember'>
+    private _profileMember: PrismaRepository<'profileMember'>,
+    private _oauthAuth: PrismaRepository<'oAuthAuthorization'>
   ) {}
 
   createMaxUser(id: string, name: string, saasName: string, email: string) {
@@ -567,6 +568,12 @@ export class OrganizationRepository {
         userId,
         profile: { organizationId: orgId },
       },
+    });
+    // apps OAuth que ele aprovou nesta org deixam de valer (e nao voltam se
+    // ele for reconvidado)
+    await this._oauthAuth.model.oAuthAuthorization.updateMany({
+      where: { userId, organizationId: orgId, revokedAt: null },
+      data: { revokedAt: new Date(), accessToken: null, authorizationCode: null },
     });
     return this._userOrg.model.userOrganization.delete({
       where: {

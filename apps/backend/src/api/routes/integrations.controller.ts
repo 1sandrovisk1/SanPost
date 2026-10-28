@@ -3,11 +3,14 @@ import {
   Controller,
   Delete,
   Get,
+  HttpException,
   Param,
   Post,
   Put,
   Query,
   Logger,
+  UsePipes,
+  ValidationPipe,
 } from '@nestjs/common';
 import { summarizeError } from '@gitroom/nestjs-libraries/services/error.summary';
 import { ioRedis } from '@gitroom/nestjs-libraries/redis/redis.service';
@@ -25,6 +28,7 @@ import { PostsService } from '@gitroom/nestjs-libraries/database/prisma/posts/po
 import { IntegrationTimeDto } from '@gitroom/nestjs-libraries/dtos/integrations/integration.time.dto';
 import { PlugDto } from '@gitroom/nestjs-libraries/dtos/plugs/plug.dto';
 import { CustomerNameDto } from '@gitroom/nestjs-libraries/dtos/integrations/customer.name.dto';
+import { ProviderPageDto } from '@gitroom/nestjs-libraries/dtos/integrations/provider.page.dto';
 import { IntegrationNameDto } from '@gitroom/nestjs-libraries/dtos/integrations/integration.name.dto';
 import { RefreshToken } from '@gitroom/nestjs-libraries/integrations/social.abstract';
 
@@ -59,12 +63,22 @@ export class IntegrationsController {
 
   @Post('/provider/:id/connect')
   @CheckPolicies([AuthorizationActions.Create, Sections.CHANNEL])
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
   async saveProviderPage(
     @GetOrgFromRequest() org: Organization,
+    @GetProfileFromRequest() profile: Profile | null,
     @Param('id') id: string,
-    @Body() body: any
+    @Body() body: ProviderPageDto
   ) {
-    return this._integrationService.saveProviderPage(org.id, id, body);
+    await this._integrationService.validateIntegrationProfile(
+      org.id,
+      id,
+      profile?.id,
+      { requireProfile: getOrgRole(org) === 'USER' }
+    );
+    const { state: _state, ...page } = body;
+    void _state;
+    return this._integrationService.saveProviderPage(org.id, id, page);
   }
 
   @Get('/:identifier/internal-plugs')
@@ -296,6 +310,22 @@ export class IntegrationsController {
 
     if (integrationProvider.externalUrl && !externalUrl && !isZernioProvider) {
       throw new Error('Missing external url');
+    }
+
+    // membro USER so reconecta canal do proprio perfil (ou legado sem perfil),
+    // inclusive desativado — igual a API publica
+    if (refresh && getOrgRole(org) === 'USER') {
+      const existing =
+        await this._integrationService.getChannelProfileByInternalId(
+          org.id,
+          refresh
+        );
+      if (existing?.profileId && existing.profileId !== profile?.id) {
+        throw new HttpException(
+          { msg: 'Channel belongs to another profile' },
+          403
+        );
+      }
     }
 
     try {

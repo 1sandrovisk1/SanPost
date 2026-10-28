@@ -640,6 +640,42 @@ describe('IntegrationService', () => {
     });
   });
 
+  describe('getChannelProfileByInternalId (dono do canal para reconectar)', () => {
+    it('devolve so o perfil do canal da org, inclusive desativado', async () => {
+      const repo = {
+        findActiveByOrgAndInternalIdWithProfile: jest.fn().mockResolvedValue({
+          id: 'int-1',
+          disabled: true,
+          token: 'segredo',
+          profileId: 'prof-2',
+        }),
+      };
+      await expect(
+        makeService(repo).getChannelProfileByInternalId('org-1', 'acc-1')
+      ).resolves.toEqual({ profileId: 'prof-2' });
+      expect(repo.findActiveByOrgAndInternalIdWithProfile).toHaveBeenCalledWith(
+        'org-1',
+        'acc-1'
+      );
+    });
+
+    it('canal sem perfil vira null e canal inexistente devolve null', async () => {
+      const repo = {
+        findActiveByOrgAndInternalIdWithProfile: jest
+          .fn()
+          .mockResolvedValueOnce({ id: 'int-1' })
+          .mockResolvedValueOnce(null),
+      };
+      const service = makeService(repo);
+      await expect(
+        service.getChannelProfileByInternalId('org-1', 'acc-1')
+      ).resolves.toEqual({ profileId: null });
+      await expect(
+        service.getChannelProfileByInternalId('org-1', 'acc-2')
+      ).resolves.toBeNull();
+    });
+  });
+
   describe('validateIntegrationProfile (status HTTP)', () => {
     it('integracao de outro perfil responde 403 e inexistente 404 (nao 500)', async () => {
       const repo = {

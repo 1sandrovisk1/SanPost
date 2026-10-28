@@ -698,3 +698,59 @@ describe('PublicIntegrationsController.getMe', () => {
     expect(users.getPersonal).not.toHaveBeenCalled();
   });
 });
+
+// Escopo de perfil: video gerado e reconexao de canal pela API publica.
+describe('PublicIntegrationsController - video e reconexao por perfil', () => {
+  const media = { generateVideo: jest.fn().mockResolvedValue({ id: 'm-1' }) };
+  const integrationService = {
+    getChannelProfileByInternalId: jest.fn(),
+  };
+  const manager = {
+    getAllowedSocialsIntegrations: jest.fn().mockReturnValue(['x']),
+    getSocialIntegration: jest.fn().mockReturnValue({
+      generateAuthUrl: jest.fn().mockResolvedValue({ codeVerifier: 'v', state: 's', url: 'https://x.com/auth' }),
+    }),
+  };
+  const build = () =>
+    new PublicIntegrationsController(
+      integrationService as any,
+      {} as any,
+      media as any,
+      {} as any,
+      manager as any,
+      {} as any,
+      {} as any,
+      {} as any
+    );
+
+  it('video gerado com chave de perfil vai para a biblioteca do perfil', async () => {
+    await build().generateVideo({ id: 'org-1' } as any, 'prof-1', { type: 't' } as any);
+    expect(media.generateVideo).toHaveBeenCalledWith({ id: 'org-1' }, { type: 't' }, 'prof-1');
+  });
+
+  it('chave de perfil nao reconecta canal de outro perfil', async () => {
+    // lookup inclui canal desativado
+    integrationService.getChannelProfileByInternalId.mockResolvedValue({
+      profileId: 'prof-OUTRO',
+    });
+
+    await expect(
+      build().getIntegrationUrl('x', 'acc-1', { id: 'org-1' } as any, 'prof-1')
+    ).rejects.toMatchObject({ status: 403 });
+    expect(integrationService.getChannelProfileByInternalId).toHaveBeenCalledWith(
+      'org-1',
+      'acc-1'
+    );
+  });
+
+  it('canal do proprio perfil (ou sem perfil) reconecta normalmente', async () => {
+    integrationService.getChannelProfileByInternalId.mockResolvedValue({
+      profileId: null,
+    });
+
+    await expect(
+      build().getIntegrationUrl('x', 'acc-1', { id: 'org-1' } as any, 'prof-1')
+    ).resolves.toEqual({ url: 'https://x.com/auth' });
+  });
+});
+
