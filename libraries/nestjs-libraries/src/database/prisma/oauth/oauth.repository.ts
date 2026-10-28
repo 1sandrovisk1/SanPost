@@ -5,7 +5,9 @@ import { PrismaRepository } from '@gitroom/nestjs-libraries/database/prisma/pris
 export class OAuthRepository {
   constructor(
     private _oauthApp: PrismaRepository<'oAuthApp'>,
-    private _oauthAuth: PrismaRepository<'oAuthAuthorization'>
+    private _oauthAuth: PrismaRepository<'oAuthAuthorization'>,
+    private _userOrganization: PrismaRepository<'userOrganization'>,
+    private _profileMember: PrismaRepository<'profileMember'>
   ) {}
 
   getAppByOrgId(orgId: string) {
@@ -126,6 +128,7 @@ export class OAuthRepository {
     oauthAppId: string;
     userId: string;
     organizationId: string;
+    profileId: string | null;
     authorizationCode: string;
     codeExpiresAt: Date;
   }) {
@@ -141,10 +144,12 @@ export class OAuthRepository {
         oauthAppId: data.oauthAppId,
         userId: data.userId,
         organizationId: data.organizationId,
+        profileId: data.profileId,
         authorizationCode: data.authorizationCode,
         codeExpiresAt: data.codeExpiresAt,
       },
       update: {
+        profileId: data.profileId,
         authorizationCode: data.authorizationCode,
         codeExpiresAt: data.codeExpiresAt,
         accessToken: null,
@@ -204,6 +209,32 @@ export class OAuthRepository {
         },
       },
     });
+  }
+
+  // acesso atual de quem aprovou o app: papel na org e, para token de perfil,
+  // o papel no perfil (perfil apagado ou de outra org nao conta)
+  async getApproverAccess(
+    userId: string,
+    organizationId: string,
+    profileId: string | null
+  ) {
+    const [membership, profileMember] = await Promise.all([
+      this._userOrganization.model.userOrganization.findUnique({
+        where: { userId_organizationId: { userId, organizationId } },
+        select: { role: true, disabled: true },
+      }),
+      profileId
+        ? this._profileMember.model.profileMember.findFirst({
+            where: {
+              profileId,
+              userId,
+              profile: { organizationId, deletedAt: null },
+            },
+            select: { role: true },
+          })
+        : null,
+    ]);
+    return { membership, profileMember };
   }
 
   getApprovedApps(userId: string) {

@@ -119,4 +119,32 @@ describe('PublicAuthMiddleware', () => {
     expect(req.org.id).toBe('org-1');
     expect(next).toHaveBeenCalled();
   });
+
+  it('token OAuth de membro USER vale so no perfil dele (como chave de perfil)', async () => {
+    oauthService.getOrgByOAuthToken.mockResolvedValue({
+      userId: 'user-1',
+      profileId: 'prof-1',
+      organization: { id: 'org-1', subscription: null as any },
+    });
+    const req: any = { headers: { authorization: 'pos_token' } };
+    const next = jest.fn();
+
+    await middleware.use(req, makeRes(), next);
+
+    expect(req.publicApiProfileId).toBe('prof-1');
+    expect(next).toHaveBeenCalled();
+  });
+
+  it('token OAuth de admin continua sem perfil (org inteira)', async () => {
+    oauthService.getOrgByOAuthToken.mockResolvedValue({
+      userId: 'user-1',
+      profileId: null,
+      organization: { id: 'org-1', subscription: null as any },
+    });
+    const req: any = { headers: { authorization: 'pos_token' } };
+
+    await middleware.use(req, makeRes(), jest.fn());
+
+    expect(req.publicApiProfileId).toBeUndefined();
+  });
 });

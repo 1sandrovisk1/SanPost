@@ -80,10 +80,13 @@ export class OAuthService {
     return app;
   }
 
+  // profileId: perfil ativo de quem aprova quando e membro USER da org (o
+  // token fica preso a ele); null para ADMIN/SUPERADMIN (org inteira)
   async createAuthorizationCode(
     oauthAppId: string,
     userId: string,
-    organizationId: string
+    organizationId: string,
+    profileId: string | null
   ) {
     const code = makeSecureId(32);
     const encryptedCode = AuthService.fixedEncryption(code);
@@ -93,6 +96,7 @@ export class OAuthService {
       oauthAppId,
       userId,
       organizationId,
+      profileId,
       authorizationCode: encryptedCode,
       codeExpiresAt,
     });
@@ -154,9 +158,39 @@ export class OAuthService {
     };
   }
 
+  // O token vale o que quem aprovou pode hoje: sai da org (ou e desativado)
+  // => token morto; membro USER so com token preso a um perfil em que ainda
+  // e membro com escrita. Token org-wide antigo aprovado por USER (antes do
+  // perfil existir no token) deixa de valer e precisa ser reaprovado.
   async getOrgByOAuthToken(token: string) {
     const encrypted = AuthService.fixedEncryption(token);
-    return this._oauthRepository.findByAccessToken(encrypted);
+    const authorization = await this._oauthRepository.findByAccessToken(
+      encrypted
+    );
+    if (!authorization) {
+      return null;
+    }
+
+    const { membership, profileMember } =
+      await this._oauthRepository.getApproverAccess(
+        authorization.userId,
+        authorization.organizationId,
+        authorization.profileId
+      );
+    if (!membership || membership.disabled) {
+      return null;
+    }
+
+    if (
+      membership.role === 'USER' &&
+      (!authorization.profileId ||
+        !profileMember ||
+        profileMember.role === 'VIEWER')
+    ) {
+      return null;
+    }
+
+    return authorization;
   }
 
   async getApprovedApps(userId: string) {

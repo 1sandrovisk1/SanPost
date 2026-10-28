@@ -742,11 +742,29 @@ CRITICAL; MEDIUM aplicados: `getReleaseURL`/`updateReleaseId` também
 conferem o perfil do canal (post legado sem perfil) e falhas entram no cache
 negativo de 5 min. Pré-existentes registrados como follow-up: **HIGH** —
 qualquer membro da org aprova um app OAuth e o token `pos_` vira SUPERADMIN
-da org sem perfil (exigir ADMIN para aprovar ou levar papel/perfil de quem
-aprovou para o token); `/oauth/token` sem throttle e com comparação de
+da org sem perfil (**corrigido em `fix/oauth-app-role-scope-2026-10`**: membro
+USER aprova só para o perfil ativo e o token é revalidado a cada uso); `/oauth/token` sem throttle e com comparação de
 segredo não constante (`timingSafeEqual`, hash de mão única); resposta do
 OAuth com o `paymentId` da org; nome customizado do canal chega ao agente
 MCP como texto livre — tratar nomes como dado no prompt).
+
+### PR de segurança — app OAuth pelo papel de quem aprova (28/10/2026)
+
+O membro USER aprova o app só para o perfil ativo (`OAuthAuthorization.profileId`,
+migração `20261028_oauth_authorization_profile`). O token vira uma chave de
+perfil na API pública e no MCP. A cada uso, `getOrgByOAuthToken` confere se quem
+aprovou ainda é membro ativo da org e, se for USER, se ainda tem escrita no
+perfil. Tokens org-wide antigos aprovados por USER deixam de valer. A tela de
+consentimento avisa o escopo (perfil ou org inteira). `security-auditor`: sem
+CRITICAL/HIGH. MEDIUM aceitos ou registrados:
+- o token é suspenso, não revogado, quando o acesso cai, e volta a valer se o
+  acesso voltar — revogar ao remover/rebaixar o membro é uma melhoria;
+- a resposta do `/oauth/token` devolve `cus` (`paymentId` da org) ao app, como
+  no upstream;
+- `POST /public/v1/generate-video` e `/video/function` não leem o perfil da
+  chave (vale também para chaves de perfil);
+- o código de autorização não é de uso único sob troca concorrente, e o
+  `code_verifier` não é validado.
 
 ## Apêndice — classificação 1 por 1 (171 PRs + 74 commits diretos)
 

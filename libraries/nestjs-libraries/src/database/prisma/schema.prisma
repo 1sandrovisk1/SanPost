@@ -1029,6 +1029,9 @@ model OAuthAuthorization {
   oauthAppId        String
   userId            String
   organizationId    String
+  // perfil do token quando quem aprovou e membro USER da org; null = org
+  // inteira (aprovado por ADMIN/SUPERADMIN)
+  profileId         String?
   accessToken       String?
   authorizationCode String?
   codeExpiresAt     DateTime?
@@ -1040,6 +1043,7 @@ model OAuthAuthorization {
   organization      Organization @relation(fields: [organizationId], references: [id])
 
   @@unique([oauthAppId, userId, organizationId])
+  @@index([profileId])
   @@index([accessToken])
   @@index([authorizationCode])
   @@index([oauthAppId])
