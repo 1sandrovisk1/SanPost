@@ -499,3 +499,61 @@ describe('PostsRepository - escopo do grupo enviado pelo cliente', () => {
     });
   });
 });
+
+// Porte do upstream #2087: os workflows passam o id do post na plataforma, nao
+// o id do banco; sem o fallback pelo releaseId o webhook saia sempre vazio.
+describe('PostsRepository.getPostByForWebhookId', () => {
+  const build = () => {
+    const post = createPrismaRepositoryMock('post');
+    const repo = new PostsRepository(post as any, {} as any, {} as any, {} as any, {} as any, {} as any);
+    return { repo, findMany: post.model.post.findMany as jest.Mock };
+  };
+
+  it('devolve o post pelo id do banco sem consultar o releaseId', async () => {
+    const { repo, findMany } = build();
+    findMany.mockResolvedValueOnce([{ id: 'post-1' }]);
+
+    await expect(repo.getPostByForWebhookId('post-1', 'int-1')).resolves.toEqual([{ id: 'post-1' }]);
+
+    expect(findMany).toHaveBeenCalledTimes(1);
+    expect(findMany.mock.calls[0][0].where).toEqual({ id: 'post-1', deletedAt: null, parentPostId: null });
+  });
+
+  it('cai no releaseId restrito ao canal quando o id e o da plataforma', async () => {
+    const { repo, findMany } = build();
+    findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'post-1', releaseURL: 'https://x.com/1' }]);
+
+    await expect(repo.getPostByForWebhookId('1789', 'int-1')).resolves.toEqual([
+      { id: 'post-1', releaseURL: 'https://x.com/1' },
+    ]);
+
+    const fallback = findMany.mock.calls[1][0];
+    expect(fallback.where).toEqual({
+      releaseId: '1789',
+      integrationId: 'int-1',
+      deletedAt: null,
+      parentPostId: null,
+    });
+    expect(fallback.orderBy).toEqual({ updatedAt: 'desc' });
+    expect(fallback.take).toBe(1);
+    // mesmo payload nas duas consultas: nada de token/settings do canal no webhook
+    expect(fallback.select).toEqual(findMany.mock.calls[0][0].select);
+    expect(fallback.select.integration.select).toEqual({
+      id: true,
+      name: true,
+      providerIdentifier: true,
+      picture: true,
+      type: true,
+    });
+  });
+
+  it('sem post no banco nem pelo releaseId devolve lista vazia', async () => {
+    const { repo, findMany } = build();
+    findMany.mockResolvedValue([]);
+
+    await expect(repo.getPostByForWebhookId('nao-existe', 'int-1')).resolves.toEqual([]);
+    expect(findMany).toHaveBeenCalledTimes(2);
+  });
+});

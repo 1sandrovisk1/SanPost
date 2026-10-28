@@ -1,7 +1,10 @@
-import axios, { AxiosInstance } from 'axios';
+import axios, { AxiosInstance, CanceledError } from 'axios';
+import { createServer, Server } from 'http';
+import { AddressInfo } from 'net';
 import {
   BadBody,
   heartbeatEndpoint,
+  MEDIA_READ_TIMEOUT,
   RefreshToken,
   SocialAbstract,
   truncateForTemporal,
@@ -145,6 +148,7 @@ describe('SocialAbstract SSRF', () => {
       url: 'https://cdn.example/file',
       method: 'GET',
       responseType: 'arraybuffer',
+      signal: expect.any(AbortSignal),
     });
   });
 
@@ -291,6 +295,123 @@ describe('SocialAbstract.localMediaPath / readOrFetch (confinamento no sink)', (
     const provider = new SinkProvider() as any;
     expect(() => provider.local(join(base, 'ok.png'))).toThrow(BadBody);
     process.env.UPLOAD_DIRECTORY = base;
+  });
+});
+
+// Porte do upstream #2193: leitura de midia que trava depois dos headers nao
+// pode segurar o slot da activity para sempre.
+describe('SocialAbstract.readOrFetch (leitura travada)', () => {
+  class StallProvider extends SocialAbstract {
+    identifier = 'stall-test';
+    read(path: string) {
+      return this.readOrFetch(path);
+    }
+  }
+
+  const mockAxios = (provider: StallProvider, safeAxios: jest.Mock) =>
+    jest
+      .spyOn(provider as any, 'getSsrfSafeAxios')
+      .mockReturnValue(safeAxios as unknown as AxiosInstance);
+
+  it('le de novo uma vez quando a primeira leitura estoura o prazo', async () => {
+    const provider = new StallProvider();
+    const safeAxios = jest
+      .fn()
+      .mockRejectedValueOnce(new CanceledError('canceled'))
+      .mockResolvedValueOnce({ data: Buffer.from('img') });
+    mockAxios(provider, safeAxios);
+
+    await expect(provider.read('https://cdn.example/a.png')).resolves.toEqual(
+      Buffer.from('img')
+    );
+    expect(safeAxios).toHaveBeenCalledTimes(2);
+  });
+
+  it('desiste com BadBody depois da segunda leitura travada, sem vazar a query', async () => {
+    const provider = new StallProvider();
+    const timeout = Object.assign(new Error('aborted'), {
+      name: 'TimeoutError',
+    });
+    const safeAxios = jest.fn().mockRejectedValue(timeout);
+    mockAxios(provider, safeAxios);
+
+    const err = await provider
+      .read('https://cdn.example/a.png?X-Amz-Signature=segredo')
+      .catch((e) => e);
+
+    expect(err).toBeInstanceOf(BadBody);
+    expect(err.message).toBe(
+      'Não foi possível ler a mídia deste post, por isso ele não foi publicado'
+    );
+    expect(err.nonRetryable).toBe(true);
+    const details = JSON.parse((err.details[0] as { json: string }).json);
+    expect(details).toEqual({
+      timeoutMs: MEDIA_READ_TIMEOUT,
+      path: 'https://cdn.example/a.png',
+    });
+    expect(safeAxios).toHaveBeenCalledTimes(2);
+  });
+
+  it('erro que nao e prazo estourado segue sem nova leitura', async () => {
+    const provider = new StallProvider();
+    const notFound = Object.assign(new Error('Request failed with status 404'), {
+      code: 'ERR_BAD_REQUEST',
+    });
+    const safeAxios = jest.fn().mockRejectedValue(notFound);
+    mockAxios(provider, safeAxios);
+
+    await expect(provider.read('https://cdn.example/a.png')).rejects.toBe(
+      notFound
+    );
+    expect(safeAxios).toHaveBeenCalledTimes(1);
+  });
+
+  describe('servidor que manda os headers e para no meio do corpo', () => {
+    let server: Server;
+    let url: string;
+    let requests = 0;
+    const realTimeout = AbortSignal.timeout.bind(AbortSignal);
+
+    beforeAll(async () => {
+      server = createServer((req, res) => {
+        requests++;
+        res.writeHead(200, {
+          'content-type': 'image/png',
+          'content-length': '1000',
+        });
+        // primeiro pedaco e depois silencio: a conexao fica aberta
+        res.write(Buffer.alloc(10));
+      });
+      await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+      url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/stall.png`;
+    });
+
+    afterAll(async () => {
+      server.closeAllConnections();
+      await new Promise((resolve) => server.close(resolve));
+    });
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('aborta pelo prazo, tenta de novo e falha com BadBody', async () => {
+      // prazo curto so no teste; o codigo usa MEDIA_READ_TIMEOUT
+      const timeoutSpy = jest
+        .spyOn(AbortSignal, 'timeout')
+        .mockImplementation(() => realTimeout(50));
+      const provider = new StallProvider();
+      // servidor local: o axios pinado recusaria 127.0.0.1 (SSRF)
+      jest
+        .spyOn(provider as any, 'getSsrfSafeAxios')
+        .mockReturnValue(axios as AxiosInstance);
+      requests = 0;
+
+      await expect(provider.read(url)).rejects.toBeInstanceOf(BadBody);
+
+      expect(requests).toBe(2);
+      expect(timeoutSpy).toHaveBeenCalledWith(MEDIA_READ_TIMEOUT);
+    });
   });
 });
 

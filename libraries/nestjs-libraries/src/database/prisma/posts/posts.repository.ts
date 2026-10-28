@@ -1110,29 +1110,52 @@ export class PostsRepository {
     });
   }
 
-  async getPostByForWebhookId(postId: string) {
-    return this._post.model.post.findMany({
+  async getPostByForWebhookId(postId: string, integrationId: string) {
+    const select = {
+      id: true,
+      content: true,
+      publishDate: true,
+      releaseURL: true,
+      state: true,
+      integration: {
+        select: {
+          id: true,
+          name: true,
+          providerIdentifier: true,
+          picture: true,
+          type: true,
+        },
+      },
+    };
+
+    const posts = await this._post.model.post.findMany({
       where: {
         id: postId,
         deletedAt: null,
         parentPostId: null,
       },
-      select: {
-        id: true,
-        content: true,
-        publishDate: true,
-        releaseURL: true,
-        state: true,
-        integration: {
-          select: {
-            id: true,
-            name: true,
-            providerIdentifier: true,
-            picture: true,
-            type: true,
-          },
-        },
+      select,
+    });
+
+    if (posts.length) {
+      return posts;
+    }
+
+    // Os workflows de post (V101/V102/V112) passam o id do post NA PLATAFORMA,
+    // que o updatePost ja gravou como releaseId antes do webhook: sem este
+    // fallback o payload do webhook saia sempre vazio (upstream #2087).
+    return this._post.model.post.findMany({
+      where: {
+        releaseId: postId,
+        integrationId,
+        deletedAt: null,
+        parentPostId: null,
       },
+      orderBy: {
+        updatedAt: 'desc' as const,
+      },
+      take: 1,
+      select,
     });
   }
 

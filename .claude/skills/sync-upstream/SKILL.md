@@ -340,6 +340,26 @@ lista durante o proprio sync e registre no CHANGELOG.
   a recusa de video e client-side (`checkValidity` com `t`), nao no
   `SocialAbstract.checkValidity` do upstream.
 
+### Epico Temporal (2026-10-28) — divergencias deliberadas
+
+- **`apps/backend/src/services/auth/auth.service.ts`** — o upstream (`1f5f24e5`)
+  manda ativacao/reenvio/redefinicao de senha por `sendEmailSync` dentro da
+  requisicao HTTP. O fork mantem `EmailService.sendEmail` (Temporal, fila
+  `email`) com `lang`: SMTP bloqueado travaria o cadastro por minutos
+  (timeouts padrao do nodemailer). Nao aceitar a troca nem a remocao do
+  `NotificationService` do construtor.
+- **`libraries/nestjs-libraries/src/temporal/temporal.module.ts`** — workers de
+  e-mail entram em `buildTemporalWorkers` (funcao testavel do fork), nao no
+  `TemporalModule.register` inline do upstream.
+- **`libraries/nestjs-libraries/src/integrations/social.abstract.ts`** — o fork
+  nao tem `mediaChunk`/`mediaSize` (leitura por faixas); o prazo do #2193 vive
+  so no `readOrFetch`, que mantem `localMediaPath` e devolve `Buffer.from`.
+  Mensagem do `BadBody` em pt-BR e caminho via `heartbeatEndpoint` (sem
+  `stripQuery`).
+- **`apps/orchestrator/src/workflows/send.email.workflow.ts`** — `lang` vai no
+  payload do `sendSingleEmailWorkflow` e na activity; `sendEmailWorkflow`
+  fica intacto enquanto houver `send_email` aberto.
+
 ## Regras Importantes
 
 - NUNCA executar `git push --force` em nenhuma branch

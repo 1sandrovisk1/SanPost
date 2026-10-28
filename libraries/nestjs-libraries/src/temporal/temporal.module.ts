@@ -2,6 +2,7 @@ import type { Type } from '@nestjs/common';
 import { TemporalModule } from 'nestjs-temporal-core';
 import type { WorkerDefinition } from 'nestjs-temporal-core';
 import { socialIntegrationList } from '@gitroom/nestjs-libraries/integrations/integration.manager';
+import { emailQueues } from '@gitroom/nestjs-libraries/temporal/email.queues';
 
 type TemporalWorkerSource = {
   identifier: string;
@@ -50,7 +51,10 @@ export const buildTemporalWorkers = ({
 
   const divider = parseConcurrencyDivider(concurrencyDivider);
 
-  return [{ identifier: 'main', maxConcurrentJob: undefined }, ...integrations]
+  const providerWorkers: TemporalWorkerDefinition[] = [
+    { identifier: 'main', maxConcurrentJob: undefined },
+    ...integrations,
+  ]
     .filter(({ identifier }) => !identifier.includes('-'))
     .map((integration) => ({
       integration,
@@ -80,6 +84,25 @@ export const buildTemporalWorkers = ({
         },
       };
     });
+
+  // Workers so de activity para e-mail (upstream 1f5f24e5). O limite por
+  // segundo vale para a FILA inteira e e aplicado pelo servidor Temporal, entao
+  // nao e dividido pelo WORKER_CONCURRENCY_DIVIDER. EXCLUDE_QUEUE tambem tira
+  // estas filas de um container — pelo menos um container precisa consumi-las,
+  // senao nenhum e-mail sai.
+  const emailWorkers: TemporalWorkerDefinition[] = Object.values(emailQueues)
+    .filter(({ taskQueue }) => !excludedQueues.has(taskQueue))
+    .map(({ taskQueue, perSecond }) => ({
+      taskQueue,
+      activityClasses,
+      autoStart: true,
+      workerOptions: {
+        maxConcurrentActivityTaskExecutions: 10,
+        maxTaskQueueActivitiesPerSecond: perSecond,
+      },
+    }));
+
+  return [...providerWorkers, ...emailWorkers];
 };
 
 export const getTemporalModule = (

@@ -62,7 +62,7 @@ describe('post workflow history replay', () => {
     ).toThrow('arquivo .json');
   });
 
-  it('recusa historico que nao pertence ao pipeline versionado de posts', async () => {
+  it('recusa historico de workflow fora da lista de replay', async () => {
     const readFile = jest
       .fn()
       .mockResolvedValue(JSON.stringify(startedHistory('streakWorkflow')));
@@ -75,9 +75,33 @@ describe('post workflow history replay', () => {
         runReplayHistory,
         workflowsPath: '/workspace/apps/orchestrator/src/workflows/index.ts',
       })
-    ).rejects.toThrow('workflow de publicacao suportado');
+    ).rejects.toThrow('workflow suportado pelo replay');
     expect(runReplayHistory).not.toHaveBeenCalled();
   });
+
+  it.each([
+    'autoPostWorkflow',
+    'missingPostWorkflow',
+    'sendEmailWorkflow',
+    'sendSingleEmailWorkflow',
+  ])(
+    'aceita %s, cujo codigo mudou com patched() ou fila nova',
+    async (workflowType) => {
+      const history = startedHistory(workflowType);
+      const readFile = jest.fn().mockResolvedValue(JSON.stringify(history));
+      const runReplayHistory = jest.fn().mockResolvedValue(undefined);
+
+      await expect(
+        replayPostWorkflowHistory('tmp/temporal-replay/loop.json', {
+          cwd,
+          readFile,
+          runReplayHistory,
+          workflowsPath: '/workspace/apps/orchestrator/src/workflows/index.ts',
+        })
+      ).resolves.toEqual(expect.objectContaining({ workflowType }));
+      expect(runReplayHistory).toHaveBeenCalledTimes(1);
+    }
+  );
 
   it('executa o replay real pelo SDK sem registrar o conteudo do historico', async () => {
     const history = startedHistory();

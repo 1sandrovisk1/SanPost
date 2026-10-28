@@ -365,3 +365,17 @@ describe('PostsService.updatePublishedRelease', () => {
     );
   });
 });
+
+// Porte do upstream #2087: o canal acompanha o id para o fallback do releaseId.
+describe('PostsService.getPostByForWebhookId', () => {
+  it('repassa id e canal ao repositorio', async () => {
+    const { service, repository } = buildService();
+    repository.getPostByForWebhookId.mockResolvedValue([{ id: 'post-1' }] as any);
+
+    await expect(service.getPostByForWebhookId('1789', 'int-1')).resolves.toEqual([
+      { id: 'post-1' },
+    ]);
+
+    expect(repository.getPostByForWebhookId).toHaveBeenCalledWith('1789', 'int-1');
+  });
+});

@@ -6,6 +6,8 @@ import { NodeMailerProvider } from '@gitroom/nestjs-libraries/emails/node.mailer
 import { TemporalService } from 'nestjs-temporal-core';
 import { timer } from '@gitroom/helpers/utils/timer';
 import { emailT } from '@gitroom/nestjs-libraries/emails/i18n/email.i18n';
+import { randomUUID } from 'crypto';
+import { summarizeError } from '@gitroom/nestjs-libraries/services/error.summary';
 
 @Injectable()
 export class EmailService {
@@ -43,15 +45,19 @@ export class EmailService {
     replyTo?: string,
     lang?: string
   ) {
+    // mesmo filtro que o handler do antigo singleton `send_email` aplicava
+    if (!to || !subject) {
+      return undefined;
+    }
+
+    // Um workflow por e-mail na fila main; o envio roda nas filas de e-mail
+    // limitadas pelo servidor (email.queues.ts) — upstream 1f5f24e5.
     return this._temporalService.client
       .getRawClient()
-      ?.workflow.signalWithStart('sendEmailWorkflow', {
+      ?.workflow.start('sendSingleEmailWorkflow', {
         taskQueue: 'main',
-        workflowId: 'send_email',
-        signal: 'sendEmail',
-        args: [{ queue: [] }],
-        signalArgs: [{ to, subject, html, replyTo, addTo, lang }],
-        workflowIdConflictPolicy: 'USE_EXISTING',
+        workflowId: `send_email_${randomUUID()}`,
+        args: [{ to, subject, html, replyTo, addTo, lang }],
       });
   }
 
@@ -143,13 +149,19 @@ export class EmailService {
         console.log(sends);
         return;
       } catch (err) {
+        // o provider agora lanca o erro da API (ex.: 429 do Resend) para esta
+        // retentativa funcionar (upstream 1f5f24e5)
         lastErr = err;
-        console.log(`Email attempt ${attempt + 1}/3 failed:`, err);
+        console.log(
+          `Email attempt ${attempt + 1}/3 failed: ${summarizeError(err)}`
+        );
         if (attempt < 2) {
           await timer(700);
         }
       }
     }
-    console.log(`Email to ${to} failed after 3 attempts:`, lastErr);
+    console.log(
+      `Email to ${to} failed after 3 attempts: ${summarizeError(lastErr)}`
+    );
   }
 }

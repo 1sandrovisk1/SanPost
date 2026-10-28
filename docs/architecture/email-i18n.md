@@ -60,6 +60,40 @@ Decisão: **um idioma por organização** (não por usuário). Resolução dos e
 
 O nome do remetente vem 100% de `EMAIL_FROM_NAME` (env) — sem código.
 
+### Entrega pelo Temporal (desde o porte do upstream `1f5f24e5`, 28/10/2026)
+
+`EmailService.sendEmail(to, subject, html, addTo, replyTo?, lang?)` inicia **um
+workflow por e-mail** (`sendSingleEmailWorkflow`, `workflowId`
+`send_email_<uuid>`, fila de workflow `main`) — não existe mais o singleton
+`send_email` que serializava todos os envios com `sleep(700ms)`. O workflow
+roteia a activity `EmailActivity.sendEmail` (→ `sendEmailSync`, que aplica o
+rodapé no `lang`) para uma fila só de e-mail:
+
+| `addTo` | Fila de activity | Limite (servidor Temporal) | Uso |
+|---|---|---|---|
+| `top` | `email` | 3/s | notificações, convites, ativação, senha, cobrança |
+| `bottom` | `email-bulk` | 2/s | digest e streak |
+
+- Filas e limites em `libraries/nestjs-libraries/src/temporal/email.queues.ts`;
+  os workers são criados em `buildTemporalWorkers` (`temporal.module.ts`) com
+  `maxTaskQueueActivitiesPerSecond`, que vale para a fila inteira (todos os
+  containers) e por isso não é dividido pelo `WORKER_CONCURRENCY_DIVIDER`.
+- `EXCLUDE_QUEUE` aceita `email`/`email-bulk`; pelo menos um container precisa
+  consumir as duas filas, senão nenhum e-mail sai.
+- `sendEmailSync` tenta até 3 vezes (700ms entre tentativas). O
+  `ResendProvider` agora **lança** o erro devolvido pela API (ex.: 429) para
+  essa retentativa funcionar; antes o erro era engolido.
+- `sendEmailWorkflow` (o singleton antigo) continua registrado e com o código
+  intacto só para a execução `send_email` aberta antes do deploy drenar a fila
+  e o replay seguir determinístico. Pode sair quando não houver execução
+  `send_email` aberta (`temporal workflow list --query
+  'WorkflowType="sendEmailWorkflow" AND ExecutionStatus="Running"'`).
+- **Divergência do upstream:** no Postiz, ativação/reenvio/redefinição de senha
+  passaram a chamar `sendEmailSync` direto no backend. O fork mantém esses
+  e-mails pelo Temporal (fila `email`): um envio síncrono dentro da requisição
+  HTTP travaria cadastro/recuperação por minutos quando o SMTP está bloqueado
+  (timeouts padrão do nodemailer, comum em VPS que bloqueia portas SMTP).
+
 ## 4. Notificações: chave+params + escopo por perfil
 
 `NotificationService.inAppNotification(orgId, { subjectKey, messageKey, params, profileId }, sendEmail, digest, type)`

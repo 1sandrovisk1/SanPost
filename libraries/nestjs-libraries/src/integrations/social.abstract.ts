@@ -18,6 +18,20 @@ import { setHeartbeatDetails } from '@gitroom/nestjs-libraries/temporal/temporal
 const MAX_FAILURE_MESSAGE = 2_000;
 const MAX_FAILURE_FIELD = 4_000;
 
+// Leitura de midia responde os headers em menos de 1s e termina em poucos
+// segundos (a mais lenta saudavel medida pelo upstream levou ~11s): 2 minutos
+// so e atingido por uma transferencia travada depois dos headers (upstream
+// #2193).
+export const MEDIA_READ_TIMEOUT = 120_000;
+
+// AbortSignal.timeout rejeita com TimeoutError; o axios reporta o abort como
+// requisicao cancelada (ERR_CANCELED) e o undici pode embrulhar o TimeoutError
+// no `cause`.
+const isReadTimeout = (err: any) =>
+  err?.code === 'ERR_CANCELED' ||
+  err?.name === 'TimeoutError' ||
+  err?.cause?.name === 'TimeoutError';
+
 export function heartbeatEndpoint(value: string): string {
   try {
     const parsed = new URL(value);
@@ -132,17 +146,48 @@ export abstract class SocialAbstract {
     return value || false;
   }
 
-  protected async readOrFetch(path: string): Promise<Buffer> {
-    if (path.indexOf('http') === 0) {
+  // Le a midia inteira em memoria (imagens que os providers passam ao sharp).
+  protected async readOrFetch(path: string, retried = false): Promise<Buffer> {
+    if (path.indexOf('http') !== 0) {
+      return readFileSync(this.localMediaPath(path));
+    }
+
+    try {
       const response = await this.getSsrfSafeAxios()({
         url: path,
         method: 'GET',
         responseType: 'arraybuffer',
+        // O servidor responde os headers e o corpo para no meio: sem prazo a
+        // leitura nunca termina e segura o slot da activity no worker (o
+        // startToCloseTimeout falha a activity no servidor, mas nao para a
+        // funcao). Imagens tem poucos MB e chegam em ~1s.
+        signal: AbortSignal.timeout(MEDIA_READ_TIMEOUT),
       });
       return Buffer.from(response.data);
-    }
+    } catch (err) {
+      if (!isReadTimeout(err)) {
+        throw err;
+      }
 
-    return readFileSync(this.localMediaPath(path));
+      // travamento e transitorio e nada foi enviado a plataforma ainda: le de
+      // novo uma vez antes de desistir
+      if (!retried) {
+        return this.readOrFetch(path, true);
+      }
+
+      // BadBody (sem retry da activity): repetir a publicacao leria a mesma
+      // midia de novo segurando a fila do provider. A mensagem e o que o
+      // usuario ve no post.
+      throw new BadBody(
+        this.identifier,
+        JSON.stringify({
+          timeoutMs: MEDIA_READ_TIMEOUT,
+          path: heartbeatEndpoint(path),
+        }),
+        Buffer.from('{}'),
+        'Não foi possível ler a mídia deste post, por isso ele não foi publicado'
+      );
+    }
   }
 
   // Midia que nao e URL remota e lida do disco do worker. O path gravado e

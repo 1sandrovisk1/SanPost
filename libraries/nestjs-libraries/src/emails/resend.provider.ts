@@ -14,20 +14,21 @@ export class ResendProvider implements EmailInterface {
     emailFromAddress: string,
     replyTo?: string
   ) {
-    try {
-      const sends = await resend.emails.send({
-        from: `${emailFromName} <${emailFromAddress}>`,
-        to,
-        subject,
-        html,
-        ...(replyTo && { reply_to: replyTo }),
-      });
+    const sends = await resend.emails.send({
+      from: `${emailFromName} <${emailFromAddress}>`,
+      to,
+      subject,
+      html,
+      ...(replyTo && { reply_to: replyTo }),
+    });
 
-      return sends;
-    } catch (err) {
-      console.log(err);
+    // O SDK devolve erros da API (ex.: 429 de rate limit) em vez de lancar:
+    // lanca para o EmailService.sendEmailSync repetir o envio (upstream
+    // 1f5f24e5). Antes o erro era engolido e o e-mail se perdia em silencio.
+    if (sends.error) {
+      throw new Error(`${sends.error.name}: ${sends.error.message}`);
     }
 
-    return { sent: false };
+    return sends;
   }
 }
