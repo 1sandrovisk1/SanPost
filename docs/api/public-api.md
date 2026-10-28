@@ -102,6 +102,12 @@ No Facebook:
 - `settings.post_type` — `"post"` (feed/Reel) ou `"story"`.
 - `settings.title` — título opcional para **posts de vídeo** (não story); ignorado em foto/texto.
 
+No TikTok Business (`tiktok-business`), além das opções do TikTok (`privacy_level`, `content_posting_method`, `duet`, `stitch`, `comment`, `autoAddMusic`, `brand_content_toggle`, `brand_organic_toggle`, `video_made_with_ai`, `title`):
+- `settings.music` — `{ id, audio_volume?, video_volume? }`: faixa da biblioteca comercial (o `id` vem da função `musicSearch` do canal); volumes de 0 a 100 (padrão 50) só em vídeo. Em foto, `autoAddMusic: "yes"` sorteia uma faixa e ignora `music`.
+- `settings.location` — `{ id, name }`: localização (o `id` vem da função `locationSearch`).
+- Música e localização só valem com `content_posting_method: "DIRECT_POST"`; em `UPLOAD` o TikTok guarda só a legenda.
+- Legenda até 2.200 caracteres em vídeo e 4.000 em foto (UTF-16); acima disso a criação responde **400**. Mídia: um vídeo ou até 35 fotos, cada foto com no máximo 1080px no lado menor — fora disso o post termina com erro na hora de publicar, sem chegar ao TikTok.
+
 ### Exemplo — publicar agora com imagem
 ```json
 {

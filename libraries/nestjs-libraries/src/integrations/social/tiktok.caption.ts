@@ -2,12 +2,13 @@ import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validatio
 
 // Limites da Content Posting API do TikTok, contados em unidades UTF-16 (como
 // `String.length`; emoji pesa 2): legenda de video (`post_info.title`) 2.200,
-// descricao de foto 4.000, titulo de foto 90. Valem para o nativo e para o
-// TikTok via Zernio. O compositor ainda corta antes, em 2.000 (upstream).
+// descricao de foto 4.000, titulo de foto 90. Valem para o nativo, para o
+// TikTok via Zernio e para o TikTok for Business (legenda de video 2.200, de
+// foto 4.000). O compositor ainda corta antes, em 2.000 (upstream).
 export const TIKTOK_VIDEO_CAPTION_LIMIT = 2200;
 export const TIKTOK_PHOTO_DESCRIPTION_LIMIT = 4000;
 export const TIKTOK_PHOTO_TITLE_LIMIT = 90;
-export const TIKTOK_IDENTIFIERS = ['tiktok', 'zernio-tiktok'];
+export const TIKTOK_IDENTIFIERS = ['tiktok', 'zernio-tiktok', 'tiktok-business'];
 
 export const tiktokTextLimit = (isPhoto: boolean) =>
   isPhoto ? TIKTOK_PHOTO_DESCRIPTION_LIMIT : TIKTOK_VIDEO_CAPTION_LIMIT;

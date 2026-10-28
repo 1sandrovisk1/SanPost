@@ -2786,5 +2786,22 @@
   "delete_only_from": "Only from",
   "batch_save_partial_failure": "Some channels were saved but others failed. Open the post again to review them.",
   "post_channel_date_in_past": "Choose a future date for this channel",
-  "batch_delete_partial_failure": "The post was deleted from some channels but not from others. Check the calendar."
+  "batch_delete_partial_failure": "The post was deleted from some channels but not from others. Check the calendar.",
+  "label_add_random_music": "Add random music",
+  "tiktok_random_music_only_for_photos": "This feature is available only for photos, it adds a random trending track from TikTok's commercial music library.",
+  "tiktok_music_label": "Music",
+  "tiktok_location_label": "Location",
+  "tiktok_add_music": "Add music",
+  "tiktok_search_music": "Filter trending tracks by name or artist",
+  "tiktok_no_music_found": "No music found",
+  "tiktok_music_volume": "Music volume",
+  "tiktok_video_volume": "Original video volume",
+  "tiktok_add_location": "Add location",
+  "tiktok_search_location": "Search location",
+  "tiktok_no_location_found": "No location found",
+  "tiktok_music_location_direct_post_only": "Music and location are only applied when posting directly to TikTok.",
+  "tiktok_business_max_pictures": "You can select up to 35 pictures",
+  "credentials_tiktok_business_app_id_placeholder": "Paste the TikTok for Business app Client ID",
+  "credentials_tiktok_business_secret_placeholder": "Paste the TikTok for Business app Client Secret",
+  "credentials_tiktok_business_hint": "Use the app created in the TikTok API for Business portal (not the TikTok for Developers app). Register the callback URL exactly as shown below, including the trailing slash."
 }

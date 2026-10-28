@@ -7,6 +7,13 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 
 ## [Unreleased]
 
+### Adicionado — canal TikTok Business (28/10/2026)
+
+- Novo canal **TikTok Business**, pela API do TikTok for Business (porte do Postiz): publica vídeo ou até 35 fotos, direto no perfil ou como rascunho na caixa de entrada do app, com estatísticas da conta e do post e link do post publicado no calendário.
+- O app do TikTok for Business é cadastrado por workspace/perfil em **Configurações > Credenciais > TikTok Business** (as variáveis `TIKTOK_BUSINESS_CLIENT_ID`/`TIKTOK_BUSINESS_CLIENT_SECRET` ficam como alternativa). A URL de callback termina com barra (`/integrations/social/tiktok-business/`), como o portal do TikTok exige.
+- No compositor, o canal ganha **música** da biblioteca comercial do TikTok (com prévia e volumes em vídeo), **música aleatória** para fotos e **localização**; valem só na publicação direta. Também disponíveis para o agente (MCP) e na API pública.
+- Antes de publicar, o post é recusado com motivo claro quando a legenda passa do limite do TikTok, uma foto passa de 1080px no lado menor ou a mídia não é aceita. Autorização cancelada no TikTok para antes da troca de código e registra a causa real no log, e o token recusado como "The access token is invalid" é renovado automaticamente.
+
 ### Melhorado — ferramentas de texto das automações (28/10/2026)
 
 - Resposta pública usa diretamente a etapa verde; pedido para seguir vira switch com apenas suas subetapas expansíveis. Alternativas privadas ganham boxes próprios para texto e botão/link.
