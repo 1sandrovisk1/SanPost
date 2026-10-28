@@ -18,9 +18,16 @@ describe('alternativas privadas', () => {
     );
     fireEvent.click(screen.getByText('wizard_add_reply_variant'));
     expect(change).toHaveBeenCalledWith(['Ola', '']);
-    const select = screen.getByRole('combobox');
-    expect(select.querySelector('[value="{{comment_text}}"]')).toBeTruthy();
-    expect(select.querySelector('[value="{{comment_name}}"]')).toBeNull();
+    fireEvent.focus(screen.getByRole('textbox'));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'automation_insert_variable' })
+    );
+    expect(
+      screen.getByRole('button', { name: 'automation_variable_message_text' })
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: 'automation_variable_comment_name' })
+    ).toBeNull();
   });
 });
 it('edita CTA de uma alternativa sem mudar o texto ou botao das outras', () => {
@@ -54,4 +61,23 @@ it('edita CTA de uma alternativa sem mudar o texto ou botao das outras', () => {
     },
     { message: 'B', buttonText: 'Novo', buttonUrl: 'https://example.com/new' },
   ]);
+});
+it('delimita cada par privado em grupo e deixa ajuda junto de seu botao', () => {
+  render(
+    <PrivateMessageVariations
+      messages={['A', 'B']}
+      onChange={vi.fn()}
+      onVariantsChange={vi.fn()}
+    />
+  );
+  for (const n of [1, 2]) {
+    const group = screen.getByRole('group', {
+      name: `automation_private_variant ${n}`,
+    });
+    expect(group.querySelector('textarea')).toBeTruthy();
+    const button = group.querySelector(
+      'button[aria-label="automation_link_help"]'
+    );
+    expect(button?.parentElement?.textContent).toContain('story_add_link');
+  }
 });

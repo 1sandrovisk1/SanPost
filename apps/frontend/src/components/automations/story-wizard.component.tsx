@@ -1,5 +1,6 @@
 'use client';
 import { AutomationEditorStage } from './shared-editor-stage.component';
+import { AutomationPublicReplyToggle } from './shared-public-reply-toggle.component';
 import { PrivateMessageVariations } from './shared-private-variations.component';
 import { AutomationConnectionIndicator } from './shared-connection-indicator.component';
 import { AutomationContextHelp } from './shared-context-help.component';
@@ -15,7 +16,10 @@ import {
   EditorRecord,
   EditorStatus,
 } from './shared-editor-actions';
-import { JourneyPreviewControls } from './shared-response-controls.component';
+import {
+  AutomationFollowGateFields,
+  JourneyPreviewControls,
+} from './shared-response-controls.component';
 import type { PreviewJourneyStage } from './shared-preview-journey';
 import {
   AutomationPreviewPanel,
@@ -24,15 +28,7 @@ import {
 } from './shared-editor-preview.component';
 import { AutomationAccountSelect } from './shared-account-select.component';
 import { useInstagramEditorConnection } from './shared-instagram-connection.component';
-import {
-  FC,
-  useCallback,
-  useEffect,
-  useId,
-  useMemo,
-  useState,
-  useRef,
-} from 'react';
+import { FC, useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import { useIntegrationList } from '@gitroom/frontend/components/launches/helpers/use.integration.list';
@@ -79,7 +75,6 @@ export const StoryWizardComponent: FC<Props> = ({
   workspace,
 }) => {
   const t = useT();
-  const messageId = useId();
   const fetchApi = useFetch();
   const router = useRouter();
   const toaster = useToaster();
@@ -871,59 +866,41 @@ export const StoryWizardComponent: FC<Props> = ({
                   : 'automation_stage_disabled'
               )}
             >
-              <div className="rounded-[6px] border border-fifth">
-                <div className="flex items-center gap-1 pr-3">
-                  <label className="flex flex-1 items-center justify-between gap-[12px] p-[10px] cursor-pointer">
-                    <div>
-                      <div className="text-[13px] text-textColor">
-                        {t(
-                          'story_require_follow',
-                          'Pedir para seguir antes de enviar'
-                        )}
-                      </div>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={requireFollow}
-                      onChange={(e) => {
-                        setRequireFollow(e.target.checked);
-                        setJourneyStage(e.target.checked ? 'gate' : 'delivery');
-                        setActivePreviewTab('dm');
-                      }}
-                      className="h-[18px] w-[18px] accent-btnPrimary cursor-pointer"
-                    />
-                  </label>
-                  <AutomationContextHelp label={t('automation_follow_help')}>
-                    {t('story_require_follow_hint')}
-                  </AutomationContextHelp>
-                </div>
+              <div className="space-y-3">
+                <AutomationPublicReplyToggle
+                  enabled={requireFollow}
+                  label={t('story_require_follow')}
+                  help={
+                    <AutomationContextHelp label={t('automation_follow_help')}>
+                      {t('story_require_follow_hint')}
+                    </AutomationContextHelp>
+                  }
+                  onChange={(enabled) => {
+                    setRequireFollow(enabled);
+                    setJourneyStage(enabled ? 'gate' : 'delivery');
+                    setActivePreviewTab('dm');
+                  }}
+                />
                 {requireFollow && (
-                  <div className="border-t border-fifth p-[10px] flex flex-col gap-[6px]">
-                    <label
-                      htmlFor={`${messageId}-gate`}
-                      className="text-[11px] text-customColor18"
-                    >
-                      {t(
-                        'story_follow_gate_label',
-                        'Mensagem enviada para quem ainda não segue'
-                      )}
-                    </label>
-                    <textarea
-                      id={`${messageId}-gate`}
-                      value={followGateMessage}
-                      onFocus={() => {
-                        setActivePreviewTab('dm');
-                        setJourneyStage('gate');
-                      }}
-                      onChange={(e) => setFollowGateMessage(e.target.value)}
-                      rows={3}
-                      placeholder={t(
-                        'story_follow_gate_placeholder',
-                        FOLLOW_GATE_DEFAULT_PT
-                      )}
-                      className="w-full bg-newBgColorInner border border-newTableBorder rounded-[6px] text-[12px] text-textColor px-[10px] py-[8px] outline-none resize-none"
-                    />
-                  </div>
+                  <AutomationFollowGateFields
+                    story
+                    values={{
+                      openingDmMessage: '',
+                      openingDmButtonText: '',
+                      followGateMessage,
+                      alreadyFollowedButtonText: '',
+                      gateExhaustedMessage: '',
+                      maxGateAttempts: 3,
+                    }}
+                    onChange={(patch) => {
+                      if (patch.followGateMessage !== undefined)
+                        setFollowGateMessage(patch.followGateMessage);
+                    }}
+                    onFocusStage={() => {
+                      setActivePreviewTab('dm');
+                      setJourneyStage('gate');
+                    }}
+                  />
                 )}
               </div>
             </AutomationEditorStage>

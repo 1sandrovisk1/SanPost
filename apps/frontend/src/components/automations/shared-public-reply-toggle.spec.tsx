@@ -18,6 +18,12 @@ describe('resposta publica agrupada', () => {
         .getByRole('group', { name: 'Resposta publica' })
         .contains(screen.getByLabelText('Variacao'))
     ).toBe(true);
+    expect(
+      screen.getByRole('group', { name: 'Resposta publica' }).className
+    ).not.toContain('bg-boxHover');
+    expect(
+      screen.getByRole('group', { name: 'Resposta publica' }).className
+    ).not.toContain('border');
     rerender(
       <AutomationPublicReplyToggle
         label="Resposta publica"

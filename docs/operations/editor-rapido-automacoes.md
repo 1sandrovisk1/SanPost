@@ -91,7 +91,9 @@ A resposta pública continua antes da privada e é identificada pelo seu toggle.
 
 Rotas canônicas: `/automations`, `/automations/[id]` (V2), `/automations/instagram/[id]` (V1), `/automations/new`, `/automations/instagram/new`, `/automations/reposts/...` e `/automations/logs`. As rotas antigas em `/automacoes` redirecionam mantendo parâmetros repetidos, `view` e `tab`. O antigo segmento `compartilhada` identificava o editor V2 compartilhado entre canais; não era compartilhamento público. Ele foi removido da rota canônica, sem mudar a autenticação nem os endpoints da API.
 
-No Instagram, o gerenciamento de IDs fica dentro do card de Publicações específicas (também quando o item selecionado é um agendamento). Aliases existentes são aditivos e não são excluídos ao alternar modos; qualquer/próxima publicação indicam quando permanecem ativos. O toggle da resposta pública e suas variações compartilham o mesmo box cinza.
+No Instagram, o gerenciamento de IDs fica dentro do card de Publicações específicas (também quando o item selecionado é um agendamento). Aliases existentes são aditivos e não são excluídos ao alternar modos; qualquer/próxima publicação indicam quando permanecem ativos. O switch da resposta pública e suas variações usam diretamente a etapa verde. O pedido para seguir também usa switch, com apenas as subetapas expansíveis delimitadas. Com mais de uma alternativa privada, cada texto e seu botão/link ficam em um box próprio; a ajuda do link fica à direita da linha do botão.
+
+Ao focar um texto, uma barra oferece emojis, contador e variáveis apenas quando o motor interpreta aquele campo. A abertura e a verificação de seguidores oferecem apenas emojis. Inserções respeitam a seleção e o limite do campo; os menus fecham por Escape ou clique fora. Consulte [ferramentas de texto no foco](../automacoes-instagram.md#ferramentas-de-texto-no-foco).
 
 ## Etapas e pendências no editor rápido
 

@@ -763,15 +763,6 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
               )
             }
           />
-          <div className="flex justify-between gap-3 text-xs text-newTextColor/60">
-            <AutomationContextHelp
-              align="start"
-              label={t('automation_link_help')}
-            >
-              {t(messenger ? 'messenger_message_hint' : 'shared_link_hint')}
-            </AutomationContextHelp>
-            <span className="shrink-0"></span>
-          </div>
         </AutomationEditorStage>
         {messenger && (
           <AutomationEditorStage

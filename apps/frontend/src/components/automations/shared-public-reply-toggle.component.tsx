@@ -6,21 +6,22 @@ export function AutomationPublicReplyToggle({
   label,
   disabled = false,
   children,
+  help,
 }: {
   enabled: boolean;
   onChange: (value: boolean) => void;
   label: string;
   disabled?: boolean;
   children?: ReactNode;
+  help?: ReactNode;
 }) {
   return (
-    <div
-      role="group"
-      aria-label={label}
-      className="p-3 rounded-lg bg-boxHover border border-newTableBorder"
-    >
+    <div role="group" aria-label={label} className="space-y-3">
       <div className="flex items-center justify-between gap-3">
-        <span className="text-[13px] text-textColor">{label}</span>
+        <div className="flex min-w-0 items-center gap-1">
+          <span className="text-[13px] text-textColor">{label}</span>
+          {help}
+        </div>
         <button
           type="button"
           role="switch"

@@ -3,6 +3,7 @@ import { useId, useState } from 'react';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import type { PrivateMessageVariant } from '@gitroom/nestjs-libraries/database/prisma/flows/private-message-variants';
 import { AddLinkModal } from './add-link-modal.component';
+import { AutomationContextHelp } from './shared-context-help.component';
 import { AutomationMessageVariables } from './shared-message-variables.component';
 export function PrivateMessageVariations({
   messages,
@@ -55,7 +56,20 @@ export function PrivateMessageVariations({
         const message = entry.message;
         const limit = entry.buttonText ? 640 : maxLength;
         return (
-          <div key={index} className="space-y-2">
+          <div
+            key={index}
+            role={entries.length > 1 ? 'group' : undefined}
+            aria-label={
+              entries.length > 1
+                ? `${t('automation_private_variant')} ${index + 1}`
+                : undefined
+            }
+            className={
+              entries.length > 1
+                ? 'space-y-3 rounded-xl border border-newTableBorder bg-newBgColorInner p-3'
+                : 'space-y-2'
+            }
+          >
             <div className="flex items-center justify-between gap-2">
               <label htmlFor={`${id}-${index}`} className="block text-sm">
                 {index === 0
@@ -83,34 +97,35 @@ export function PrivateMessageVariations({
               placeholder={t('automation_private_message_placeholder')}
               onFocus={() => onFocus?.(index)}
               onChange={(e) => update(index, e.target.value)}
-              className="block w-full rounded-lg border border-newTableBorder bg-newBgColorInner px-3.5 py-2.5 text-[13px] text-textColor resize-y"
+              className="block w-full rounded-lg border border-newTableBorder bg-newBgColorInner px-3.5 pt-2.5 pb-10 text-[13px] text-textColor resize-y"
             />
-            <div className="flex items-center justify-between gap-2">
-              <AutomationMessageVariables
-                textareaId={`${id}-${index}`}
-                engine={engine}
-                messenger={messenger}
-                disabled={disabled}
-                onChange={(value) => update(index, value)}
-              />
-              <span className="text-xs text-newTextColor/50">
-                {message.length}/{limit}
-              </span>
-            </div>
+            <AutomationMessageVariables
+              textareaId={`${id}-${index}`}
+              engine={engine}
+              messenger={messenger}
+              disabled={disabled}
+              resetKey={entries.length}
+              onChange={(value) => update(index, value)}
+            />
             {onVariantsChange && (
-              <button
-                type="button"
-                disabled={disabled}
-                onClick={() => {
-                  onFocus?.(index);
-                  setEditingButton(index);
-                }}
-                className="rounded border border-dashed border-newTableBorder px-3.5 py-2 text-xs hover:bg-boxHover disabled:opacity-40"
-              >
-                {entry.buttonText && entry.buttonUrl
-                  ? `${entry.buttonText} · ${entry.buttonUrl}`
-                  : `+ ${t('story_add_link')}`}
-              </button>
+              <div className="flex items-center justify-between gap-3">
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => {
+                    onFocus?.(index);
+                    setEditingButton(index);
+                  }}
+                  className="min-w-0 truncate rounded border border-dashed border-newTableBorder px-3.5 py-2 text-xs hover:bg-boxHover disabled:opacity-40"
+                >
+                  {entry.buttonText && entry.buttonUrl
+                    ? `${entry.buttonText} · ${entry.buttonUrl}`
+                    : `+ ${t('story_add_link')}`}
+                </button>
+                <AutomationContextHelp label={t('automation_link_help')}>
+                  {t(messenger ? 'messenger_message_hint' : 'shared_link_hint')}
+                </AutomationContextHelp>
+              </div>
             )}
           </div>
         );

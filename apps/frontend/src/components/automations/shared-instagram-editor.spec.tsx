@@ -134,8 +134,9 @@ describe('entrada direta Instagram', () => {
     expect(
       screen.getByPlaceholderText('automation_private_message_placeholder')
     ).toBe(message);
+    fireEvent.focus(screen.getByRole('textbox', { name: 'shared_message' }));
     expect(
-      screen.getByRole('combobox', { name: 'automation_insert_variable' })
+      screen.getByRole('button', { name: 'automation_insert_variable' })
     ).toBeTruthy();
     fireEvent.click(
       screen.getByRole('button', { name: 'automation_link_help' })
@@ -469,7 +470,7 @@ describe('jornada no editor Instagram', () => {
     choose();
     await screen.findByLabelText('automation_webhook_configured');
     fireEvent.click(
-      screen.getByRole('checkbox', { name: /story_require_follow/ })
+      screen.getByRole('switch', { name: /story_require_follow/ })
     );
     expect(screen.getByText('automation_gate_opening')).toBeTruthy();
     expect(screen.getByText('automation_final_message_required')).toBeTruthy();
@@ -492,7 +493,7 @@ describe('jornada no editor Instagram', () => {
         target: { value: 'Final' },
       });
       fireEvent.click(
-        screen.getByRole('checkbox', { name: /story_require_follow/ })
+        screen.getByRole('switch', { name: /story_require_follow/ })
       );
       fireEvent.change(screen.getByLabelText('story_follow_gate_label'), {
         target: { value: '' },

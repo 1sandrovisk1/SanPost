@@ -844,6 +844,7 @@ export const AutomationWizardComponent: FC<Props> = ({
                       label={t('shared_add_public_reply')}
                     >
                       <SharedReplyVariations
+                        engine="legacy"
                         messages={replyMessages}
                         onChange={setReplyMessages}
                         maxVariants={null}
@@ -906,11 +907,6 @@ export const AutomationWizardComponent: FC<Props> = ({
                       setJourneyStage('delivery');
                     }}
                   />
-                  <div className="flex items-center justify-between gap-2">
-                    <AutomationContextHelp label={t('automation_link_help')}>
-                      {t('shared_link_hint')}
-                    </AutomationContextHelp>
-                  </div>
                 </AutomationEditorStage>
 
                 {/* Extras — follow gate */}
@@ -924,38 +920,25 @@ export const AutomationWizardComponent: FC<Props> = ({
                       : 'automation_stage_disabled'
                   )}
                 >
-                  <div className="rounded-[6px] border border-fifth">
-                    <div className="flex items-center gap-1 pr-3">
-                      <label className="flex flex-1 items-center justify-between gap-[12px] p-[10px] cursor-pointer">
-                        <div>
-                          <div className="text-[13px] text-textColor">
-                            {t(
-                              'story_require_follow',
-                              'Pedir para seguir antes de enviar'
-                            )}
-                          </div>
-                        </div>
-                        <input
-                          type="checkbox"
-                          checked={requireFollow}
-                          onChange={(e) => {
-                            setRequireFollow(e.target.checked);
-                            setJourneyStage(
-                              e.target.checked ? 'opening' : 'delivery'
-                            );
-                            setActivePreviewTab('dm');
-                          }}
-                          className="h-[18px] w-[18px] accent-btnPrimary cursor-pointer"
-                        />
-                      </label>
-                      <AutomationContextHelp
-                        label={t('automation_follow_help')}
-                      >
-                        {t('story_require_follow_hint')}
-                      </AutomationContextHelp>
-                    </div>
+                  <div className="space-y-3">
+                    <AutomationPublicReplyToggle
+                      enabled={requireFollow}
+                      label={t('story_require_follow')}
+                      help={
+                        <AutomationContextHelp
+                          label={t('automation_follow_help')}
+                        >
+                          {t('story_require_follow_hint')}
+                        </AutomationContextHelp>
+                      }
+                      onChange={(enabled) => {
+                        setRequireFollow(enabled);
+                        setJourneyStage(enabled ? 'opening' : 'delivery');
+                        setActivePreviewTab('dm');
+                      }}
+                    />
                     {requireFollow && (
-                      <div className="border-t border-newTableBorder p-3">
+                      <div className="space-y-3">
                         <AutomationFollowGateFields
                           values={{
                             openingDmMessage,

@@ -7,6 +7,11 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 
 ## [Unreleased]
 
+### Melhorado — ferramentas de texto das automações (28/10/2026)
+
+- Resposta pública usa diretamente a etapa verde; pedido para seguir vira switch com apenas suas subetapas expansíveis. Alternativas privadas ganham boxes próprios para texto e botão/link.
+- Mensagens oferecem emojis, variáveis compatíveis e contador ao receber foco, com inserção no cursor, respeito ao limite e fechamento por Escape ou clique fora. Textos do gate oferecem apenas emojis; rápido e construtor visual compartilham as ferramentas. Ajuda do link fica à direita da linha do botão.
+
 ### Melhorado — revisão visual e alternativas privadas (28/10/2026)
 
 - Histórico com retorno de atualização manual, ajuda flutuante sem deslocar o layout e fuso no cabeçalho Início; setas dos seletores com espaço adequado.

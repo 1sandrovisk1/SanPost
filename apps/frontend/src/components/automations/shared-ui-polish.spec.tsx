@@ -100,10 +100,14 @@ describe('refinamento do editor', () => {
       </>
     );
     const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    fireEvent.focus(textarea);
     textarea.setSelectionRange(4, 4);
-    fireEvent.change(
-      screen.getByRole('combobox', { name: 'automation_insert_variable' }),
-      { target: { value: '{commenter_name}' } }
+    fireEvent.select(textarea);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'automation_insert_variable' })
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'automation_variable_commenter_name' })
     );
     expect(insert).toHaveBeenCalledWith('Oi, {commenter_name}tudo bem');
     await waitFor(() => expect(document.activeElement).toBe(textarea));

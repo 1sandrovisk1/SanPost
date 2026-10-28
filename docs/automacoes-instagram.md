@@ -159,10 +159,9 @@ No wizard "Nova Automacao Rapida" voce escolhe em qual post a automacao vai roda
 
 > Se voce criar multiplas flows em modo "Proxima publicacao" para a mesma conta, todas serao vinculadas simultaneamente ao mesmo proximo post — cada uma com suas proprias palavras-chave e mensagens.
 
-### Variaveis disponiveis
+### Variáveis disponíveis
 
-- `{{nome}}` — nome de usuario do comentarista
-- `{{comentario}}` — texto original do comentario
+No motor legado do Instagram: `{commenter_name}` (nome), `{commenter_id}` (ID da pessoa), `{comment_text}` (comentário) e `{media_id}` (publicação). A barra oferece os tokens corretos por motor e gatilho; consulte [ferramentas de texto no foco](#ferramentas-de-texto-no-foco).
 
 ### Salvar e ativar
 
@@ -434,4 +433,13 @@ Consulte [histórico e detalhes de execuções](operations/historico-execucoes-a
 
 Os IDs de Dark Posts ficam dentro de **Publicações específicas**. Alternar o escopo não adiciona nem remove aliases persistidos: a semântica aditiva existente é preservada, e uma nota em qualquer/próxima publicação indica quando existem IDs vinculados ativos.
 
-Ao ligar **Responder ao comentário na publicação**, as variações aparecem dentro do mesmo box cinza. Cada variação de mensagem privada pode ter seu próprio texto e botão/link; editar ou remover o botão de uma delas conserva as demais. A prévia acompanha a alternativa editada. A execução escolhe uma alternativa completa; não envia a lista em sequência. Rápido e construtor visual usam o mesmo contrato, também no Facebook e Messenger. Consulte `docs/api/automations-agent-api.md` para o formato de agentes.
+Ao ligar **Responder ao comentário na publicação**, as variações aparecem diretamente na etapa verde, sem outro box ao redor do switch. **Pedir para seguir antes de enviar** também usa um switch; seus campos ficam apenas nas subetapas expansíveis. Cada variação de mensagem privada pode ter seu próprio texto e botão/link; editar ou remover o botão de uma delas conserva as demais. A prévia acompanha a alternativa editada. A execução escolhe uma alternativa completa; não envia a lista em sequência. Rápido e construtor visual usam o mesmo contrato, também no Facebook e Messenger. Consulte `docs/api/automations-agent-api.md` para o formato de agentes.
+
+
+### Ferramentas de texto no foco
+
+Ao focar uma mensagem ou variação pública, uma barra discreta oferece emojis, variáveis compatíveis e contador. O seletor permanente de variáveis foi removido. A escolha substitui a seleção ou insere no cursor, devolvendo o foco ao texto; se ultrapassar o limite, a inserção inteira é recusada com aviso. Escape fecha o menu, e clicar fora recolhe as ferramentas. O seletor de emojis reaproveita o componente já usado no editor de publicações.
+
+As variáveis continuam vinculadas ao motor: Instagram legado usa `{commenter_name}`, `{commenter_id}`, `{comment_text}` e `{media_id}`; Facebook usa `{{comment_name}}`, `{{comment_text}}`, `{{comment_id}}` e `{{media_id}}`. No Messenger, apenas texto e ID da mensagem ficam disponíveis. Textos de abertura e verificação de seguidores oferecem emojis, pois esses campos não interpolam variáveis no motor atual.
+
+Quando há mais de uma alternativa privada, cada texto e seu botão/link ficam no próprio box numerado. A ajuda sobre o link fica no fim da mesma linha do botão. As ferramentas são comuns ao editor rápido e aos inspetores do construtor visual; nenhuma escolha salva ou ativa a automação automaticamente.

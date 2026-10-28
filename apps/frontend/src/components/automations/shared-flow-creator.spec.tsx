@@ -903,7 +903,9 @@ it('preserva botoes proprios no rapido, na previa e ao salvar', async () => {
   };
   render(<SharedFlowCreator id="flow" />);
   expect(screen.queryByText('canvas')).toBeNull();
-  fireEvent.focus(screen.getByLabelText('automation_private_variant 2'));
+  fireEvent.focus(
+    screen.getByRole('textbox', { name: 'automation_private_variant 2' })
+  );
   const preview = within(screen.getByRole('complementary'));
   expect(preview.getByText('B')).toBeTruthy();
   expect(preview.getByText(/Link B/)).toBeTruthy();
