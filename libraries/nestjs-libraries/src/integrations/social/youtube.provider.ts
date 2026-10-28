@@ -16,6 +16,7 @@ import {
   BadBody,
   SocialAbstract,
   RefreshToken,
+  PublishedWithError,
 } from '@gitroom/nestjs-libraries/integrations/social.abstract';
 import * as process from 'node:process';
 import dayjs from 'dayjs';
@@ -411,28 +412,55 @@ export class YoutubeProvider extends SocialAbstract implements SocialProvider {
       true
     );
 
-    if (settings?.thumbnail?.path) {
-      await this.runInConcurrent(async () =>
-        youtubeClient.thumbnails.set({
-          videoId: all?.data?.id!,
-          media: {
-            body: (
-              await this.getSsrfSafeAxios()({
-                url: settings?.thumbnail?.path,
-                method: 'GET',
-                responseType: 'stream',
-              })
-            ).data,
-          },
-        })
-      );
+    const videoId = all?.data?.id!;
+    const releaseURL = `https://www.youtube.com/watch?v=${videoId}`;
+    // a miniatura do proprio YouTube (posts antigos) vence; senao a capa
+    // definida na midia do post (upstream #2285)
+    const thumbnail =
+      settings?.thumbnail?.path || firstPost?.media?.[0]?.thumbnail || '';
+
+    if (thumbnail) {
+      try {
+        await this.runInConcurrent(async () =>
+          youtubeClient.thumbnails.set({
+            videoId,
+            media: {
+              body: (
+                await this.getSsrfSafeAxios()({
+                  url: thumbnail,
+                  method: 'GET',
+                  responseType: 'stream',
+                })
+              ).data,
+            },
+          })
+        );
+      } catch (err: any) {
+        // o video ja esta no ar: a miniatura recusada nao pode perder o id e a
+        // URL (upstream 23beddcd). Aqui o upload e sincrono, entao nem token
+        // recusado volta para a nova tentativa — repetir o post() subiria o
+        // video de novo.
+        throw new PublishedWithError(
+          this.identifier,
+          firstPost.id,
+          videoId,
+          releaseURL,
+          // so mensagem mapeada pelo handleErrors; 'Unknown Error' (erro nao
+          // mapeado, falha ao baixar a imagem) vira a explicacao generica
+          err instanceof BadBody &&
+            err.message &&
+            err.message !== 'Unknown Error'
+            ? err.message
+            : 'Your video was uploaded to YouTube successfully, but we could not set the thumbnail. Set it manually in YouTube Studio.'
+        );
+      }
     }
 
     return [
       {
         id: firstPost.id,
-        releaseURL: `https://www.youtube.com/watch?v=${all?.data?.id}`,
-        postId: all?.data?.id!,
+        releaseURL,
+        postId: videoId,
         status: 'success',
       },
     ];

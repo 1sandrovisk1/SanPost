@@ -766,6 +766,18 @@ CRITICAL/HIGH. MEDIUM aceitos ou registrados:
 - o código de autorização não é de uso único sob troca concorrente, e o
   `code_verifier` não é validado.
 
+### Painel de mídia (28/10/2026)
+
+Portados: #2285 + #2295 + #2302 (`new-launch/media.settings.section.tsx`; o
+hook fica em `media.settings.values.ts` para o `high.order.provider` não
+importar a cadeia do modal; sem o `BottomSheetRow` mobile, que é do redesign
+responsivo) e `23beddcd` (`PublishedWithError`: o fork envia a miniatura de
+forma síncrona dentro do `post()`, então qualquer falha do `thumbnails.set`
+depois do upload vira `PublishedWithError` — um retry subiria o vídeo de
+novo). Decisão do mantenedor: manter o comportamento do Postiz (post em
+ERROR com o link do vídeo). Próximo: agendamento por grupo (`a194e3f4`),
+plano em duas etapas (backend e composer).
+
 ## Apêndice — classificação 1 por 1 (171 PRs + 74 commits diretos)
 
 Legenda: **P0** segurança (nesta branch) · **ADOPT** cherry-pick/porte leve ·

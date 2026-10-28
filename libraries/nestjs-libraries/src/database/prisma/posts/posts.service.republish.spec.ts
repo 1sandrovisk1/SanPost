@@ -194,6 +194,39 @@ describe('PostsService - republicacao explicita', () => {
     expect(repository.createOrUpdatePost).toHaveBeenCalledTimes(1);
   });
 
+  it('post em erro que ja esta no ar (PublishedWithError) tambem exige opt-in', async () => {
+    const { service, repository } = buildService();
+    repository.getPostById.mockResolvedValue({
+      ...publishedPost,
+      state: 'ERROR',
+      releaseId: 'vid-1',
+      integration: { id: 'int-1', providerIdentifier: 'youtube' },
+    } as any);
+
+    await expect(
+      service.createPost('org-1', makeBody() as any, 'profile-1')
+    ).rejects.toThrow('republish: true');
+    await expect(
+      service.changeDate('org-1', 'post-1', '2026-12-01T10:00:00Z', 'schedule', 'profile-1')
+    ).rejects.toThrow('republish: true');
+    expect(repository.createOrUpdatePost).not.toHaveBeenCalled();
+    expect(repository.changeDate).not.toHaveBeenCalled();
+  });
+
+  it('post em erro sem id na plataforma (ou missing) reagenda normalmente', async () => {
+    const { service, repository } = buildService();
+    for (const releaseId of [null, 'missing']) {
+      repository.getPostById.mockResolvedValue({
+        ...publishedPost,
+        state: 'ERROR',
+        releaseId,
+      } as any);
+      await service.createPost('org-1', makeBody() as any, 'profile-1');
+    }
+
+    expect(repository.createOrUpdatePost).toHaveBeenCalledTimes(2);
+  });
+
   it('nao bloqueia o agendamento de um post que ainda esta na fila', async () => {
     const { service, repository } = buildService();
     repository.getPostById.mockResolvedValue({
@@ -313,5 +346,22 @@ describe('PostsService - republicacao explicita', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
 
     expect(repository.changeDate).not.toHaveBeenCalled();
+  });
+});
+
+// Porte do upstream 23beddcd: grava o link do post no ar com erro.
+describe('PostsService.updatePublishedRelease', () => {
+  it('delega ao repositorio restrito a org', async () => {
+    const { service, repository } = buildService();
+    repository.updatePublishedRelease.mockResolvedValue({ id: 'post-1' } as any);
+
+    await service.updatePublishedRelease('post-1', 'org-1', 'vid-1', 'https://www.youtube.com/watch?v=vid-1');
+
+    expect(repository.updatePublishedRelease).toHaveBeenCalledWith(
+      'post-1',
+      'org-1',
+      'vid-1',
+      'https://www.youtube.com/watch?v=vid-1'
+    );
   });
 });

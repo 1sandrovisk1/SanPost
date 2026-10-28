@@ -45,6 +45,8 @@ import { useHasScroll } from '@gitroom/frontend/components/ui/is.scroll.hook';
 import { useShortlinkPreference } from '@gitroom/frontend/components/settings/shortlink-preference.component';
 import dayjs from 'dayjs';
 import { Button } from '@gitroom/react/form/button';
+import { MediaSettingsSection } from '@gitroom/frontend/components/new-launch/media.settings.section';
+import { useMediaSettingsValues } from '@gitroom/frontend/components/new-launch/media.settings.values';
 
 export const ManageModal: FC<AddEditModalProps> = (props) => {
   const t = useT();
@@ -98,6 +100,10 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
       setHide(false);
     }
   }, [hide]);
+
+  // com midia, as configuracoes aparecem tambem no modo global (upstream #2285)
+  const mediaSettingsValues = useMediaSettingsValues();
+  const hasMediaSettings = mediaSettingsValues.some((p) => p.media?.length);
 
   const currentIntegrationText = useMemo(() => {
     if (current === 'global') {
@@ -198,6 +204,10 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
       if (
         (type === 'now' || type === 'schedule') &&
         (existingData?.posts?.[0]?.state === 'PUBLISHED' ||
+          // falhou depois de entrar no ar (ex.: miniatura do YouTube)
+          (existingData?.posts?.[0]?.state === 'ERROR' &&
+            !!existingData?.posts?.[0]?.releaseId &&
+            existingData?.posts?.[0]?.releaseId !== 'missing') ||
           (existingData?.posts?.[0]?.state === 'QUEUE' &&
             dayjs().isAfter(date.utc())))
       ) {
@@ -534,7 +544,7 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
                 className={clsx(
                   'pb-[20px] px-[20px] select-none',
                   showSettings && 'flex-1 flex pt-[20px]',
-                  current === 'global' && 'hidden'
+                  current === 'global' && !hasMediaSettings && 'hidden'
                 )}
               >
                 <div className="flex-1 flex flex-col rounded-[12px] gap-[12px] overflow-hidden bg-newSettings">
@@ -562,6 +572,7 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
                     )}
                   >
                     <div className="absolute left-0 top-0 w-full h-full flex flex-col overflow-x-hidden overflow-y-auto scrollbar scrollbar-thumb-newBgColorInner scrollbar-track-newColColor">
+                      <MediaSettingsSection />
                       <div
                         id="social-settings"
                         className="flex flex-col gap-[20px] bg-newBgColor"

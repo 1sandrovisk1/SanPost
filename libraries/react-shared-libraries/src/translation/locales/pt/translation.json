@@ -2554,5 +2554,10 @@
   "copy_debug_json": "Copiar JSON de depuração",
   "confirm_delete_tag": "Tem certeza de que deseja excluir a tag \"{{tagName}}\"?",
   "oauth_profile_scope_notice": "O acesso fica limitado ao perfil selecionado agora e termina se você perder o acesso a ele.",
-  "oauth_org_scope_notice": "Como administrador, você está dando acesso a todos os perfis desta organização."
+  "oauth_org_scope_notice": "Como administrador, você está dando acesso a todos os perfis desta organização.",
+  "thumbnails_and_alt_text": "Miniaturas e texto alternativo",
+  "media_settings_section_description": "Clique em uma mídia para definir o texto alternativo ou, se for vídeo, a miniatura.",
+  "media_settings_section_tooltip": "As miniaturas valem para vídeos da publicação principal e vão para todos os canais que as aceitam. O YouTube pode ignorá-las em vídeos que trata como Shorts (verticais, até 3 minutos) sem falhar a publicação, e exige canal verificado por telefone para miniatura personalizada. Se o YouTube recusar a miniatura, o vídeo continua publicado, e o Robô MultiPost não consegue checar isso antes.",
+  "youtube_thumbnail_overrides_media": "Este post tem uma miniatura própria do YouTube, que vale no lugar da miniatura definida na mídia.",
+  "media_settings_main_post": "Publicação principal"
 }

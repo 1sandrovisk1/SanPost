@@ -11,7 +11,13 @@ interface Values {
   id: string;
   content: string;
   delay: number;
-  media: { id: string; path: string; thumbnail?: string }[];
+  media: {
+    id: string;
+    path: string;
+    thumbnail?: string;
+    thumbnailTimestamp?: number;
+    alt?: string;
+  }[];
 }
 
 export interface Internal {

@@ -94,6 +94,24 @@ export class PostsService {
     return this._postRepository.searchForMissingThreeHoursPosts();
   }
 
+  // post no ar com falha num passo seguinte: guarda o link para o usuario abrir
+  // o post em vez de publicar de novo (upstream 23beddcd). Hoje so o YouTube:
+  // nao congela `scheduledAutomationTarget.publishedReleaseId` como o
+  // updatePost (automacoes so existem para Facebook/Instagram)
+  updatePublishedRelease(
+    id: string,
+    orgId: string,
+    releaseId: string,
+    releaseURL: string
+  ) {
+    return this._postRepository.updatePublishedRelease(
+      id,
+      orgId,
+      releaseId,
+      releaseURL
+    );
+  }
+
   updatePost(id: string, postId: string, releaseURL: string) {
     return this._postRepository.updatePost(id, postId, releaseURL);
   }
@@ -1111,11 +1129,19 @@ export class PostsService {
     post: {
       state: State;
       publishDate: Date;
+      releaseId?: string | null;
       integration?: { providerIdentifier: string };
     } | null,
     source: 'createPost' | 'changeDate'
   ) {
-    if (post?.state !== 'PUBLISHED') {
+    // ERROR com id na plataforma: entrou no ar e falhou num passo seguinte
+    // (PublishedWithError, ex.: miniatura do YouTube) — publicar de novo
+    // subiria o video outra vez
+    const liveWithError =
+      post?.state === 'ERROR' &&
+      !!post.releaseId &&
+      post.releaseId !== 'missing';
+    if (post?.state !== 'PUBLISHED' && !liveWithError) {
       return;
     }
 

@@ -462,6 +462,21 @@ export class PostsRepository {
     });
   }
 
+  // post que entrou no ar mas falhou num passo seguinte (PublishedWithError):
+  // grava id/URL na plataforma sem mexer no estado (o workflow marca ERROR)
+  updatePublishedRelease(
+    id: string,
+    orgId: string,
+    releaseId: string,
+    releaseURL: string
+  ) {
+    return this._post.model.post.update({
+      where: { id, organizationId: orgId },
+      data: { releaseId, releaseURL },
+      select: { id: true },
+    });
+  }
+
   // Troca o publish id guardado pelo id publico definitivo (e a URL) quando a
   // plataforma o expoe depois da publicacao (ver PostsService.resolveRelease).
   // `previousReleaseId` no where: uma resolucao antiga nao sobrescreve uma

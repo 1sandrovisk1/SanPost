@@ -1,5 +1,6 @@
 import { SharedFlowsRepository } from '@gitroom/nestjs-libraries/database/prisma/flows-v2/shared-flows.repository';
-import { Injectable, Optional } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { summarizeError } from '@gitroom/nestjs-libraries/services/error.summary';
 import {
   Activity,
   ActivityMethod,
@@ -38,10 +39,16 @@ import {
 } from '@gitroom/nestjs-libraries/temporal/temporal.heartbeat';
 import { assertSafePendingData } from '@gitroom/nestjs-libraries/temporal/pending-post-state';
 import { selectPostWorkflowVersion } from '@gitroom/nestjs-libraries/temporal/post-workflow-version';
+import {
+  BadBody,
+  PublishedWithError,
+} from '@gitroom/nestjs-libraries/integrations/social.abstract';
 
 @Injectable()
 @Activity()
 export class PostActivity {
+  private readonly _logger = new Logger(PostActivity.name);
+
   constructor(
     private _postService: PostsService,
     private _notificationService: NotificationService,
@@ -306,19 +313,23 @@ export class PostActivity {
       const mappedPosts = await this.mapPosts(getIntegration, newPosts || []);
       setHeartbeatDetails(`${runtimeIntegration.providerIdentifier}: publish`);
 
-      const response = getIntegration.postPending
-        ? await getIntegration.postPending(
-            runtimeIntegration.internalId,
-            runtimeIntegration.token,
-            mappedPosts,
-            runtimeIntegration
-          )
-        : await getIntegration.post(
-            runtimeIntegration.internalId,
-            runtimeIntegration.token,
-            mappedPosts,
-            runtimeIntegration
-          );
+      const response = await this.keepReleaseOnPublishedError(
+        runtimeIntegration,
+        () =>
+          getIntegration.postPending
+            ? getIntegration.postPending(
+                runtimeIntegration.internalId,
+                runtimeIntegration.token,
+                mappedPosts,
+                runtimeIntegration
+              )
+            : getIntegration.post(
+                runtimeIntegration.internalId,
+                runtimeIntegration.token,
+                mappedPosts,
+                runtimeIntegration
+              )
+      );
 
       const validated = response.map((item) =>
         item.status === 'pending'
@@ -407,10 +418,7 @@ export class PostActivity {
       posts
     );
 
-    const postNow = await getIntegration.post(
-      integration.internalId,
-      integration.token,
-      await Promise.all(
+    const mappedPosts = await Promise.all(
         (newPosts || []).map(async (p) => ({
           id: p.id,
           message: stripHtmlValidation(
@@ -428,8 +436,15 @@ export class PostActivity {
             getIntegration?.convertToJPEG || false
           ),
         }))
-      ),
-      integration
+    );
+
+    const postNow = await this.keepReleaseOnPublishedError(integration, () =>
+      getIntegration.post(
+        integration.internalId,
+        integration.token,
+        mappedPosts,
+        integration
+      )
     );
 
     await this._temporalService.client
@@ -448,6 +463,42 @@ export class PostActivity {
       });
 
     return postNow;
+  }
+
+  // Post no ar com falha num passo seguinte (PublishedWithError): guarda o
+  // id/URL na plataforma e falha como BadBody, como qualquer outro erro — o
+  // calendario leva ao post publicado em vez de o usuario publicar de novo
+  // (upstream 23beddcd).
+  private async keepReleaseOnPublishedError<T>(
+    integration: Integration,
+    publish: () => Promise<T>
+  ): Promise<T> {
+    try {
+      return await publish();
+    } catch (err) {
+      if (!(err instanceof PublishedWithError)) {
+        throw err;
+      }
+      try {
+        await this._postService.updatePublishedRelease(
+          err.postDbId,
+          integration.organizationId,
+          err.releaseId,
+          err.releaseURL
+        );
+      } catch (e) {
+        // sem o link o usuario pode publicar de novo: precisa aparecer no log
+        this._logger.error(
+          `nao foi possivel guardar o link do post ${err.postDbId} publicado com erro: ${summarizeError(e)}`
+        );
+      }
+      throw new BadBody(
+        integration.providerIdentifier,
+        JSON.stringify({}),
+        Buffer.from('{}'),
+        err.message
+      );
+    }
   }
 
   private withDecryptedToken(integration: Integration): Integration {

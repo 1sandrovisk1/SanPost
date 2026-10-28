@@ -2554,5 +2554,10 @@
   "copy_debug_json": "Copy debug JSON",
   "confirm_delete_tag": "Are you sure you want to delete the tag \"{{tagName}}\"?",
   "oauth_profile_scope_notice": "Access is limited to the profile you have selected now, and ends if you lose access to it.",
-  "oauth_org_scope_notice": "As an administrator, you are granting access to every profile of this organization."
+  "oauth_org_scope_notice": "As an administrator, you are granting access to every profile of this organization.",
+  "thumbnails_and_alt_text": "Thumbnails & alt text",
+  "media_settings_section_description": "Click a media item to set its alt text, or its thumbnail if it is a video.",
+  "media_settings_section_tooltip": "Thumbnails apply to videos in the main post and are sent to every channel that supports them. YouTube may ignore them on videos it treats as Shorts (vertical, up to 3 minutes) without failing the publish, and requires a phone-verified channel for custom thumbnails. If YouTube rejects the thumbnail the video is still published, and Robô MultiPost cannot check eligibility in advance.",
+  "youtube_thumbnail_overrides_media": "This post has a YouTube-specific thumbnail, which overrides the thumbnail set in the media settings.",
+  "media_settings_main_post": "Main post"
 }

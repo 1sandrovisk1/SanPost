@@ -339,3 +339,20 @@ describe('PostsRepository.updateReleaseId (link do post conectado)', () => {
     });
   });
 });
+
+// Porte do upstream 23beddcd: post no ar com falha num passo seguinte.
+describe('PostsRepository.updatePublishedRelease', () => {
+  it('grava id e link restrito a org, sem mexer no estado', async () => {
+    const post = createPrismaRepositoryMock('post');
+    (post.model.post as any).update = jest.fn().mockResolvedValue({ id: 'p' });
+    const repo = new PostsRepository(post as any, {} as any, {} as any, {} as any, {} as any, {} as any);
+
+    await repo.updatePublishedRelease('p', 'o', 'vid-1', 'https://www.youtube.com/watch?v=vid-1');
+
+    expect((post.model.post as any).update).toHaveBeenCalledWith({
+      where: { id: 'p', organizationId: 'o' },
+      data: { releaseId: 'vid-1', releaseURL: 'https://www.youtube.com/watch?v=vid-1' },
+      select: { id: true },
+    });
+  });
+});
