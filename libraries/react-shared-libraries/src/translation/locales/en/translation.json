@@ -2552,5 +2552,7 @@
   "auth_method_generic": "Single sign-on",
   "could_not_save_post": "Could not save the post.",
   "copy_debug_json": "Copy debug JSON",
-  "confirm_delete_tag": "Are you sure you want to delete the tag \"{{tagName}}\"?"
+  "confirm_delete_tag": "Are you sure you want to delete the tag \"{{tagName}}\"?",
+  "oauth_profile_scope_notice": "Access is limited to the profile you have selected now, and ends if you lose access to it.",
+  "oauth_org_scope_notice": "As an administrator, you are granting access to every profile of this organization."
 }

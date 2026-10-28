@@ -28,7 +28,11 @@ export const startMcp = async (app: INestApplication) => {
     if (token.startsWith('pos_')) {
       const authorization = await oauthService.getOrgByOAuthToken(token);
       if (!authorization) return null;
-      return { org: authorization.organization };
+      // token aprovado por membro USER fica preso ao perfil dele
+      return {
+        org: authorization.organization,
+        profileId: authorization.profileId || undefined,
+      };
     }
     const profile = await profileService.getProfileByApiKey(token);
     if (profile) return { org: profile.organization, profileId: profile.id };

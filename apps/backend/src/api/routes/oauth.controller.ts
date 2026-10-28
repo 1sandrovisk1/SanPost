@@ -13,7 +13,9 @@ import { ApiTags } from '@nestjs/swagger';
 import { OAuthService } from '@gitroom/nestjs-libraries/database/prisma/oauth/oauth.service';
 import { GetUserFromRequest } from '@gitroom/nestjs-libraries/user/user.from.request';
 import { GetOrgFromRequest } from '@gitroom/nestjs-libraries/user/org.from.request';
-import { User, Organization } from '@prisma/client';
+import { User, Organization, Profile } from '@prisma/client';
+import { GetProfileFromRequest } from '@gitroom/nestjs-libraries/user/profile.from.request';
+import { getOrgRole } from '@gitroom/nestjs-libraries/user/org.role';
 import { AuthorizeOAuthQueryDto, ApproveOAuthDto } from '@gitroom/nestjs-libraries/dtos/oauth/authorize-oauth.dto';
 import { TokenExchangeDto } from '@gitroom/nestjs-libraries/dtos/oauth/token-exchange.dto';
 import { resolveClientCredentials } from '@gitroom/nestjs-libraries/chat/oauth-types';
@@ -82,7 +84,8 @@ export class OAuthAuthorizedController {
   async approveOrDeny(
     @Body() body: ApproveOAuthDto,
     @GetUserFromRequest() user: User,
-    @GetOrgFromRequest() org: Organization
+    @GetOrgFromRequest() org: Organization,
+    @GetProfileFromRequest() profile: Profile | null
   ) {
     const app = await this._oauthService.validateAuthorizationRequest(
       body.client_id
@@ -97,10 +100,22 @@ export class OAuthAuthorizedController {
       return { redirect: redirectUrl.toString() };
     }
 
+    // membro USER aprova so para o proprio perfil ativo; ADMIN/SUPERADMIN
+    // para a org inteira (o ProfileAccessGuard ja barra USER sem perfil e
+    // VIEWER nesta rota)
+    const profileId = getOrgRole(org) === 'USER' ? profile?.id ?? null : null;
+    if (getOrgRole(org) === 'USER' && !profileId) {
+      throw new HttpException(
+        { error: 'access_denied', error_description: 'No profile selected' },
+        HttpStatus.FORBIDDEN
+      );
+    }
+
     const code = await this._oauthService.createAuthorizationCode(
       app.id,
       user.id,
-      org.id
+      org.id,
+      profileId
     );
 
     const redirectUrl = new URL(app.redirectUrl);

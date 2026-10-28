@@ -42,6 +42,12 @@ export class PublicAuthMiddleware implements NestMiddleware {
         // quem aprovou o app OAuth, para o GET /public/v1/me
         // @ts-ignore
         req.oauthUserId = authorization.userId;
+        // token aprovado por membro USER vale so no perfil dele, como uma
+        // chave de perfil
+        if (authorization.profileId) {
+          // @ts-ignore
+          req.publicApiProfileId = authorization.profileId;
+        }
       } else {
         const profile = await this._profileService.getProfileByApiKey(auth);
         if (profile) {

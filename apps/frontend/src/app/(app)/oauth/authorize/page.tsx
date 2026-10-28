@@ -4,10 +4,14 @@ import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import { Logo } from '@gitroom/frontend/components/new-layout/logo';
+import { useUser } from '@gitroom/frontend/components/layout/user.context';
+import { useT } from '@gitroom/react/translation/get.transation.service.client';
 
 export default function OAuthAuthorizePage() {
   const searchParams = useSearchParams();
   const fetch = useFetch();
+  const user = useUser();
+  const t = useT();
   const [appInfo, setAppInfo] = useState<any>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -183,6 +187,19 @@ export default function OAuthAuthorizePage() {
               <li>Create and schedule posts on your behalf</li>
               <li>Read your post analytics</li>
             </ul>
+            {/* membro USER aprova so para o perfil ativo (o token fica preso a
+                ele); ADMIN/SUPERADMIN, para a organizacao inteira */}
+            <div className="mt-[12px] text-[13px] text-gray-400">
+              {user?.role === 'USER'
+                ? t(
+                    'oauth_profile_scope_notice',
+                    'Access is limited to the profile you have selected now, and ends if you lose access to it.'
+                  )
+                : t(
+                    'oauth_org_scope_notice',
+                    'As an administrator, you are granting access to every profile of this organization.'
+                  )}
+            </div>
           </div>
 
           <div className="flex gap-[12px]">

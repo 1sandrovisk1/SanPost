@@ -2552,5 +2552,7 @@
   "auth_method_generic": "Login único (SSO)",
   "could_not_save_post": "Não foi possível salvar o post.",
   "copy_debug_json": "Copiar JSON de depuração",
-  "confirm_delete_tag": "Tem certeza de que deseja excluir a tag \"{{tagName}}\"?"
+  "confirm_delete_tag": "Tem certeza de que deseja excluir a tag \"{{tagName}}\"?",
+  "oauth_profile_scope_notice": "O acesso fica limitado ao perfil selecionado agora e termina se você perder o acesso a ele.",
+  "oauth_org_scope_notice": "Como administrador, você está dando acesso a todos os perfis desta organização."
 }
