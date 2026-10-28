@@ -1,6 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 import {
   BadBody,
+  PublishedWithError,
   heartbeatEndpoint,
   RefreshToken,
   SocialAbstract,
@@ -351,6 +352,15 @@ describe('SocialAbstract.runInConcurrent (erro classificado)', () => {
 
   it('RefreshToken do provider continua RefreshToken', async () => {
     const original = new RefreshToken('test', '{}', '', 'expired');
+    await expect(
+      provider.runInConcurrent(async () => {
+        throw original;
+      })
+    ).rejects.toBe(original);
+  });
+
+  it('PublishedWithError (post ja no ar) chega intacto a activity', async () => {
+    const original = new PublishedWithError('test', 'post-1', 'vid', 'https://x/vid', 'thumb');
     await expect(
       provider.runInConcurrent(async () => {
         throw original;

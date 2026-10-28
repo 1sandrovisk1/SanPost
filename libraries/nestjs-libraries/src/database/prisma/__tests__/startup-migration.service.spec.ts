@@ -40,7 +40,7 @@ describe('StartupMigrationService.cleanupExpiredUnmatchedComments', () => {
     service = new StartupMigrationService(
       prisma,
       {
-        reconcileWorkflows: jest.fn().mockResolvedValue({ started: 0 }),
+        reconcileWorkflows: jest.fn().mockResolvedValue({ total: 0, reconciled: 0 }),
       } as any,
       {
         ensureRefreshTokensCronWorkflow: jest
@@ -120,7 +120,7 @@ describe('StartupMigrationService.backfillFlowsToDefaultProfile', () => {
     service = new StartupMigrationService(
       prisma,
       {
-        reconcileWorkflows: jest.fn().mockResolvedValue({ started: 0 }),
+        reconcileWorkflows: jest.fn().mockResolvedValue({ total: 0, reconciled: 0 }),
       } as any,
       {
         ensureRefreshTokensCronWorkflow: jest
@@ -183,7 +183,7 @@ describe('StartupMigrationService.reconcileRefreshTokensCron', () => {
 
   const buildService = (
     ensure: jest.Mock,
-    reconcile = jest.fn().mockResolvedValue({ started: 0 })
+    reconcile = jest.fn().mockResolvedValue({ total: 0, reconciled: 0 })
   ) =>
     new StartupMigrationService(
       buildPrisma() as any,
@@ -196,7 +196,7 @@ describe('StartupMigrationService.reconcileRefreshTokensCron', () => {
   // o bootstrap (depois de todos os onModuleInit)
   it('garante o cron de refresh e os reposts so no bootstrap', async () => {
     const ensure = jest.fn().mockResolvedValue(undefined);
-    const reconcile = jest.fn().mockResolvedValue({ started: 0 });
+    const reconcile = jest.fn().mockResolvedValue({ total: 0, reconciled: 0 });
     const service = buildService(ensure, reconcile);
 
     await service.onModuleInit();

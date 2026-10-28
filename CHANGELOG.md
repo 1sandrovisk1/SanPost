@@ -11,7 +11,7 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 
 - **Tags do post pelo painel:** desde o PR #327 a tag escolhida no editor não era gravada (o painel envia o nome da tag e o backend passou a exigir o id), e criar uma tag nova pelo próprio editor quebrava o salvamento. A tag agora é encontrada pelo id (API/MCP) ou pelo nome (painel), sempre dentro do perfil.
 - **Workflows do Temporal no boot:** a reconciliação dos reposts e o cron de renovação de tokens em lote rodavam antes do cliente do Temporal ficar pronto (`Temporal Service is not initialized` / `0/N repost workflow(s) reconciliados`). Passam a rodar depois da inicialização de todos os módulos.
-- **Motivo da falha do post preservado** (porte do Postiz `0c9d3940`): um erro já classificado pelo provider (ex.: tamanho de mídia no upload em partes do X) não vira mais "Unknown Error". O log do worker resume o erro do provider em vez de imprimir o corpo da resposta.
+- **Erro classificado do provider preservado** (porte do Postiz `0c9d3940`, paridade preventiva): um erro que o provider já classificou dentro do envio em lote (`runInConcurrent`) mantém o tipo e a mensagem em vez de virar "Unknown Error". O log do worker passa a resumir o erro do provider em vez de imprimir o corpo da resposta (que podia ter tokens).
 - **Prévia de vídeo:** fechar o player antes do vídeo começar não registra mais um erro no log do backend.
 
 ### Melhorado — ferramentas de texto das automações (28/10/2026)

@@ -87,6 +87,7 @@ Os dois erros de boot `reconcileRefreshTokensCron: Temporal Service is not
 initialized` já documentados no [runbook local](multipost-local-docker.md)
 continuam presentes. Não são novos neste sync e não impedem API, interface e
 workers de iniciar; a renovação proativa global permanece fora desta validação.
+(Corrigido em 28/10/2026: a reconciliação passou para `onApplicationBootstrap`.)
 Nenhuma credencial foi renovada e nenhuma mensagem/publicação real foi enviada.
 
 ## Retorno seguro

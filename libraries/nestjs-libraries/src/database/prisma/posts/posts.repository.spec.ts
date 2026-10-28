@@ -36,6 +36,29 @@ describe('resultado de publicacao e alvo agendado', () => {
    expect(post.model.post.update).toHaveBeenCalledWith(expect.objectContaining({data:{tags:{createMany:{data:[{tagId:'t-certa'}]}}}}));
   });
 
+  it('canal sem perfil busca na org (como o getTags) e duas entradas da mesma tag gravam uma vez', async () => {
+   const tag=createPrismaRepositoryMock('tags');const link=createPrismaRepositoryMock('tagsPosts');
+   const local=new PostsRepository(post as any,{} as any,{} as any,tag as any,link as any,{} as any);
+   post.model.post.upsert.mockResolvedValue({id:'post'});tag.model.tags.findMany.mockResolvedValue([{id:'t1',name:'Campanha'}]);
+   await local.createOrUpdatePost('schedule','o','2026-11-01T15:00:00Z',{integration:{id:'i'},value:[{id:'post',content:'Texto',image:[]}],settings:{__type:'facebook'}} as any,[{value:'t1',label:'Campanha'},{value:'Campanha',label:'Campanha'}]);
+   const where=(tag.model.tags.findMany as jest.Mock).mock.calls[0][0].where;
+   expect(where).not.toHaveProperty('profileId');
+   expect(post.model.post.update).toHaveBeenCalledWith(expect.objectContaining({data:{tags:{createMany:{data:[{tagId:'t1'}]}}}}));
+  });
+
+  it('nome com espaco e comparado como foi gravado', async () => {
+   const { tag, save } = build([{id:'t1',name:'Campanha '}]);
+   await save([{value:'Campanha ',label:'Campanha '}]);
+   expect((tag.model.tags.findMany as jest.Mock).mock.calls[0][0].where.OR[1]).toEqual({name:{in:['Campanha ','Campanha ']}});
+   expect(post.model.post.update).toHaveBeenCalledWith(expect.objectContaining({data:{tags:{createMany:{data:[{tagId:'t1'}]}}}}));
+  });
+
+  it('id fora do escopo cai para o nome do label', async () => {
+   const { save } = build([{id:'t-perfil',name:'Campanha'}]);
+   await save([{value:'id-de-outro-perfil',label:'Campanha'}]);
+   expect(post.model.post.update).toHaveBeenCalledWith(expect.objectContaining({data:{tags:{createMany:{data:[{tagId:'t-perfil'}]}}}}));
+  });
+
   it('tag sem value nem label nao consulta o banco (antes: in [undefined] quebrava o Prisma)', async () => {
    const { tag, save } = build([]);
    await save([{} as any]);

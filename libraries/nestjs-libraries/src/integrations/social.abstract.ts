@@ -201,8 +201,8 @@ export abstract class SocialAbstract {
     try {
       value = await func();
     } catch (err) {
-      // Ja classificado pelo provider (ex.: mediaSize/mediaChunk do X): mantem
-      // a mensagem em vez de virar 'Unknown Error' (upstream 0c9d3940)
+      // Ja classificado pelo provider dentro do callback: mantem o tipo e a
+      // mensagem em vez de virar 'Unknown Error' (upstream 0c9d3940)
       if (
         err instanceof BadBody ||
         err instanceof RefreshToken ||
@@ -215,7 +215,7 @@ export abstract class SocialAbstract {
       // da resposta (tokens, URLs assinadas) ao log. Divergencia documentada
       // em .claude/skills/sync-upstream/SKILL.md.
       SocialAbstract.logger.error(
-        `[runInConcurrent] provider error: ${summarizeError(err)}`
+        `[runInConcurrent] ${this.identifier} provider error: ${summarizeError(err)}`
       );
       const handle = this.handleErrors(safeStringify(err), 200);
       value = { err: true, value: 'Unknown Error', ...(handle || {}) };

@@ -65,7 +65,7 @@ Authorization: SUA_CHAVE_DE_API
 | `date` | string ISO 8601 | ✅ | Quando publicar (use uma data futura para `schedule`) |
 | `shortLink` | boolean | ✅ | Encurtar links do post |
 | `republish` | boolean | — | Obrigatório como `true` para publicar novamente um post que já está `PUBLISHED` |
-| `tags` | `{value,label}[]` | ✅ | Tags (pode ser `[]`) |
+| `tags` | `{value,label}[]` | ✅ | Tags (pode ser `[]`). `value` pode ser o id da tag ou o nome; `label` é o nome. A tag é procurada pelo id e, se não achar, pelo nome — sempre entre as tags do perfil da chave |
 | `posts` | `Post[]` (≥1) | ✅ | Um item por canal |
 
 Os tipos são estritos. Envie booleanos e números como valores JSON reais:

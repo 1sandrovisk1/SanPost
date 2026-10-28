@@ -1,5 +1,5 @@
 import { PrismaRepository, PrismaTransaction } from '@gitroom/nestjs-libraries/database/prisma/prisma.service';
-import { Injectable, Optional } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Post as PostBody } from '@gitroom/nestjs-libraries/dtos/posts/create.post.dto';
 import {
   APPROVED_SUBMIT_FOR_ORDER,
@@ -25,6 +25,7 @@ dayjs.extend(utc);
 
 @Injectable()
 export class PostsRepository {
+  private static readonly logger = new Logger(PostsRepository.name);
   constructor(
     private _post: PrismaRepository<'post'>,
     private _popularPosts: PrismaRepository<'popularPosts'>,
@@ -682,14 +683,16 @@ export class PostsRepository {
 
   // O painel manda { value: nome, label: nome }; API/MCP mandam
   // { value: id, label: nome }. Casa pelo id quando ele existe no escopo e cai
-  // para o nome; sempre na org e no perfil (sem tag homonima de outro cliente).
+  // para o nome (label antes de value); sempre na org e no perfil (sem tag
+  // homonima de outro cliente). Canal sem perfil: escopo da org, como o
+  // getTags. Nomes comparados exatamente como foram gravados.
   private async resolvePostTags(
     orgId: string,
     profileId: string | undefined,
     tags: { value: string; label: string }[]
   ) {
     const text = (v: unknown) =>
-      typeof v === 'string' && v.trim() ? v.trim() : undefined;
+      typeof v === 'string' && v.trim() ? v : undefined;
     const ids = tags.map((t) => text(t?.value)).filter(Boolean) as string[];
     const names = tags
       .flatMap((t) => [text(t?.label), text(t?.value)])
@@ -705,18 +708,27 @@ export class PostsRepository {
         deletedAt: null,
         OR: [{ id: { in: ids } }, { name: { in: names } }],
       },
+      // homonimas no mesmo escopo: sempre a mais antiga
+      orderBy: { createdAt: 'asc' },
     });
 
     const chosen = new Map<string, (typeof found)[number]>();
+    let missing = 0;
     for (const tag of tags) {
       const hit =
         found.find((f) => f.id === text(tag?.value)) ||
-        found.find(
-          (f) => f.name === text(tag?.label) || f.name === text(tag?.value)
-        );
+        found.find((f) => f.name === text(tag?.label)) ||
+        found.find((f) => f.name === text(tag?.value));
       if (hit) {
         chosen.set(hit.id, hit);
+      } else {
+        missing++;
       }
+    }
+    if (missing) {
+      PostsRepository.logger.warn(
+        `tags sem correspondencia no escopo: ${missing} de ${tags.length}`
+      );
     }
     return [...chosen.values()];
   }
