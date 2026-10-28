@@ -27,7 +27,8 @@ import {
 } from '@prisma/client';
 import { GetPostsDto } from '@gitroom/nestjs-libraries/dtos/posts/get.posts.dto';
 import { GetPostsListDto } from '@gitroom/nestjs-libraries/dtos/posts/get.posts.list.dto';
-import { shuffle } from 'lodash';
+import { groupBy, shuffle, uniqBy } from 'lodash';
+import { v4 as uuidv4 } from 'uuid';
 import { CreateGeneratedPostsDto } from '@gitroom/nestjs-libraries/dtos/generator/create.generated.posts.dto';
 import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.service';
 import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
@@ -537,6 +538,27 @@ export class PostsService {
     };
   }
 
+  // Data por canal e lote sao do editor do dashboard (upstream a194e3f4): a API
+  // publica mantem uma data para a requisicao inteira.
+  stripEditorOnlyFields<T>(rawBody: T): T {
+    const body = rawBody as any;
+    if (!body || !Array.isArray(body.posts)) {
+      return rawBody;
+    }
+    return {
+      ...body,
+      posts: body.posts.map((post: any) => {
+        if (!post || typeof post !== 'object') {
+          return post;
+        }
+        const { date: _date, batchId: _batch, ...rest } = post;
+        void _date;
+        void _batch;
+        return rest;
+      }),
+    } as T;
+  }
+
   async mapTypeToPost(
     body: CreatePostDto,
     organization: string,
@@ -813,6 +835,49 @@ export class PostsService {
     const posts = this.arrangePostsByGroup(inProfile, undefined);
     this.assertPostInProfile(posts?.[0], profileId);
 
+    // os outros canais com que o post foi criado (upstream a194e3f4): so do
+    // perfil do post aberto (e do chamador), um por canal, mesma repeticao —
+    // filtrado antes de tocar na midia deles
+    const anchor = posts[0];
+    const anchorProfileId = anchor.profileId ?? null;
+    const batch =
+      anchor.batchId && (!profileId || anchorProfileId === profileId)
+        ? await this._postRepository.getPostsByBatch(
+            orgId,
+            anchor.batchId,
+            group,
+            anchorProfileId
+          )
+        : [];
+    const siblings = uniqBy(
+      Object.values(groupBy(batch, (post) => post.group))
+        .map(
+          (batchPosts) =>
+            this.arrangePostsByGroup(batchPosts, undefined) as any[]
+        )
+        .filter(
+          (batchPosts) =>
+            batchPosts.length &&
+            batchPosts[0].profileId === anchorProfileId &&
+            batchPosts[0].integrationId !== anchor.integrationId &&
+            batchPosts[0].intervalInDays === anchor.intervalInDays
+        ),
+      (batchPosts) => batchPosts[0].integrationId
+    );
+
+    return {
+      ...(await this.groupForEditor(posts, convertToJPEG)),
+      siblings: await Promise.all(
+        siblings.map((batchPosts) => this.groupForEditor(batchPosts))
+      ),
+    };
+  }
+
+  // o post como o editor carrega: projecao publica (sem tokens do canal)
+  private async groupForEditor(
+    posts: PostWithConditionals[],
+    convertToJPEG = false
+  ) {
     return {
       group: posts?.[0]?.group,
       posts: await Promise.all(
@@ -1232,6 +1297,9 @@ export class PostsService {
     }
 
     const postList = [];
+    // lote (upstream a194e3f4): um por perfil de destino, so com mais de um
+    // canal; canal sem perfil nao entra em lote. batchId do cliente e ignorado.
+    const batchIds = new Map<string, string>();
     for (const post of body.posts) {
       const messages = (post.value || []).map((p) => p.content);
       const updateContent = !body.shortLink
@@ -1256,14 +1324,24 @@ export class PostsService {
         effectiveProfileId = integration?.profileId ?? undefined;
       }
 
+      let batchId: string | undefined;
+      if (body.posts.length > 1 && effectiveProfileId) {
+        batchId = batchIds.get(effectiveProfileId) || uuidv4();
+        batchIds.set(effectiveProfileId, batchId);
+      }
+
       const { posts } = await this._postRepository.createOrUpdatePost(
         body.type,
         orgId,
-        body.type === 'now' ? dayjs().format('YYYY-MM-DDTHH:mm:00') : body.date,
+        // canal com data propria (editor do lote); os outros usam a do post
+        body.type === 'now'
+          ? dayjs().format('YYYY-MM-DDTHH:mm:00')
+          : post.date || body.date,
         post,
         body.tags,
         body.inter,
-        effectiveProfileId
+        effectiveProfileId,
+        batchId
       );
 
       if (!posts?.length) {

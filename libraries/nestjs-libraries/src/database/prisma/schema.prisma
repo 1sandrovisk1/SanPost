@@ -489,6 +489,8 @@ model Post {
   content                    String
   delay                      Int                       @default(0)
   group                      String
+  // posts salvos juntos para varios canais (upstream a194e3f4)
+  batchId                    String?
   title                      String?
   description                String?
   parentPostId               String?
@@ -521,6 +523,7 @@ model Post {
   scheduledAutomationTargets ScheduledAutomationTarget[]
 
   @@index([group])
+  @@index([batchId])
   @@index([deletedAt])
   @@index([publishDate])
   @@index([state])

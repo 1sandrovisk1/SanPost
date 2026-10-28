@@ -68,6 +68,12 @@ export class Post {
   @IsString()
   group: string;
 
+  // canal com data propria no editor do lote; os outros usam a data do post
+  // (upstream a194e3f4). A API publica remove o campo.
+  @IsOptional()
+  @IsDateString()
+  date?: string;
+
   @ValidateIf((o) => o.type !== 'draft')
   @ValidateNested()
   @Type(() => EmptySettings, {
