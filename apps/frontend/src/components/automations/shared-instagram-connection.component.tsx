@@ -54,12 +54,21 @@ export function InstagramEditorConnection({
   return (
     <div
       role={connection.loading || connection.ready ? 'status' : 'alert'}
-      className="mt-3 rounded-lg bg-newBgColor px-3 py-2 text-xs text-newTextColor/70"
+      className={
+        connection.loading || connection.ready
+          ? 'flex items-center gap-1.5 text-xs text-newTextColor/65'
+          : 'mt-3 rounded-lg border border-newTableBorder p-3 text-xs text-newTextColor/70'
+      }
     >
       {connection.loading ? (
         t('checking_webhook')
       ) : connection.ready ? (
-        t('webhook_ok')
+        <>
+          <span aria-hidden="true" className="text-emerald-600">
+            ✓
+          </span>
+          {t('automation_webhook_configured')}
+        </>
       ) : (
         <>
           <p>{connection.error || t('webhook_check_failed')}</p>

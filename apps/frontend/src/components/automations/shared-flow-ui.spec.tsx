@@ -54,7 +54,7 @@ describe('contratos da interface compartilhada', () => {
       screen.getByText('Oi Ana: preview_user_comment / {commenter_name}')
     ).toBeTruthy();
   });
-  it('previa compartilhada mostra somente a mensagem configurada e preserva previa legada', () => {
+  it('previas das duas redes mostram somente mensagens configuradas', () => {
     const { rerender } = render(
       <WizardPhonePreview
         activeTab="dm"
@@ -66,6 +66,18 @@ describe('contratos da interface compartilhada', () => {
     expect(screen.queryByText('preview_user_response')).toBeNull();
     expect(screen.queryByText('preview_follow_up')).toBeNull();
     rerender(<WizardPhonePreview activeTab="dm" dmMessage="Mensagem real" />);
-    expect(screen.getByText('preview_user_response')).toBeTruthy();
+    expect(screen.queryByText('preview_user_response')).toBeNull();
   });
+});
+
+it('previa Instagram usa palavra do gatilho e placeholders reais do motor', () => {
+  render(
+    <WizardPhonePreview
+      activeTab="dm"
+      commenterName="Ana"
+      triggerText="COMPRA"
+      dmMessage="Oi {commenter_name} {commenter_id}: {comment_text} / {media_id}"
+    />
+  );
+  expect(screen.getByText('Oi Ana 12345: COMPRA / 67890')).toBeTruthy();
 });

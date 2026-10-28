@@ -31,13 +31,8 @@ describe('gatilho por canal preservando Instagram legado', () => {
           } as any)}
         />
       );
-      expect(
-        screen.getByText(
-          `shared_trigger_comments · ${
-            platform === 'facebook' ? 'Facebook' : 'Instagram'
-          }`
-        )
-      ).toBeTruthy();
+      expect(screen.getByText('history_trigger_comment_on_post')).toBeTruthy();
+      expect(screen.queryByText('trigger_node_description')).toBeNull();
       expect(screen.getByText('Conta: shared_selected_count:2')).toBeTruthy();
       expect(screen.queryByText('trigger_posts_all')).toBeNull();
     }
@@ -66,9 +61,7 @@ describe('gatilho por canal preservando Instagram legado', () => {
         } as any)}
       />
     );
-    expect(
-      screen.getByText('shared_trigger_comments · Facebook / Instagram')
-    ).toBeTruthy();
+    expect(screen.getByText('history_trigger_comment_on_post')).toBeTruthy();
     expect(screen.getByText('FB: shared_all · IG: shared_next')).toBeTruthy();
   });
   it('mantem gatilho e selecao legados sem contexto V2', () => {
@@ -77,7 +70,7 @@ describe('gatilho por canal preservando Instagram legado', () => {
         {...({ data: { config: '{"mode":"next_publication"}' } } as any)}
       />
     );
-    expect(screen.getByText('trigger_node_label')).toBeTruthy();
+    expect(screen.getByText('history_trigger_comment_on_post')).toBeTruthy();
     expect(screen.getByText('summary_next_publication')).toBeTruthy();
   });
 });

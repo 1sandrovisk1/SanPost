@@ -1,5 +1,8 @@
 'use client';
-import { AutomationPublicationSelector } from './shared-publication-selector.component';
+import {
+  AutomationPublicationSelector,
+  type PublicationPreview,
+} from './shared-publication-selector.component';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import type { AutomationTriggerType } from '@gitroom/nestjs-libraries/database/prisma/flows-v2/flow-definition';
 import { useEffect, useState } from 'react';
@@ -28,6 +31,7 @@ type SharedChannelPostsProps = {
   provider: string;
   disabled: boolean;
   onChange: (channel: FlowChannelDto) => void;
+  onPreviewChange?: (posts: PublicationPreview[]) => void;
 };
 export function SharedChannelPosts(props: SharedChannelPostsProps) {
   const { profile } = useCurrentProfile();
@@ -47,6 +51,7 @@ function SharedChannelPostsContent({
   provider,
   disabled,
   onChange,
+  onPreviewChange,
 }: SharedChannelPostsProps) {
   const t = useT();
   const fetchApi = useFetch();
@@ -214,6 +219,8 @@ function SharedChannelPostsContent({
       {!messenger && (
         <>
           <AutomationPublicationSelector
+            onPreviewChange={onPreviewChange}
+            platform={provider === 'facebook' ? 'facebook' : 'instagram'}
             integrationId={channel.integrationId}
             mode={channel.postMode}
             postIds={channel.postIds}

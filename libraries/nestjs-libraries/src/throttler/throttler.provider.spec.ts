@@ -17,6 +17,19 @@ class Routes {
   @Get('/public/v1/automations/options') options() {
     return {};
   }
+  @Get('/public/v1/automations/:id/history') history() {
+    return {};
+  }
+  @Get('/public/v1/automations/:id/history/:executionId') executionDetail() {
+    return {};
+  }
+  @Get('/automation-history/:engine/:id') privateHistory() {
+    return {};
+  }
+  @Get('/automation-history/:engine/:id/:executionId')
+  privateExecutionDetail() {
+    return {};
+  }
   @Get('/public/v1/automations/capabilities') capabilities() {
     return {};
   }
@@ -75,6 +88,10 @@ describe('limites HTTP das automacoes', () => {
     ['/flows-v2/channels/id/readiness', 'GET'],
     ['/flows/quick-create', 'POST'],
     ['/public/v1/posts', 'POST'],
+    ['/public/v1/automations/id/history', 'GET'],
+    ['/PUBLIC/v1/AUTOMATIONS/id/HISTORY/exec/', 'GET'],
+    ['/automation-history/instagram/id/', 'GET'],
+    ['/AUTOMATION-HISTORY/shared/id/exec', 'GET'],
   ])('aplica 429 e isola organizacoes em %s', async (path, method) => {
     const org = 'org-' + path;
     expect(await request(path, method, org)).toBe(
@@ -84,6 +101,16 @@ describe('limites HTTP das automacoes', () => {
     expect(await request(path, method, org + '-other')).toBe(
       method === 'POST' ? 201 : 200
     );
+  });
+  it.each([
+    '/public/v1/automations/id/history',
+    '/public/v1/automations/id/history/exec',
+    '/automation-history/instagram/id',
+    '/automation-history/shared/id/exec',
+  ])('HEAD e GET compartilham o limite do historico em %s', async (path) => {
+    const org = 'head-' + path;
+    expect(await request(path, 'HEAD', org)).toBe(200);
+    expect(await request(path.toUpperCase() + '/', 'GET', org)).toBe(429);
   });
   it.each([
     '/public/v1/automations/capabilities',

@@ -5,6 +5,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { AutomationWizardComponent } from './automation-wizard.component';
 import { StoryWizardComponent } from './story-wizard.component';
@@ -51,12 +52,41 @@ vi.mock('./ad-aliases-field.component', () => ({
   ),
 }));
 vi.mock('./wizard-phone-preview.component', () => ({
-  WizardPhonePreview: () => <div>preview</div>,
+  WizardPhonePreview: (props: any) => (
+    <div
+      data-testid="phone-preview"
+      data-tab={props.activeTab}
+      data-reply={props.replyMessage}
+      data-stage={props.journey?.stage}
+      data-thumb={props.postThumb}
+      data-selected={props.postSelected}
+    >
+      preview
+    </div>
+  ),
 }));
 vi.mock('./add-link-modal.component', () => ({
   AddLinkModal: (): null => null,
 }));
-vi.mock('./hooks/use-shared-flows', () => ({ useSharedFlowData: (path: string) => ({ data: { posts: path?.includes('/ig1?') ? [{ id: 'post-da-ig1', caption: 'Agendado IG1', publishDate: '2026-11-01T12:00:00Z', status: 'waiting' }] : [], nextCursor: null as string | null }, mutate: vi.fn() }) }));
+vi.mock('./hooks/use-shared-flows', () => ({
+  useSharedFlowData: (path: string) => ({
+    data: {
+      posts: path?.includes('/ig1?')
+        ? [
+            {
+              id: 'post-da-ig1',
+              caption: 'Agendado IG1',
+              thumbnailUrl: '/scheduled.jpg',
+              publishDate: '2026-11-01T12:00:00Z',
+              status: 'waiting',
+            },
+          ]
+        : [],
+      nextCursor: null as string | null,
+    },
+    mutate: vi.fn(),
+  }),
+}));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -80,16 +110,33 @@ describe('entrada direta Instagram', () => {
   it('usa as mesmas labels e exemplos na ordem palavras chave, resposta publica e privada', async () => {
     render(<AutomationWizardComponent />);
     choose();
-    await screen.findByText('webhook_ok');
-    const toggle = screen.getByRole('switch', { name: 'shared_add_public_reply' });
+    await screen.findByText('automation_webhook_configured');
+    const toggle = screen.getByRole('switch', {
+      name: 'shared_add_public_reply',
+    });
     fireEvent.click(toggle);
     const reply = screen.getByLabelText('shared_public_reply');
     const message = screen.getByLabelText('shared_message');
-    expect(!!(toggle.compareDocumentPosition(reply) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
-    expect(!!(reply.compareDocumentPosition(message) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
-    expect(screen.getByPlaceholderText('automation_public_reply_placeholder')).toBe(reply);
-    expect(screen.getByPlaceholderText('automation_private_message_placeholder')).toBe(message);
-    expect(screen.getByText('variables_hint')).toBeTruthy();
+    expect(
+      !!(
+        toggle.compareDocumentPosition(reply) & Node.DOCUMENT_POSITION_FOLLOWING
+      )
+    ).toBe(true);
+    expect(
+      !!(
+        reply.compareDocumentPosition(message) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+      )
+    ).toBe(true);
+    expect(
+      screen.getByPlaceholderText('automation_public_reply_placeholder')
+    ).toBe(reply);
+    expect(
+      screen.getByPlaceholderText('automation_private_message_placeholder')
+    ).toBe(message);
+    expect(
+      screen.getByRole('combobox', { name: 'automation_insert_variable' })
+    ).toBeTruthy();
     expect(screen.getByText('shared_link_hint')).toBeTruthy();
   });
   it('prepara um unico rascunho para aliases e finaliza no mesmo ID sem perder a mensagem', async () => {
@@ -98,10 +145,13 @@ describe('entrada direta Instagram', () => {
       (screen.getByLabelText('wizard_name') as HTMLInputElement).value
     ).toBe('automation_name_instagram_comment');
     choose();
-    await screen.findByText('webhook_ok');
-    fireEvent.change(screen.getByPlaceholderText('automation_private_message_placeholder'), {
-      target: { value: 'Mensagem preservada' },
-    });
+    await screen.findByText('automation_webhook_configured');
+    fireEvent.change(
+      screen.getByPlaceholderText('automation_private_message_placeholder'),
+      {
+        target: { value: 'Mensagem preservada' },
+      }
+    );
     const prepare = screen.getByRole('button', {
       name: 'automation_prepare_draft',
     });
@@ -118,9 +168,7 @@ describe('entrada direta Instagram', () => {
     fireEvent.change(screen.getByLabelText('wizard_name'), {
       target: { value: 'Novo nome' },
     });
-    fireEvent.click(
-      screen.getByRole('button', { name: 'automation_create_activate' })
-    );
+    fireEvent.click(screen.getByRole('switch', { name: 'activate_flow' }));
     await waitFor(() =>
       expect(state.fetch).toHaveBeenCalledWith(
         '/flows/draft/quick-update',
@@ -150,14 +198,17 @@ describe('entrada direta Instagram', () => {
     }));
     render(<AutomationWizardComponent />);
     choose();
-    await screen.findByText('webhook_ok');
-    fireEvent.change(screen.getByPlaceholderText('automation_private_message_placeholder'), {
-      target: { value: 'Oi' },
-    });
+    await screen.findByText('automation_webhook_configured');
+    fireEvent.change(
+      screen.getByPlaceholderText('automation_private_message_placeholder'),
+      {
+        target: { value: 'Oi' },
+      }
+    );
     expect(
       (
-        screen.getByRole('button', {
-          name: 'automation_create_activate',
+        screen.getByRole('switch', {
+          name: 'activate_flow',
         }) as HTMLButtonElement
       ).disabled
     ).toBe(true);
@@ -199,7 +250,7 @@ describe('entrada direta Instagram', () => {
     expect(
       (
         screen.getByRole('button', {
-          name: 'wizard_update',
+          name: 'save_flow',
         }) as HTMLButtonElement
       ).disabled
     ).toBe(true);
@@ -207,7 +258,10 @@ describe('entrada direta Instagram', () => {
     rerender(
       <AutomationWizardComponent flowId="saved" initialFlow={initialFlow} />
     );
-    fireEvent.click(screen.getByRole('button', { name: 'wizard_update' }));
+    fireEvent.change(screen.getByLabelText('shared_message'), {
+      target: { value: 'Oi atualizado' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'save_flow' }));
     await waitFor(() =>
       expect(state.fetch).toHaveBeenCalledWith(
         '/flows/saved/quick-update',
@@ -222,6 +276,7 @@ describe('entrada direta Instagram', () => {
     expect(body.postIds).toBeUndefined();
   });
   it('Story novo mantem seu editor, nome inicial e verificacao de conta', async () => {
+    expect(screen.queryByText('automation_account_fixed')).toBeNull();
     render(<StoryWizardComponent />);
     expect((screen.getByLabelText('flow_name') as HTMLInputElement).value).toBe(
       'automation_name_instagram_story'
@@ -229,10 +284,8 @@ describe('entrada direta Instagram', () => {
     fireEvent.change(screen.getByLabelText('wizard_account'), {
       target: { value: 'ig2' },
     });
-    await screen.findByText('webhook_ok');
-    expect(
-      screen.getByRole('button', { name: 'automation_create_activate' })
-    ).toBeTruthy();
+    await screen.findByText('automation_webhook_configured');
+    expect(screen.getByRole('switch', { name: 'activate_flow' })).toBeTruthy();
     expect(state.fetch.mock.calls.some(([url]) => url === '/flows')).toBe(
       false
     );
@@ -257,13 +310,222 @@ describe('entrada direta Instagram', () => {
     await waitFor(() => expect(screen.queryByText('ready')).toBeNull());
   });
   it('trocar a conta limpa o agendamento anterior', async () => {
-    render(<AutomationWizardComponent />); choose();
-    fireEvent.click(screen.getByRole('button', { name: 'automation_select_publications' }));
-    fireEvent.click(screen.getAllByRole('button', { name: 'Agendado IG1' }).at(-1)!);
+    render(<AutomationWizardComponent />);
+    choose();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'automation_select_publications' })
+    );
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Agendado IG1' }).at(-1)!
+    );
     fireEvent.click(screen.getByRole('button', { name: 'confirm' }));
-    fireEvent.change(screen.getByLabelText('wizard_account'), { target: { value: 'ig2' } });
+    fireEvent.change(screen.getByLabelText('wizard_account'), {
+      target: { value: 'ig2' },
+    });
     expect(screen.queryByText('scheduled_status_waiting')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Agendado IG1' })).toBeNull();
   });
+});
 
+describe('jornada no editor Instagram', () => {
+  for (const Editor of [AutomationWizardComponent, StoryWizardComponent])
+    it(`${
+      Editor === AutomationWizardComponent ? 'Comentario' : 'Story'
+    } atualiza snapshot limpo e preserva campos locais durante revalidacao`, async () => {
+      const snapshot = (updatedAt: string, message: string) => ({
+        id: 'ig-rule',
+        integrationId: 'ig1',
+        name: 'Regra',
+        status: 'PAUSED',
+        updatedAt,
+        nodes: [
+          { type: 'TRIGGER', data: JSON.stringify({ mode: 'all' }) },
+          { type: 'SEND_DM', data: JSON.stringify({ message }) },
+        ],
+      });
+      const view = render(
+        <Editor
+          flowId="ig-rule"
+          initialFlow={snapshot('2026-10-27T12:00:00Z', 'Original')}
+        />
+      );
+      await screen.findByDisplayValue('Original');
+      expect(screen.queryByText('automation_account_fixed')).toBeNull();
+      expect(
+        screen.queryByRole('heading', {
+          name:
+            Editor === AutomationWizardComponent
+              ? 'wizard_editing_title'
+              : 'story_wizard_title_edit',
+        })
+      ).toBeNull();
+      expect(
+        screen.getByRole('switch', { name: 'activate_flow' })
+      ).toBeTruthy();
+      view.rerender(
+        <Editor
+          flowId="ig-rule"
+          initialFlow={snapshot('2026-10-27T12:01:00Z', 'Atualizada')}
+        />
+      );
+      expect(await screen.findByDisplayValue('Atualizada')).toBeTruthy();
+      expect(screen.queryByText('shared_unsaved')).toBeNull();
+      fireEvent.change(screen.getByLabelText('shared_message'), {
+        target: { value: 'Minha edicao' },
+      });
+      view.rerender(
+        <Editor
+          flowId="ig-rule"
+          initialFlow={snapshot('2026-10-27T12:02:00Z', 'Remota')}
+        />
+      );
+      expect(screen.getByLabelText('shared_message')).toHaveProperty(
+        'value',
+        'Minha edicao'
+      );
+      expect(screen.getByText('shared_unsaved')).toBeTruthy();
+      fireEvent.change(screen.getByLabelText('shared_message'), {
+        target: { value: 'Atualizada' },
+      });
+      expect(await screen.findByDisplayValue('Remota')).toBeTruthy();
+      expect(screen.queryByText('shared_unsaved')).toBeNull();
+    });
+  it('mantem o link do rascunho salvo se a ativacao falhar e tenta ativar o mesmo ID', async () => {
+    state.fetch.mockImplementation(async (url: string) => ({
+      ok: !url.endsWith('/status'),
+      json: async () =>
+        url.endsWith('webhook-status')
+          ? { ok: true }
+          : url === '/flows'
+          ? { id: 'prepared', status: 'DRAFT', updatedAt: 'v1' }
+          : url.endsWith('quick-update')
+          ? { id: 'prepared', status: 'DRAFT', updatedAt: 'v2' }
+          : url.endsWith('/status')
+          ? { message: 'AUTHORIZATION_CHECK_REQUIRED' }
+          : { instagramTokens: [] as any[] },
+    }));
+    render(<AutomationWizardComponent />);
+    choose();
+    await screen.findByText('automation_webhook_configured');
+    fireEvent.click(screen.getByRole('radio', { name: 'wizard_all_posts' }));
+    fireEvent.change(screen.getByLabelText('shared_message'), {
+      target: { value: 'Entrega' },
+    });
+    fireEvent.click(screen.getByRole('switch', { name: 'activate_flow' }));
+    await screen.findByText(/automation_activation_failed_saved/);
+    expect(state.push).toHaveBeenCalledWith('/automacoes/prepared/wizard');
+    fireEvent.click(screen.getByRole('switch', { name: 'activate_flow' }));
+    await waitFor(() =>
+      expect(
+        state.fetch.mock.calls.filter(
+          ([url]) => url === '/flows/prepared/status'
+        )
+      ).toHaveLength(2)
+    );
+    expect(
+      state.fetch.mock.calls.filter(([url]) => url === '/flows')
+    ).toHaveLength(1);
+    expect(
+      state.fetch.mock.calls.filter(([url]) => url.endsWith('quick-update'))
+    ).toHaveLength(1);
+  });
+  it('resposta publica pertence a Resposta e a previa acompanha cada variacao', async () => {
+    render(<AutomationWizardComponent />);
+    choose();
+    await screen.findByText('automation_webhook_configured');
+    const section = screen
+      .getByRole('heading', { name: 'automation_section_response' })
+      .closest('section')!;
+    fireEvent.click(
+      within(section).getByRole('switch', { name: 'shared_add_public_reply' })
+    );
+    fireEvent.change(screen.getByLabelText('shared_public_reply'), {
+      target: { value: 'Primeira' },
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'wizard_add_reply_variant' })
+    );
+    fireEvent.change(screen.getByLabelText('shared_reply_variant 2'), {
+      target: { value: 'Segunda' },
+    });
+    fireEvent.focus(screen.getByLabelText('shared_reply_variant 2'));
+    expect(screen.getByTestId('phone-preview').getAttribute('data-reply')).toBe(
+      'Segunda'
+    );
+    expect(screen.getByTestId('phone-preview').getAttribute('data-tab')).toBe(
+      'comments'
+    );
+    fireEvent.focus(screen.getByLabelText('shared_message'));
+    expect(screen.getByTestId('phone-preview').getAttribute('data-tab')).toBe(
+      'dm'
+    );
+    expect(screen.queryByLabelText('shared_reply_preview')).toBeNull();
+  });
+  it('gate nao permite ativar sem mensagem final e organiza tres etapas', async () => {
+    render(<AutomationWizardComponent />);
+    choose();
+    await screen.findByText('automation_webhook_configured');
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: /story_require_follow/ })
+    );
+    expect(screen.getByText('automation_gate_opening')).toBeTruthy();
+    expect(screen.getByText('automation_final_message_required')).toBeTruthy();
+    expect(
+      (
+        screen.getByRole('switch', {
+          name: 'activate_flow',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(true);
+  });
+  for (const Editor of [AutomationWizardComponent, StoryWizardComponent])
+    it(`${
+      Editor === AutomationWizardComponent ? 'Comentario' : 'Story'
+    } exige texto do gate para a previa corresponder ao envio`, async () => {
+      render(<Editor />);
+      choose();
+      await screen.findByText('automation_webhook_configured');
+      fireEvent.change(screen.getByLabelText('shared_message'), {
+        target: { value: 'Final' },
+      });
+      fireEvent.click(
+        screen.getByRole('checkbox', { name: /story_require_follow/ })
+      );
+      fireEvent.change(screen.getByLabelText('story_follow_gate_label'), {
+        target: { value: '' },
+      });
+      expect(
+        screen.getByText('automation_follow_messages_required')
+      ).toBeTruthy();
+      expect(
+        screen.getByRole('switch', { name: 'activate_flow' })
+      ).toHaveProperty('disabled', true);
+    });
+});
+
+it('previa usa agendamento selecionado e limpa ao trocar conta sem gravar', async () => {
+  render(<AutomationWizardComponent />);
+  choose();
+  await screen.findByText('automation_webhook_configured');
+  fireEvent.click(
+    screen.getByRole('button', { name: 'automation_select_publications' })
+  );
+  fireEvent.click(
+    screen.getAllByRole('button', { name: 'Agendado IG1' }).at(-1)!
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'confirm' }));
+  await waitFor(() =>
+    expect(screen.getByTestId('phone-preview').getAttribute('data-thumb')).toBe(
+      '/scheduled.jpg'
+    )
+  );
+  fireEvent.change(screen.getByLabelText('wizard_account'), {
+    target: { value: 'ig2' },
+  });
+  await waitFor(() =>
+    expect(
+      screen.getByTestId('phone-preview').getAttribute('data-thumb')
+    ).toBeNull()
+  );
+  expect(state.fetch.mock.calls.some(([url]) => url === '/flows')).toBe(false);
 });

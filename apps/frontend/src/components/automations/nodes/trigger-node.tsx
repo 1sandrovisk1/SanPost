@@ -20,7 +20,9 @@ export const TriggerNode: FC<NodeProps> = memo(({ data, selected }) => {
   const triggerType: 'comment_on_post' | 'story_reply' =
     config.triggerType === 'story_reply' ? 'story_reply' : 'comment_on_post';
   const mode: 'all' | 'specific' | 'next_publication' | 'scheduled' =
-    config.mode === 'scheduled' ? 'scheduled' : config.mode === 'next_publication'
+    config.mode === 'scheduled'
+      ? 'scheduled'
+      : config.mode === 'next_publication'
       ? 'next_publication'
       : config.mode === 'specific' ||
         (Array.isArray(config.postIds) && config.postIds.length > 0) ||
@@ -44,25 +46,10 @@ export const TriggerNode: FC<NodeProps> = memo(({ data, selected }) => {
       }>
     | undefined;
   const title = messenger
-    ? t('messenger_trigger_message')
-    : channels?.length
-    ? t('shared_trigger_comments', 'Gatilho: comentário') +
-      ' · ' +
-      channels
-        .map((c) => (c.platform === 'facebook' ? 'Facebook' : 'Instagram'))
-        .join(' / ')
+    ? t('history_trigger_messenger_message')
     : triggerType === 'story_reply'
-    ? t('trigger_node_label_story', 'Gatilho: Resposta ao story')
-    : t('trigger_node_label', 'Gatilho: Comentario no Instagram');
-  const description = messenger
-    ? t('messenger_step_when')
-    : triggerType === 'story_reply'
-    ? t(
-        'trigger_node_description_story',
-        'Quando alguem responder ou reagir ao seu story'
-      )
-    : t('trigger_node_description', 'Quando alguem comentar em uma postagem');
-
+    ? t('history_trigger_story_reply')
+    : t('history_trigger_comment_on_post');
   const modeLabel = messenger
     ? `${t('messenger_priority')}: ${config.priority}`
     : channels?.length
@@ -76,7 +63,9 @@ export const TriggerNode: FC<NodeProps> = memo(({ data, selected }) => {
                     '{{count}} publicações selecionadas',
                     { count: channel.postIds.length }
                   )
-                : channel.postMode === 'scheduled' ? t('scheduled_selected_post') : channel.postMode === 'next_publication'
+                : channel.postMode === 'scheduled'
+                ? t('scheduled_selected_post')
+                : channel.postMode === 'next_publication'
                 ? t('shared_next', 'Próxima publicação')
                 : t('shared_all', 'Todas as publicações')
             }`
@@ -128,7 +117,6 @@ export const TriggerNode: FC<NodeProps> = memo(({ data, selected }) => {
           {title}
         </span>
       </div>
-      <p className="text-[12px] text-textColor opacity-70">{description}</p>
       <p className="text-[11px] mt-[4px] text-textColor opacity-80">
         {modeLabel}
       </p>
