@@ -1,4 +1,5 @@
 'use client';
+import { AutomationEditorStage } from './shared-editor-stage.component';
 import { PrivateMessageVariations } from './shared-private-variations.component';
 import { AutomationConnectionIndicator } from './shared-connection-indicator.component';
 import { AutomationContextHelp } from './shared-context-help.component';
@@ -501,7 +502,7 @@ export const StoryWizardComponent: FC<Props> = ({
               workspace?.readOnly ||
               editorStatus === 'ARCHIVED'
             }
-            className="min-w-0 border-0 p-6 space-y-5 lg:flex-1 lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain"
+            className="min-w-0 border-0 p-4 space-y-3 lg:flex-1 lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain"
           >
             {/* Messaging token banner */}
             {needsMessagingConfig && (
@@ -539,10 +540,12 @@ export const StoryWizardComponent: FC<Props> = ({
             )}
 
             {/* Name + integration */}
-            <div className={sectionClass}>
-              <h2 className="mt-3 text-base font-semibold">
-                {t('automation_section_account')}
-              </h2>
+            <AutomationEditorStage
+              kind="account"
+              step={1}
+              title={t('automation_section_account')}
+              summary={(selectedIntegration as any)?.name}
+            >
               <AutomationAccountSelect
                 connection={
                   integrationId && (
@@ -577,13 +580,21 @@ export const StoryWizardComponent: FC<Props> = ({
                   {t('shared_connect_channel')}
                 </a>
               )}
-            </div>
+            </AutomationEditorStage>
 
             {/* Story mode */}
-            <div className={sectionClass}>
-              <h3 className={sectionTitleClass}>
-                {t('automation_section_origin')}
-              </h3>
+            <AutomationEditorStage
+              kind="origin"
+              step={2}
+              title={t('automation_section_origin')}
+              summary={t(
+                storyMode === 'all'
+                  ? 'story_mode_all'
+                  : storyMode === 'specific'
+                  ? 'story_mode_specific'
+                  : 'story_mode_next'
+              )}
+            >
               <label
                 className={radioRowClass}
                 onClick={() => setStoryMode('all')}
@@ -726,13 +737,19 @@ export const StoryWizardComponent: FC<Props> = ({
                   )}
                 </div>
               </label>
-            </div>
+            </AutomationEditorStage>
 
             {/* Keyword mode */}
-            <div className={sectionClass}>
-              <h3 className={sectionTitleClass}>
-                {t('automation_section_conditions')}
-              </h3>
+            <AutomationEditorStage
+              kind="conditions"
+              step={3}
+              title={t('automation_section_conditions')}
+              summary={
+                keywordMode === 'specific'
+                  ? keywords.join(', ')
+                  : t('story_keyword_mode_any')
+              }
+            >
               <label
                 className={radioRowClass}
                 onClick={() => setKeywordMode('any_word_or_reaction')}
@@ -805,13 +822,19 @@ export const StoryWizardComponent: FC<Props> = ({
                   )}
                 </div>
               </label>
-            </div>
+            </AutomationEditorStage>
 
             {/* DM section */}
-            <div className={sectionClass}>
-              <h3 className={sectionTitleClass}>
-                {t('automation_section_response')}
-              </h3>
+            <AutomationEditorStage
+              kind="private"
+              step={4}
+              title={t('automation_stage_private_title')}
+              summary={t(
+                dmMessages.length === 1
+                  ? 'automation_stage_variations_one'
+                  : 'automation_stage_variations_count'
+              ).replace('{count}', String(dmMessages.length))}
+            >
               <PrivateMessageVariations
                 maxLength={dmButtonText ? 640 : 2000}
                 messages={dmMessages}
@@ -835,13 +858,19 @@ export const StoryWizardComponent: FC<Props> = ({
                   setJourneyStage('delivery');
                 }}
               />
-            </div>
+            </AutomationEditorStage>
 
             {/* Extras */}
-            <div className={sectionClass}>
-              <h3 className={sectionTitleClass}>
-                {t('story_section_extras', 'Outros recursos para automatizar')}
-              </h3>
+            <AutomationEditorStage
+              kind="followers"
+              step={5}
+              title={t('automation_stage_followers_title')}
+              summary={t(
+                requireFollow
+                  ? 'automation_stage_enabled'
+                  : 'automation_stage_disabled'
+              )}
+            >
               <div className="rounded-[6px] border border-fifth">
                 <div className="flex items-center gap-1 pr-3">
                   <label className="flex flex-1 items-center justify-between gap-[12px] p-[10px] cursor-pointer">
@@ -897,7 +926,7 @@ export const StoryWizardComponent: FC<Props> = ({
                   </div>
                 )}
               </div>
-            </div>
+            </AutomationEditorStage>
           </fieldset>
         </section>
 

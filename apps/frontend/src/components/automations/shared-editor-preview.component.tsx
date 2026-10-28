@@ -1,4 +1,5 @@
 'use client';
+import { AutomationRequirements } from './shared-requirements.component';
 import { useEffect, type ReactNode } from 'react';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 
@@ -25,6 +26,7 @@ export function AutomationPreviewPanel({
       <div className="w-full min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain flex flex-col items-center">
         <div className="w-full max-w-[340px] shrink-0 my-auto space-y-4 flex flex-col items-center">
           {children}
+          <AutomationRequirements />
         </div>
       </div>
     </aside>

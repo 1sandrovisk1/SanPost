@@ -92,3 +92,11 @@ A resposta pública continua antes da privada e é identificada pelo seu toggle.
 Rotas canônicas: `/automations`, `/automations/[id]` (V2), `/automations/instagram/[id]` (V1), `/automations/new`, `/automations/instagram/new`, `/automations/reposts/...` e `/automations/logs`. As rotas antigas em `/automacoes` redirecionam mantendo parâmetros repetidos, `view` e `tab`. O antigo segmento `compartilhada` identificava o editor V2 compartilhado entre canais; não era compartilhamento público. Ele foi removido da rota canônica, sem mudar a autenticação nem os endpoints da API.
 
 No Instagram, o gerenciamento de IDs fica dentro do card de Publicações específicas (também quando o item selecionado é um agendamento). Aliases existentes são aditivos e não são excluídos ao alternar modos; qualquer/próxima publicação indicam quando permanecem ativos. O toggle da resposta pública e suas variações compartilham o mesmo box cinza.
+
+## Etapas e pendências no editor rápido
+
+O formulário usa grupos numerados com cor, ícone e resumo por etapa. Conta, origem, condições, resposta pública, mensagem privada, seguidores e ajustes adicionais aparecem conforme os recursos do gatilho. Messenger não ganha seleção de publicação, resposta pública ou seguidores; Story mantém seu escopo próprio. Os grupos começam abertos e podem ser recolhidos pelo cabeçalho sem desmontar os campos ou perder a edição. A cor é complementar ao título e à numeração.
+
+As pendências reais de configuração aparecem em um único card abaixo do telefone, substituindo dicas genéricas e a lista acima do formulário. O card acompanha a mesma validação que impede salvar/ativar e some quando não há pendências. Carregamento, troca de aba ou estado bloqueado não criam avisos artificiais. No construtor sem telefone, a lista permanece acessível no corpo; histórico não exibe pendências do editor.
+
+No seletor da conta, autorização indisponível usa um triângulo de alerta. Hover e foco abrem ajuda flutuante, sem mover o layout; Escape/saída fecham. O próprio ícone continua abrindo Credenciais em outra aba, inclusive quando apenas a seleção da conta está bloqueada. O indicador pronto continua refletindo a consulta de prontidão existente, sem inferir conexão a partir do estado ativo da automação.

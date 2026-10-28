@@ -1,4 +1,19 @@
 {
+  "automation_stage_selected_one": "{count} selecionada",
+  "automation_stage_keywords_pending": "Defina a palavra-chave",
+
+  "automation_stage_variations_one": "{count} variação",
+  "automation_stage_enabled": "Ativado",
+  "automation_stage_disabled": "Desativado",
+
+  "automation_requirements_title": "Pendências da automação",
+  "automation_connection_action_hint": "A autorização desta conta precisa de atenção. Clique no alerta para revisar Credenciais em outra aba.",
+  "automation_stage_variations_count": "{count} variações",
+  "automation_stage_selected_count": "{count} selecionadas",
+  "automation_stage_public_title": "Resposta ao comentário",
+  "automation_stage_private_title": "Mensagem privada (DM)",
+  "automation_stage_followers_title": "Verificação de seguidores",
+
   "automation_instagram_aliases_scope_hint": "Os IDs de Dark Posts vinculados continuam ativos. Gerencie-os em Publicações específicas.",
   "meta_system_user_token_label": "Token Usuário do Sistema",
   "meta_system_user_token_hint": "A validade deste token não está registrada aqui. Ele pode ter prazo ou não ter vencimento programado; permissões revogadas ainda podem interromper o acesso.",

@@ -922,3 +922,17 @@ it('preserva botoes proprios no rapido, na previa e ao salvar', async () => {
     variants: [{ message: 'A' }, variants[1]],
   });
 });
+it('resume Messenger como palavra chave pendente e omite etapas incompatíveis', () => {
+  state.query = 'trigger=messenger_message&channel=fb';
+  render(<SharedFlowCreator />);
+  expect(screen.queryByText('automation_any_comment')).toBeNull();
+  expect(
+    screen.queryByRole('region', { name: 'automation_section_origin' })
+  ).toBeNull();
+  expect(
+    screen.queryByRole('region', { name: 'automation_stage_public_title' })
+  ).toBeNull();
+  expect(
+    screen.queryByRole('region', { name: 'automation_stage_followers_title' })
+  ).toBeNull();
+});

@@ -1,4 +1,19 @@
 {
+  "automation_stage_selected_one": "{count} selected",
+  "automation_stage_keywords_pending": "Set a keyword",
+
+  "automation_stage_variations_one": "{count} variation",
+  "automation_stage_enabled": "Enabled",
+  "automation_stage_disabled": "Disabled",
+
+  "automation_requirements_title": "Automation requirements",
+  "automation_connection_action_hint": "This account authorization needs attention. Click the alert to review Credentials in a new tab.",
+  "automation_stage_variations_count": "{count} variations",
+  "automation_stage_selected_count": "{count} selected",
+  "automation_stage_public_title": "Comment reply",
+  "automation_stage_private_title": "Private message (DM)",
+  "automation_stage_followers_title": "Follower verification",
+
   "automation_instagram_aliases_scope_hint": "Linked Dark Post IDs remain active. Manage them under Specific posts.",
   "meta_system_user_token_label": "System User Token",
   "meta_system_user_token_hint": "This token’s expiry is not recorded here. It may have a deadline or no scheduled expiry; revoked permissions can still interrupt access.",

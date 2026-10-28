@@ -1,4 +1,5 @@
 'use client';
+import { AutomationEditorStage } from './shared-editor-stage.component';
 import { PrivateMessageVariations } from './shared-private-variations.component';
 import { SharedConnectionIndicator } from './shared-connection-indicator.component';
 import { AutomationContextHelp } from './shared-context-help.component';
@@ -488,7 +489,10 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
           />
         );
       })}
-
+    </section>
+  );
+  const publicationEditor = (
+    <>
       {channelViews.map((channel) => (
         <div key={channel.integrationId} className="space-y-3">
           <SharedChannelPosts
@@ -516,7 +520,7 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
           />
         </div>
       ))}
-    </section>
+    </>
   );
   const visibleProblems = validateSharedDraft(name, channels, definition);
   const quickEditor = !advanced;
@@ -604,13 +608,57 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
   );
   const quickFields = (
     <div className="space-y-6 min-w-0">
-      <section className="space-y-4">
-        <h2 className="font-semibold">{t('automation_section_account')}</h2>
+      <AutomationEditorStage
+        kind="account"
+        step={1}
+        title={t('automation_section_account')}
+        summary={channelViews
+          .map((c) => c.name)
+          .filter(Boolean)
+          .join(', ')}
+      >
         {triggerField}
         {channelEditor}
-      </section>
-      <section className="border-t border-newTableBorder pt-6 space-y-3">
-        <h2 className="font-semibold">{t('automation_section_conditions')}</h2>
+      </AutomationEditorStage>
+      {!messenger && (
+        <AutomationEditorStage
+          kind="origin"
+          step={2}
+          title={t('automation_section_origin')}
+          summary={channelViews
+            .map((c) =>
+              c.postMode === 'all'
+                ? t('wizard_all_posts')
+                : c.postMode === 'next_publication'
+                ? t('wizard_next_publication')
+                : t(
+                    c.scheduledPostId || c.postIds.length === 1
+                      ? 'automation_stage_selected_one'
+                      : 'automation_stage_selected_count'
+                  ).replace(
+                    '{count}',
+                    String(c.scheduledPostId ? 1 : c.postIds.length)
+                  )
+            )
+            .join(', ')}
+        >
+          {publicationEditor}
+        </AutomationEditorStage>
+      )}
+      <AutomationEditorStage
+        kind="conditions"
+        step={messenger ? 2 : 3}
+        title={t('automation_section_conditions')}
+        summary={
+          values.keywords.length
+            ? values.keywords.join(', ')
+            : t(
+                messenger
+                  ? 'automation_stage_keywords_pending'
+                  : 'automation_any_comment'
+              )
+        }
+      >
         <AutomationKeywordConditions
           specific={keywordSpecific || values.keywords.length > 0}
           keywords={values.keywords}
@@ -622,101 +670,124 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
           onMatchModeChange={(matchMode) => editSimple({ matchMode })}
           onFocus={() => setPreviewTab(messenger ? 'dm' : 'comments')}
         />
-        {messenger && (
-          <details className="rounded-lg border border-newTableBorder p-3 text-sm">
-            <summary className="cursor-pointer font-medium">
-              {t('automation_advanced')}
-            </summary>
-            <div className="pt-3">
-              <MessengerPriority
-                disabled={disabled}
-                value={values.priority}
-                onChange={(priority) => editSimple({ priority })}
-              />
-            </div>
-          </details>
-        )}
-      </section>
-      <section className="border-t border-newTableBorder pt-6 space-y-4">
-        {messenger && (
-          <h2 className="font-semibold">{t('automation_section_response')}</h2>
-        )}
+      </AutomationEditorStage>
+      <>
         {!messenger && (
-          <AutomationPublicReplyToggle
-            enabled={hasPublicReply}
-            disabled={disabled}
-            label={t('shared_add_public_reply')}
-            onChange={(enabled) => {
-              setPublicReply(enabled);
-              setPreviewTab('comments');
-              if (!enabled) {
-                editSimple({ reply: '', replyMessages: undefined });
-                setPreviewTab('dm');
-              }
-            }}
+          <AutomationEditorStage
+            kind="public"
+            step={4}
+            title={t('automation_stage_public_title')}
+            summary={
+              hasPublicReply
+                ? t(
+                    replyMessages.length === 1
+                      ? 'automation_stage_variations_one'
+                      : 'automation_stage_variations_count'
+                  ).replace('{count}', String(replyMessages.length))
+                : t('automation_stage_disabled')
+            }
           >
-            <SharedReplyVariations
+            <AutomationPublicReplyToggle
+              enabled={hasPublicReply}
               disabled={disabled}
-              messages={replyMessages}
-              onChange={(messages) =>
-                editSimple({ reply: '', replyMessages: messages })
-              }
-              onFocus={(index) => {
-                setReplyPreviewIndex(index);
+              label={t('shared_add_public_reply')}
+              onChange={(enabled) => {
+                setPublicReply(enabled);
                 setPreviewTab('comments');
+                if (!enabled) {
+                  editSimple({ reply: '', replyMessages: undefined });
+                  setPreviewTab('dm');
+                }
               }}
-            />
-          </AutomationPublicReplyToggle>
+            >
+              <SharedReplyVariations
+                disabled={disabled}
+                messages={replyMessages}
+                onChange={(messages) =>
+                  editSimple({ reply: '', replyMessages: messages })
+                }
+                onFocus={(index) => {
+                  setReplyPreviewIndex(index);
+                  setPreviewTab('comments');
+                }}
+              />
+            </AutomationPublicReplyToggle>
+          </AutomationEditorStage>
         )}
-        {!messenger && (
-          <div className="flex items-center justify-between text-xs text-newTextColor/70">
-            <span>{t('automation_direct_delivery')}</span>
-            <AutomationContextHelp label={t('automation_delivery_help')}>
-              {t('automation_direct_delivery_hint')}
-            </AutomationContextHelp>
-          </div>
-        )}
+        <AutomationEditorStage
+          kind="private"
+          step={messenger ? 3 : 5}
+          title={t('automation_stage_private_title')}
+          summary={t(
+            privateMessages.length === 1
+              ? 'automation_stage_variations_one'
+              : 'automation_stage_variations_count'
+          ).replace('{count}', String(privateMessages.length))}
+        >
+          {!messenger && (
+            <div className="flex items-center justify-between text-xs text-newTextColor/70">
+              <span>{t('automation_direct_delivery')}</span>
+              <AutomationContextHelp label={t('automation_delivery_help')}>
+                {t('automation_direct_delivery_hint')}
+              </AutomationContextHelp>
+            </div>
+          )}
 
-        <PrivateMessageVariations
-          engine="shared"
-          messenger={messenger}
-          messages={privateMessages}
-          variants={values.dmVariants}
-          buttonText={values.buttonText}
-          buttonUrl={values.buttonUrl}
-          onVariantsChange={(dmVariants) =>
-            editSimple({
-              dmVariants,
-              message: '',
-              dmMessages: undefined,
-              buttonText: '',
-              buttonUrl: '',
-            })
-          }
-          disabled={disabled}
-          maxLength={values.buttonText ? 640 : 2000}
-          onFocus={(index) => {
-            setDmPreviewIndex(index);
-            setPreviewTab('dm');
-          }}
-          onChange={(messages) =>
-            editSimple(
-              messages.length > 1
-                ? { message: '', dmMessages: messages }
-                : { message: messages[0], dmMessages: undefined }
-            )
-          }
-        />
-        <div className="flex justify-between gap-3 text-xs text-newTextColor/60">
-          <AutomationContextHelp
-            align="start"
-            label={t('automation_link_help')}
+          <PrivateMessageVariations
+            engine="shared"
+            messenger={messenger}
+            messages={privateMessages}
+            variants={values.dmVariants}
+            buttonText={values.buttonText}
+            buttonUrl={values.buttonUrl}
+            onVariantsChange={(dmVariants) =>
+              editSimple({
+                dmVariants,
+                message: '',
+                dmMessages: undefined,
+                buttonText: '',
+                buttonUrl: '',
+              })
+            }
+            disabled={disabled}
+            maxLength={values.buttonText ? 640 : 2000}
+            onFocus={(index) => {
+              setDmPreviewIndex(index);
+              setPreviewTab('dm');
+            }}
+            onChange={(messages) =>
+              editSimple(
+                messages.length > 1
+                  ? { message: '', dmMessages: messages }
+                  : { message: messages[0], dmMessages: undefined }
+              )
+            }
+          />
+          <div className="flex justify-between gap-3 text-xs text-newTextColor/60">
+            <AutomationContextHelp
+              align="start"
+              label={t('automation_link_help')}
+            >
+              {t(messenger ? 'messenger_message_hint' : 'shared_link_hint')}
+            </AutomationContextHelp>
+            <span className="shrink-0"></span>
+          </div>
+        </AutomationEditorStage>
+        {messenger && (
+          <AutomationEditorStage
+            kind="extras"
+            step={4}
+            title={t('automation_advanced')}
+            summary={String(values.priority ?? 10)}
           >
-            {t(messenger ? 'messenger_message_hint' : 'shared_link_hint')}
-          </AutomationContextHelp>
-          <span className="shrink-0"></span>
-        </div>
-      </section>
+            <MessengerPriority
+              disabled={disabled}
+              value={values.priority}
+              onChange={(priority) => editSimple({ priority })}
+            />
+          </AutomationEditorStage>
+        )}
+      </>
     </div>
   );
   const wrap = (content: React.ReactNode) => (
@@ -766,8 +837,7 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
           aria-label={t('shared_configuration')}
           className="flex flex-col min-w-0 w-full lg:w-[600px] lg:max-w-[55%] lg:shrink-0 lg:min-h-0 bg-newBgColorInner"
         >
-          <div className="p-6 space-y-6 lg:flex-1 lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain">
-            {editorHeader}
+          <div className="p-4 space-y-3 lg:flex-1 lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain">
             {quickFields}
           </div>
         </section>
@@ -863,10 +933,16 @@ function SharedFlowCreatorForm({ id }: { id?: string }) {
               {t('shared_channels')} ·{' '}
               {channelViews.map((c) => c.name).join(' / ')}
             </summary>
-            <div className="mt-4">{channelEditor}</div>
+            <div className="mt-4">
+              {channelEditor}
+              {publicationEditor}
+            </div>
           </details>
         ) : (
-          channelEditor
+          <>
+            {channelEditor}
+            {publicationEditor}
+          </>
         )}
         {!compatible && (
           <p className="text-sm text-newTextColor/60">

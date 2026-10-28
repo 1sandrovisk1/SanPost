@@ -13,13 +13,19 @@ export function AutomationContextHelp({
   label,
   children,
   align = 'end',
+  href,
+  icon,
+  triggerClassName,
 }: {
   label: string;
   children: ReactNode;
   align?: 'start' | 'end';
+  href?: string;
+  icon?: ReactNode;
+  triggerClassName?: string;
 }) {
   const id = useId();
-  const trigger = useRef<HTMLButtonElement>(null);
+  const trigger = useRef<HTMLElement | null>(null);
   const bubble = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const pinned = useRef(false);
@@ -90,11 +96,16 @@ export function AutomationContextHelp({
       document.removeEventListener('keydown', escape);
     };
   }, [open]);
+  const Trigger = href ? 'a' : 'button';
   return (
     <>
-      <button
-        ref={trigger}
-        type="button"
+      <Trigger
+        ref={(element: HTMLAnchorElement | HTMLButtonElement | null) => {
+          trigger.current = element;
+        }}
+        {...(href
+          ? { href, target: '_blank', rel: 'noreferrer' }
+          : { type: 'button' as const })}
         aria-label={label}
         aria-expanded={open}
         aria-describedby={open ? id : undefined}
@@ -103,27 +114,35 @@ export function AutomationContextHelp({
         onFocus={() => setOpen(true)}
         onBlur={close}
         onClick={() => {
+          if (href) return;
           if (pinned.current) close();
           else {
             pinned.current = true;
             setOpen(true);
           }
         }}
-        className="inline-flex shrink-0 align-middle items-center justify-center rounded-full p-1 text-newTextColor/55 hover:bg-boxHover hover:text-newTextColor focus-visible:ring-2 focus-visible:ring-btnPrimary"
+        className={`inline-flex shrink-0 align-middle items-center justify-center rounded-full p-1 hover:bg-boxHover focus-visible:ring-2 focus-visible:ring-btnPrimary ${
+          triggerClassName || 'text-newTextColor/55 hover:text-newTextColor'
+        }`}
       >
-        <svg
-          aria-hidden="true"
-          width="15"
-          height="15"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.7"
-        >
-          <circle cx="12" cy="12" r="9" />
-          <path d="M12 11v6M12 7h.01" />
-        </svg>
-      </button>
+        {icon || (
+          <>
+            {' '}
+            <svg
+              aria-hidden="true"
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.7"
+            >
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 11v6M12 7h.01" />
+            </svg>
+          </>
+        )}
+      </Trigger>
       {open &&
         createPortal(
           <div

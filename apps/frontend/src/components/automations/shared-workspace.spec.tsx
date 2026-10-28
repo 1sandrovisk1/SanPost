@@ -1,3 +1,4 @@
+import { AutomationPreviewPanel } from './shared-editor-preview.component';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AutomationWorkspace } from './shared-workspace.component';
@@ -166,12 +167,13 @@ describe('compatibilidade do editor rapido legado', () => {
   });
 });
 
-it('mostra pendencias no corpo sem accordion dentro da barra superior', () => {
+it('mantem pendencias no construtor sem previa e fora da barra superior', () => {
   render(
     <AutomationWorkspace
       {...base}
       valid={false}
       problems={['Falta conta', 'Falta mensagem']}
+      navigation={{ mode: 'flow', onModeChange: vi.fn() }}
     >
       <p>Formulario</p>
     </AutomationWorkspace>
@@ -182,4 +184,34 @@ it('mostra pendencias no corpo sem accordion dentro da barra superior', () => {
     'disabled',
     true
   );
+});
+
+it('mostra pendencias apenas abaixo da previa e as remove quando valido', () => {
+  const { rerender } = render(
+    <AutomationWorkspace
+      {...base}
+      valid={false}
+      problems={['Selecione pelo menos um canal.', 'Escreva a mensagem.']}
+    >
+      <AutomationPreviewPanel>
+        <div>Telefone</div>
+      </AutomationPreviewPanel>
+    </AutomationWorkspace>
+  );
+  const panel = screen.getByRole('complementary');
+  expect(
+    panel.contains(screen.getByText('Selecione pelo menos um canal.'))
+  ).toBe(true);
+  expect(screen.getAllByText('Escreva a mensagem.')).toHaveLength(1);
+  expect(panel.textContent?.indexOf('Telefone')).toBeLessThan(
+    panel.textContent?.indexOf('Escreva a mensagem.') ?? 0
+  );
+  rerender(
+    <AutomationWorkspace {...base} valid problems={[]}>
+      <AutomationPreviewPanel>
+        <div>Telefone</div>
+      </AutomationPreviewPanel>
+    </AutomationWorkspace>
+  );
+  expect(screen.queryByText('automation_requirements_title')).toBeNull();
 });

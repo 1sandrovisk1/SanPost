@@ -1,4 +1,5 @@
 'use client';
+import { AutomationEditorStage } from './shared-editor-stage.component';
 import { PrivateMessageVariations } from './shared-private-variations.component';
 import { AutomationConnectionIndicator } from './shared-connection-indicator.component';
 import { AutomationContextHelp } from './shared-context-help.component';
@@ -649,12 +650,14 @@ export const AutomationWizardComponent: FC<Props> = ({
               workspace?.readOnly ||
               editorStatus === 'ARCHIVED'
             }
-            className="min-w-0 border-0 p-6 lg:flex-1 lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain"
+            className="min-w-0 border-0 p-4 space-y-3 lg:flex-1 lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain"
           >
-            <section className="mb-5 space-y-3">
-              <h2 className="text-base font-semibold">
-                {t('automation_section_account')}
-              </h2>
+            <AutomationEditorStage
+              kind="account"
+              step={1}
+              title={t('automation_section_account')}
+              summary={(selectedIntegration as any)?.name}
+            >
               <AutomationAccountSelect
                 connection={
                   integrationId && (
@@ -692,16 +695,30 @@ export const AutomationWizardComponent: FC<Props> = ({
                   {t('shared_connect_channel')}
                 </a>
               )}
-            </section>
+            </AutomationEditorStage>
 
             {/* Step 1: When someone comments */}
             {integrationId && (
               <>
-                <div className="border-t border-fifth pt-[20px] mb-[20px]">
-                  <h2 className="text-[16px] font-semibold text-textColor mb-[12px]">
-                    {t('automation_section_origin')}
-                  </h2>
-
+                <AutomationEditorStage
+                  kind="origin"
+                  step={2}
+                  title={t('automation_section_origin')}
+                  summary={
+                    postMode === 'all'
+                      ? t('wizard_all_posts')
+                      : postMode === 'next_publication'
+                      ? t('wizard_next_publication')
+                      : t(
+                          scheduledPostId || selectedPostIds.length === 1
+                            ? 'automation_stage_selected_one'
+                            : 'automation_stage_selected_count'
+                        ).replace(
+                          '{count}',
+                          String(scheduledPostId ? 1 : selectedPostIds.length)
+                        )
+                  }
+                >
                   <AutomationPublicationSelector
                     showSpecificContentWhenScheduled
                     scopeNote={
@@ -776,17 +793,19 @@ export const AutomationWizardComponent: FC<Props> = ({
                       setActivePreviewTab('post');
                     }}
                   />
-                </div>
+                </AutomationEditorStage>
 
                 {/* Section: E esse comentário possui (ManyChat style) */}
-                <div className="border-t border-fifth pt-[20px] mb-[20px]">
-                  <h2 className="text-[16px] font-semibold text-textColor mb-[12px]">
-                    {t(
-                      'automation_section_conditions',
-                      'E esse comentário possui'
-                    )}
-                  </h2>
-
+                <AutomationEditorStage
+                  kind="conditions"
+                  step={3}
+                  title={t('automation_section_conditions')}
+                  summary={
+                    keywordMode === 'specific'
+                      ? keywords.join(', ')
+                      : t('automation_any_comment')
+                  }
+                >
                   <AutomationKeywordConditions
                     specific={keywordMode === 'specific'}
                     keywords={keywords}
@@ -798,10 +817,23 @@ export const AutomationWizardComponent: FC<Props> = ({
                     onMatchModeChange={setMatchMode}
                     onFocus={() => setActivePreviewTab('comments')}
                   />
-                </div>
+                </AutomationEditorStage>
 
                 {/* DM section */}
-                <section className="border-t border-fifth pt-[20px] mb-[20px]">
+                <AutomationEditorStage
+                  kind="public"
+                  step={4}
+                  title={t('automation_stage_public_title')}
+                  summary={
+                    enableReply
+                      ? t(
+                          replyMessages.length === 1
+                            ? 'automation_stage_variations_one'
+                            : 'automation_stage_variations_count'
+                        ).replace('{count}', String(replyMessages.length))
+                      : t('automation_stage_disabled')
+                  }
+                >
                   <div className="mt-3">
                     <AutomationPublicReplyToggle
                       enabled={enableReply}
@@ -822,7 +854,17 @@ export const AutomationWizardComponent: FC<Props> = ({
                       />
                     </AutomationPublicReplyToggle>
                   </div>
-
+                </AutomationEditorStage>
+                <AutomationEditorStage
+                  kind="private"
+                  step={5}
+                  title={t('automation_stage_private_title')}
+                  summary={t(
+                    dmMessages.length === 1
+                      ? 'automation_stage_variations_one'
+                      : 'automation_stage_variations_count'
+                  ).replace('{count}', String(dmMessages.length))}
+                >
                   <div className="mt-5 mb-3 flex items-center justify-between text-xs text-newTextColor/70">
                     <span>
                       {t(
@@ -869,16 +911,19 @@ export const AutomationWizardComponent: FC<Props> = ({
                       {t('shared_link_hint')}
                     </AutomationContextHelp>
                   </div>
-                </section>
+                </AutomationEditorStage>
 
                 {/* Extras — follow gate */}
-                <div className="border-t border-fifth pt-[20px] mb-[20px]">
-                  <h2 className="text-[16px] font-semibold text-textColor mb-[12px]">
-                    {t(
-                      'story_section_extras',
-                      'Outros recursos para automatizar'
-                    )}
-                  </h2>
+                <AutomationEditorStage
+                  kind="followers"
+                  step={6}
+                  title={t('automation_stage_followers_title')}
+                  summary={t(
+                    requireFollow
+                      ? 'automation_stage_enabled'
+                      : 'automation_stage_disabled'
+                  )}
+                >
                   <div className="rounded-[6px] border border-fifth">
                     <div className="flex items-center gap-1 pr-3">
                       <label className="flex flex-1 items-center justify-between gap-[12px] p-[10px] cursor-pointer">
@@ -946,7 +991,7 @@ export const AutomationWizardComponent: FC<Props> = ({
                       </div>
                     )}
                   </div>
-                </div>
+                </AutomationEditorStage>
               </>
             )}
           </fieldset>
