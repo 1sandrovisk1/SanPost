@@ -2794,5 +2794,8 @@
   "farcaster_signer_failed": "Failed to start the Farcaster connection",
   "farcaster_approval_timeout": "Farcaster approval timed out, please try again",
   "farcaster_not_configured": "Farcaster is not configured on this instance. Ask the administrator to set the Neynar variables.",
-  "farcaster_qr_alt": "QR code to approve the access in the Farcaster app"
+  "farcaster_qr_alt": "QR code to approve the access in the Farcaster app",
+  "farcaster_neynar_unavailable": "Farcaster is unavailable on this instance (Neynar account). Let the administrator know.",
+  "farcaster_rate_limited": "Too many Farcaster connection attempts. Wait a few minutes and try again.",
+  "farcaster_session_invalid": "This Farcaster approval is no longer valid. Close it and try again."
 }

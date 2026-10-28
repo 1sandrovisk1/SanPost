@@ -11,7 +11,11 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import { ThrottlerRealIpGuard } from '@gitroom/nestjs-libraries/throttler/throttler.provider';
+import { ThrottlerOrgUserGuard } from '@gitroom/nestjs-libraries/throttler/throttler.provider';
+import {
+  FarcasterChannelSignerDto,
+  FarcasterSignerStatusDto,
+} from '@gitroom/nestjs-libraries/dtos/integrations/farcaster.signer.dto';
 import { FarcasterSignerService } from '@gitroom/nestjs-libraries/integrations/social/farcaster.signer.service';
 import { summarizeError } from '@gitroom/nestjs-libraries/services/error.summary';
 import { ioRedis } from '@gitroom/nestjs-libraries/redis/redis.service';
@@ -717,23 +721,40 @@ export class IntegrationsController {
 
   // Conexao de canal Farcaster (managed signer, upstream #2078/#2080). O
   // upstream usa as rotas publicas de /auth tambem aqui; no fork o canal passa
-  // pela rota autenticada (org/perfil do state continuam vindo do
-  // /social/wrapcast) e o login publico fica so para o login.
+  // por rotas autenticadas: o signer fica no registro amarrado a org/usuario/
+  // perfil de quem o criou e ao state do /social/wrapcast, que o connect
+  // confere e consome (uso unico). Patrocinio da Neynar so aqui.
   @Post('/farcaster/signer')
   @CheckPolicies([AuthorizationActions.Create, Sections.CHANNEL])
-  @UseGuards(ThrottlerRealIpGuard)
+  @UseGuards(ThrottlerOrgUserGuard)
   @Throttle({ default: { limit: 30, ttl: 3600000 } })
-  async farcasterSigner() {
-    return this._farcasterSignerService.start();
+  async farcasterSigner(
+    @GetOrgFromRequest() org: Organization,
+    @GetUserFromRequest() user: User,
+    @GetProfileFromRequest() profile: Profile | null,
+    @Body() body: FarcasterChannelSignerDto
+  ) {
+    return this._farcasterSignerService.startChannel(body.state, {
+      orgId: org.id,
+      userId: user.id,
+      profileId: profile?.id || null,
+    });
   }
 
-  // o modal consulta a cada 2 s por ate 10 min
-  @Get('/farcaster/signer')
+  // o modal consulta a cada 2 s por ate 10 min; o requestId vai no corpo
+  @Post('/farcaster/signer/status')
   @CheckPolicies([AuthorizationActions.Create, Sections.CHANNEL])
-  @UseGuards(ThrottlerRealIpGuard)
+  @UseGuards(ThrottlerOrgUserGuard)
   @Throttle({ default: { limit: 1000, ttl: 3600000 } })
-  async farcasterSignerStatus(@Query('signerUuid') signerUuid: string) {
-    return this._farcasterSignerService.status(signerUuid);
+  async farcasterSignerStatus(
+    @GetOrgFromRequest() org: Organization,
+    @GetUserFromRequest() user: User,
+    @Body() body: FarcasterSignerStatusDto
+  ) {
+    return this._farcasterSignerService.channelStatus(body.requestId, {
+      orgId: org.id,
+      userId: user.id,
+    });
   }
 
   @Post('/moltbook/register')

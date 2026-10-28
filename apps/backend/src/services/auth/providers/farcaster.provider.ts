@@ -2,53 +2,33 @@ import {
   AuthProvider,
   AuthProviderAbstract,
 } from '@gitroom/backend/services/auth/providers.interface';
-import {
-  decodeFarcasterSignerUuid,
-  FarcasterProvider as FarcasterSocialProvider,
-  isFarcasterSignerUuid,
-} from '@gitroom/nestjs-libraries/integrations/social/farcaster.provider';
+import { FarcasterSignerService } from '@gitroom/nestjs-libraries/integrations/social/farcaster.signer.service';
 
-// Login com Farcaster: o "code" e o mesmo do canal (JSON base64 com o
-// signer_uuid do managed signer aprovado no modal do QR). Toda consulta a
-// Neynar passa pelo provider social (this.fetch, host fixo) — o
-// @neynar/nodejs-sdk nao e mais usado aqui.
+// Login com Farcaster: o "code" e o requestId opaco do managed signer aprovado
+// no modal do QR (registro em farcaster.signer.registry; o signer_uuid nunca
+// sai do servidor). O AuthController confere o vinculo (cookie httpOnly) antes
+// de chegar aqui e consome o code depois do login/cadastro; toda consulta a
+// Neynar passa pelo provider social (host fixo, sem @neynar/nodejs-sdk).
 @AuthProvider({ provider: 'FARCASTER' })
 export class FarcasterProvider extends AuthProviderAbstract {
-  private readonly _farcaster = new FarcasterSocialProvider();
+  constructor(private _farcasterSignerService: FarcasterSignerService) {
+    super();
+  }
 
-  // sem redirect OAuth: o modal do QR fala direto com /auth/farcaster/signer.
-  // O upstream devolve aqui o nonce do cookie oauth_state, que o fork nao tem
-  // (divergencia registrada na triagem de out/2026).
+  // sem redirect OAuth: o modal do QR fala com /auth/farcaster/signer. O
+  // upstream devolve aqui o nonce do cookie oauth_state, que o fork nao tem;
+  // o vinculo ao navegador e o cookie do proprio signer (farcaster_login).
   generateLink() {
     return '';
   }
 
   async getToken(code: string, _redirectUri?: string) {
-    const signerUuid = decodeFarcasterSignerUuid(code);
-    if (!signerUuid) {
-      return '';
-    }
-
-    const signer = await this._farcaster.lookupSigner(signerUuid);
-    return signer.status === 'approved' ? signerUuid : '';
+    return this._farcasterSignerService.loginToken(code);
   }
 
   async getUser(providerToken: string) {
-    if (!isFarcasterSignerUuid(providerToken)) {
-      return false as const;
-    }
-
-    const signer = await this._farcaster.lookupSigner(providerToken);
-    // Antes devolvia { id: '', email: '' } para signer nao aprovado, e o
-    // registro/login seguia com providerId vazio. Sem signer aprovado nao ha
-    // identidade.
-    if (signer.status !== 'approved' || !signer.fid) {
-      return false as const;
-    }
-
-    return {
-      id: String('farcaster_' + signer.fid),
-      email: String('farcaster_' + signer.fid),
-    };
+    // signer nao aprovado/desconhecido nao gera identidade (antes saia
+    // { id: '' } e o registro seguia com providerId vazio)
+    return this._farcasterSignerService.loginIdentity(providerToken);
   }
 }

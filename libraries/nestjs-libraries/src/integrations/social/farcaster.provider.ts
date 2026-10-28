@@ -8,6 +8,7 @@ import { makeSecureId } from '@gitroom/nestjs-libraries/services/make.secure.id'
 import dayjs from 'dayjs';
 import {
   BadBody,
+  RefreshToken,
   SocialAbstract,
 } from '@gitroom/nestjs-libraries/integrations/social.abstract';
 import { Integration } from '@prisma/client';
@@ -15,14 +16,21 @@ import { FarcasterDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-set
 import { Tool } from '@gitroom/nestjs-libraries/integrations/tool.decorator';
 import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorator';
 import { summarizeError } from '@gitroom/nestjs-libraries/services/error.summary';
+import { ssrfSafeFetch } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
+import { farcasterSignerRegistry } from '@gitroom/nestjs-libraries/integrations/social/farcaster.signer.registry';
 import { Logger } from '@nestjs/common';
 import { mnemonicToAccount } from 'viem/accounts';
 import { toDataURL } from 'qrcode';
 
-// Host fixo da Neynar: todas as chamadas passam por this.fetch (ssrfSafeFetch),
-// com a chave da API so no header — nada disso chega ao navegador. O caminho
-// com barra final e o mesmo do @neynar/nodejs-sdk.
+// Host fixo da Neynar. Escritas (signer, cast, busca) passam por this.fetch
+// (retentativas + handleErrors); leituras de status passam por ssrfSafeFetch
+// com mapeamento explicito do status. Mesmo dispatcher SSRF-safe nos dois; a
+// chave da API so vai no header — nada disso chega ao navegador. O caminho com
+// barra final e o mesmo do @neynar/nodejs-sdk.
 const NEYNAR_API = 'https://api.neynar.com/v2/farcaster';
+
+// teto por chamada (a cadeia de retentativas do this.fetch divide o mesmo sinal)
+const NEYNAR_TIMEOUT_MS = 30_000;
 
 // Contrato SignedKeyRequestValidator do Farcaster (Optimism). Mesmos valores do
 // @neynar/nodejs-sdk (common/constants) e do upstream #2078 — nao alterar.
@@ -54,15 +62,17 @@ const SIGNER_STATUSES = [
 
 export type FarcasterSignerStatus = (typeof SIGNER_STATUSES)[number];
 
-export type FarcasterSignerRequest = {
+export type FarcasterSignerCreated = {
   signerUuid: string;
   approvalUrl: string;
   qrCode: string;
 };
 
-export type FarcasterSignerState = {
-  status: FarcasterSignerStatus;
-  code?: string;
+export type FarcasterAccount = {
+  fid: number;
+  username: string;
+  display_name: string;
+  pfp_url: string;
 };
 
 type NeynarSigner = {
@@ -80,13 +90,6 @@ type NeynarUser = {
   pfp_url?: string;
 };
 
-type FarcasterAccount = {
-  fid: number;
-  username: string;
-  display_name: string;
-  pfp_url: string;
-};
-
 // Mensagens curadas (viram o erro do post / o motivo do canal na tela Status).
 export const FARCASTER_RECONNECT_MESSAGE =
   'A autorização do Farcaster deste canal foi revogada ou não vale mais para a chave da Neynar desta instância; reconecte o canal';
@@ -96,6 +99,10 @@ const NEYNAR_NO_CREDITS_MESSAGE =
   'A conta da Neynar desta instância está sem créditos; o administrador precisa renová-los';
 const NEYNAR_RATE_LIMIT_MESSAGE =
   'A Neynar limitou as requisições desta instância; tente de novo em alguns minutos';
+const NEYNAR_UNAVAILABLE_MESSAGE =
+  'A Neynar está instável no momento; tente de novo em alguns minutos';
+const NEYNAR_FORBIDDEN_MESSAGE =
+  'A Neynar recusou a requisição (403) para a chave desta instância; o administrador precisa conferir o plano da Neynar';
 
 export class FarcasterNotConfiguredError extends Error {
   constructor() {
@@ -106,21 +113,24 @@ export class FarcasterNotConfiguredError extends Error {
   }
 }
 
+// Falha de leitura na Neynar com motivo estavel (o modal traduz o codigo e
+// para de consultar nos permanentes).
+export type FarcasterNeynarFailure =
+  | 'invalid_signer'
+  | 'key_refused'
+  | 'no_credits'
+  | 'rate_limited'
+  | 'failed';
+
+export class FarcasterNeynarError extends Error {
+  constructor(public readonly reason: FarcasterNeynarFailure) {
+    super(`Neynar: ${reason}`);
+    this.name = 'FarcasterNeynarError';
+  }
+}
+
 export const isFarcasterSignerUuid = (value: unknown): value is string =>
   typeof value === 'string' && SIGNER_UUID.test(value);
-
-// O "code" do Farcaster (login e conexao de canal) e um JSON em base64 com o
-// signer_uuid e os dados de exibicao, como no SIWN e no upstream. So o
-// signer_uuid e aproveitado: fid/nome/foto sempre vem da Neynar, nunca do
-// cliente.
-export const decodeFarcasterSignerUuid = (code: string): string | null => {
-  try {
-    const data = JSON.parse(Buffer.from(String(code), 'base64').toString());
-    return isFarcasterSignerUuid(data?.signer_uuid) ? data.signer_uuid : null;
-  } catch {
-    return null;
-  }
-};
 
 const neynarMessage = (body: string): string => {
   try {
@@ -135,6 +145,8 @@ const appFid = (): number | undefined => {
   const fid = Number(process.env.NEYNAR_APP_FID);
   return Number.isSafeInteger(fid) && fid > 0 ? fid : undefined;
 };
+
+const neynarSignal = () => AbortSignal.timeout(NEYNAR_TIMEOUT_MS);
 
 @Rules('Farcaster/Warpcast can only accept pictures')
 export class FarcasterProvider
@@ -158,13 +170,20 @@ export class FarcasterProvider
   // Credenciais da instancia (env), nao por workspace: o signer gerenciado fica
   // preso a chave da API da Neynar que o criou (o post usa a mesma chave) e o
   // mnemonic e a carteira de custodia da conta do app. Divergencia registrada
-  // em src/integrations/social/CLAUDE.md.
+  // em src/integrations/social/CLAUDE.md. Publicar com um signer ja aprovado so
+  // precisa de NEYNAR_SECRET_KEY.
   isConfigured(): boolean {
     return !!(
       process.env.NEYNAR_SECRET_KEY &&
       appFid() &&
       process.env.NEYNAR_APP_MNEMONIC
     );
+  }
+
+  // O login com Farcaster segue o gate do botao no frontend (NEYNAR_CLIENT_ID,
+  // como no upstream) e exige a Neynar configurada.
+  isLoginEnabled(): boolean {
+    return !!process.env.NEYNAR_CLIENT_ID && this.isConfigured();
   }
 
   override handleErrors(
@@ -185,13 +204,20 @@ export class FarcasterProvider
       return { type: 'bad-body', value: NEYNAR_NO_CREDITS_MESSAGE };
     }
 
-    // signer nao aprovado, revogado ou criado com outra chave da API (canais
-    // conectados pelo SIWN numa chave antiga) — so reconectando
-    if (
-      /signer/i.test(message) ||
-      (status === 403 && !/channel/i.test(message))
-    ) {
+    // so com sinal do signer no corpo (nao aprovado, revogado, criado com outra
+    // chave — canais do SIWN numa chave antiga) o canal vai para reconexao; um
+    // 403 generico (plano/endpoint) desconectaria todos os canais
+    if (/signer|revoked/i.test(message)) {
       return { type: 'refresh-token', value: FARCASTER_RECONNECT_MESSAGE };
+    }
+
+    if (status === 403) {
+      return {
+        type: 'bad-body',
+        value: message
+          ? `${NEYNAR_FORBIDDEN_MESSAGE}: ${message.slice(0, 200)}`
+          : NEYNAR_FORBIDDEN_MESSAGE,
+      };
     }
 
     // continua sendo retentado pelo this.fetch; a mensagem so aparece quando as
@@ -209,7 +235,12 @@ export class FarcasterProvider
       };
     }
 
-    // 5xx sem mapeamento: o this.fetch retenta
+    // gateway da Neynar fora: retenta (5 s) e, esgotado, fica com a mensagem
+    if (status === 502 || status === 503 || status === 504) {
+      return { type: 'retry', value: NEYNAR_UNAVAILABLE_MESSAGE };
+    }
+
+    // 500 sem mapeamento: o this.fetch retenta
     return undefined;
   }
 
@@ -219,6 +250,77 @@ export class FarcasterProvider
       'x-api-key': process.env.NEYNAR_SECRET_KEY || '',
       ...(json ? { 'Content-Type': 'application/json' } : {}),
     };
+  }
+
+  // Escrita com retentativas. A falha do this.fetch copia o corpo da
+  // requisicao para os details do Temporal; aqui ele volta sem signer_uuid/
+  // assinatura (e o signer_uuid sai tambem da resposta ecoada).
+  private async neynarWrite(
+    url: string,
+    body: Record<string, unknown> | undefined,
+    identifier: string,
+    safeBody: Record<string, unknown> = {},
+    secret = ''
+  ): Promise<Response> {
+    try {
+      return await this.fetch(
+        url,
+        {
+          method: 'POST',
+          headers: this.neynarHeaders(!!body),
+          ...(body ? { body: JSON.stringify(body) } : {}),
+          signal: neynarSignal(),
+        },
+        identifier
+      );
+    } catch (err) {
+      if (err instanceof RefreshToken || err instanceof BadBody) {
+        const detail = (err.details?.[0] || {}) as { json?: string };
+        const json = String(detail.json || '{}');
+        const cleanJson = secret ? json.split(secret).join('[signer]') : json;
+        const Failure = err instanceof RefreshToken ? RefreshToken : BadBody;
+        throw new Failure(
+          identifier,
+          cleanJson,
+          JSON.stringify(safeBody),
+          err.message
+        );
+      }
+      throw err;
+    }
+  }
+
+  // Leitura sem retentativa (o modal ja consulta de novo), com o status
+  // traduzido em motivo estavel; 400/403/404 = signer desconhecido para esta
+  // chave, nunca RefreshToken/500.
+  private async neynarRead<T>(url: string): Promise<T> {
+    let response: Response;
+    try {
+      response = await ssrfSafeFetch(url, {
+        headers: this.neynarHeaders(),
+        signal: neynarSignal(),
+      });
+    } catch {
+      throw new FarcasterNeynarError('failed');
+    }
+
+    if (response.status === 200) {
+      return (await response.json()) as T;
+    }
+
+    if ([400, 403, 404].includes(response.status)) {
+      throw new FarcasterNeynarError('invalid_signer');
+    }
+    if (response.status === 401) {
+      throw new FarcasterNeynarError('key_refused');
+    }
+    if (response.status === 402) {
+      throw new FarcasterNeynarError('no_credits');
+    }
+    if (response.status === 429) {
+      throw new FarcasterNeynarError('rate_limited');
+    }
+    throw new FarcasterNeynarError('failed');
   }
 
   // Sem refresh nativo: o signer vale ate ser revogado no app do Farcaster. Um
@@ -232,10 +334,11 @@ export class FarcasterProvider
     return FARCASTER_RECONNECT_MESSAGE;
   }
 
+  // O frontend so le o state depois do "||"; o prefixo nao depende de env.
   async generateAuthUrl() {
     const state = makeSecureId(17);
     return {
-      url: `${process.env.NEYNAR_CLIENT_ID}||${state}` || '',
+      url: `farcaster||${state}`,
       codeVerifier: makeSecureId(10),
       state,
     };
@@ -243,8 +346,11 @@ export class FarcasterProvider
 
   // Managed signer (upstream #2078): cria o signer na Neynar, assina o
   // SignedKeyRequest com a carteira de custodia da conta do app e devolve a URL
-  // de aprovacao (QR) que o usuario abre no app do Farcaster.
-  async createSigner(): Promise<FarcasterSignerRequest> {
+  // de aprovacao (QR) que o usuario abre no app do Farcaster. Patrocinio da
+  // Neynar so quando o chamador pede (rota autenticada do canal).
+  async createSigner(
+    options: { sponsor?: boolean } = {}
+  ): Promise<FarcasterSignerCreated> {
     const fid = appFid();
     const mnemonic = process.env.NEYNAR_APP_MNEMONIC;
     if (!process.env.NEYNAR_SECRET_KEY || !fid || !mnemonic) {
@@ -252,9 +358,9 @@ export class FarcasterProvider
     }
 
     const signer: NeynarSigner = await (
-      await this.fetch(
+      await this.neynarWrite(
         `${NEYNAR_API}/signer/`,
-        { method: 'POST', headers: this.neynarHeaders() },
+        undefined,
         'farcaster-create-signer'
       )
     ).json();
@@ -286,23 +392,20 @@ export class FarcasterProvider
       );
     }
 
+    const sponsor = !!options.sponsor;
     const registered: NeynarSigner = await (
-      await this.fetch(
+      await this.neynarWrite(
         `${NEYNAR_API}/signer/signed_key/`,
         {
-          method: 'POST',
-          headers: this.neynarHeaders(true),
-          body: JSON.stringify({
-            signer_uuid: signer.signer_uuid,
-            app_fid: fid,
-            deadline,
-            signature,
-            ...(process.env.NEYNAR_SPONSOR_SIGNERS === 'true'
-              ? { sponsor: { sponsored_by_neynar: true } }
-              : {}),
-          }),
+          signer_uuid: signer.signer_uuid,
+          app_fid: fid,
+          deadline,
+          signature,
+          ...(sponsor ? { sponsor: { sponsored_by_neynar: true } } : {}),
         },
-        'farcaster-register-signer'
+        'farcaster-register-signer',
+        { app_fid: fid, deadline, sponsor },
+        signer.signer_uuid
       )
     ).json();
 
@@ -333,16 +436,12 @@ export class FarcasterProvider
     fid?: number;
   }> {
     if (!isFarcasterSignerUuid(signerUuid)) {
-      throw new Error('signer_uuid inválido');
+      throw new FarcasterNeynarError('invalid_signer');
     }
 
-    const signer: NeynarSigner = await (
-      await this.fetch(
-        `${NEYNAR_API}/signer/?signer_uuid=${encodeURIComponent(signerUuid)}`,
-        { headers: this.neynarHeaders() },
-        'farcaster-lookup-signer'
-      )
-    ).json();
+    const signer = await this.neynarRead<NeynarSigner>(
+      `${NEYNAR_API}/signer/?signer_uuid=${encodeURIComponent(signerUuid)}`
+    );
 
     const status = (SIGNER_STATUSES as readonly string[]).includes(
       String(signer?.status)
@@ -358,20 +457,21 @@ export class FarcasterProvider
   }
 
   private async account(fid: number): Promise<FarcasterAccount> {
-    const { users = [] }: { users?: NeynarUser[] } = await (
-      await this.fetch(
-        `${NEYNAR_API}/user/bulk/?fids=${fid}`,
-        { headers: this.neynarHeaders() },
-        'farcaster-fetch-user'
-      )
-    ).json();
-    const user = users.find((u) => Number(u?.fid) === fid) || users[0];
+    const { users = [] } = await this.neynarRead<{ users?: NeynarUser[] }>(
+      `${NEYNAR_API}/user/bulk/?fids=${fid}`
+    );
+    const user = users.find((u) => Number(u?.fid) === fid);
+
+    // sem o perfil o canal ficaria salvo sem nome/foto
+    if (!user || !user.username) {
+      throw new Error(`A Neynar não devolveu o perfil do FID ${fid}`);
+    }
 
     return {
       fid,
-      username: user?.username || '',
-      display_name: user?.display_name || '',
-      pfp_url: user?.pfp_url || '',
+      username: user.username,
+      display_name: user.display_name || '',
+      pfp_url: user.pfp_url || '',
     };
   }
 
@@ -385,47 +485,38 @@ export class FarcasterProvider
     return this.account(signer.fid);
   }
 
-  async signerStatus(signerUuid: string): Promise<FarcasterSignerState> {
-    const signer = await this.lookupSigner(signerUuid);
-    if (signer.status !== 'approved') {
-      return { status: signer.status };
-    }
-
-    if (!signer.fid) {
-      return { status: 'pending_approval' };
-    }
-
-    const account = await this.account(signer.fid);
-
-    return {
-      status: 'approved',
-      code: Buffer.from(
-        JSON.stringify({ signer_uuid: signerUuid, ...account })
-      ).toString('base64'),
-    };
-  }
-
   async authenticate(params: {
     code: string;
     codeVerifier: string;
     refresh?: string;
+    state?: string;
   }) {
-    // o code vem do navegador: so o signer_uuid e usado, e o fid/perfil saem
-    // da Neynar (antes o provider confiava no fid/nome enviados pelo cliente)
-    const signerUuid = decodeFarcasterSignerUuid(params.code);
-    if (!signerUuid) {
+    // O code e o requestId opaco do registro (o navegador nunca ve o
+    // signer_uuid). So vale para o mesmo fluxo que o criou (state do
+    // /integrations/social/wrapcast, que ja carrega org/perfil) e uma vez so.
+    const entry = await farcasterSignerRegistry.get(params.code);
+    if (
+      !entry ||
+      entry.purpose !== 'channel' ||
+      !params.state ||
+      entry.state !== params.state
+    ) {
       throw new Error('Código de conexão do Farcaster inválido');
     }
 
-    const account = await this.approvedAccount(signerUuid);
+    const account = await this.approvedAccount(entry.signerUuid);
     if (!account) {
       throw new Error('A aprovação do Farcaster ainda não foi concluída');
+    }
+
+    if (!(await farcasterSignerRegistry.consume(params.code))) {
+      throw new Error('Código de conexão do Farcaster já utilizado');
     }
 
     return {
       id: String(account.fid),
       name: account.display_name || account.username,
-      accessToken: signerUuid,
+      accessToken: entry.signerUuid,
       refreshToken: '',
       expiresIn: dayjs().add(200, 'year').unix() - dayjs().unix(),
       picture: account.pfp_url || '',
@@ -439,14 +530,16 @@ export class FarcasterProvider
     integration?: Integration
   ): Promise<{ postId: string; releaseURL: string }> {
     const data = await (
-      await this.fetch(
+      await this.neynarWrite(
         `${NEYNAR_API}/cast/`,
+        { signer_uuid: signerUuid, ...body },
+        'farcaster-publish-cast',
         {
-          method: 'POST',
-          headers: this.neynarHeaders(true),
-          body: JSON.stringify({ signer_uuid: signerUuid, ...body }),
+          ...(body.channel_id ? { channel_id: body.channel_id } : {}),
+          ...(body.parent ? { parent: body.parent } : {}),
+          embeds: Array.isArray(body.embeds) ? body.embeds.length : 0,
         },
-        'farcaster-publish-cast'
+        signerUuid
       )
     ).json();
 
@@ -573,7 +666,7 @@ export class FarcasterProvider
           `${NEYNAR_API}/channel/search/?q=${encodeURIComponent(
             String(data?.word || '')
           )}&limit=10`,
-          { headers: this.neynarHeaders() },
+          { headers: this.neynarHeaders(), signal: neynarSignal() },
           'farcaster-search-channels'
         )
       ).json();

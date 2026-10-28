@@ -11,6 +11,10 @@ import { continueProviderList } from '@gitroom/frontend/components/new-launch/pr
 import { IntegrationContext } from '@gitroom/frontend/components/launches/helpers/use.integration';
 import { newDayjs } from '@gitroom/frontend/components/layout/set.timezone';
 import { useVariables } from '@gitroom/react/helpers/variable.context';
+import {
+  clearFarcasterCode,
+  peekFarcasterCode,
+} from '@gitroom/frontend/components/farcaster/farcaster.code';
 
 interface TwoStepState {
   integrationId: string;
@@ -58,6 +62,13 @@ export const ContinueIntegration: FC<{
     [logged, push]
   );
   const modifiedParams = useMemo(() => {
+    // Farcaster: o code (requestId do signer) vem da aba, nunca da URL
+    if (provider === 'wrapcast') {
+      return {
+        ...searchParams,
+        code: peekFarcasterCode('connect'),
+      };
+    }
     if (provider === 'mewe') {
       return {
         state: searchParams.state || '',
@@ -119,6 +130,9 @@ export const ContinueIntegration: FC<{
         return;
       }
       const timezone = String(dayjs.tz().utcOffset());
+      if (provider === 'wrapcast') {
+        clearFarcasterCode('connect');
+      }
 
       // Try public endpoint first (handles both public and fallback scenarios)
       let data = await fetch(`/integrations/social-connect/${provider}`, {

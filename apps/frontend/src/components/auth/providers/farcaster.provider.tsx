@@ -1,50 +1,28 @@
 'use client';
 
-import { FC, useCallback, useEffect, useRef, useState } from 'react';
-import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
-import { timer } from '@gitroom/helpers/utils/timer';
-import { useToaster } from '@gitroom/react/toaster/toaster';
+import { useCallback } from 'react';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { useModals } from '@gitroom/frontend/components/layout/new-modal';
-import { Button } from '@gitroom/react/form/button';
-import copy from 'copy-to-clipboard';
-import Loading from '@gitroom/frontend/components/layout/loading';
+import { FarcasterApproval } from '@gitroom/frontend/components/farcaster/farcaster.approval';
+import {
+  FARCASTER_LOGIN_SIGNER_ENDPOINT,
+  stashFarcasterCode,
+} from '@gitroom/frontend/components/farcaster/farcaster.code';
 
-// Rotas do managed signer (upstream #2078/#2080): o login usa as publicas de
-// /auth; a conexao de canal usa as autenticadas de /integrations.
-export const FARCASTER_LOGIN_SIGNER_ENDPOINT = '/auth/farcaster/signer';
-export const FARCASTER_CHANNEL_SIGNER_ENDPOINT =
-  '/integrations/farcaster/signer';
-
-// o modal desiste depois de 10 min (o pedido assinado vale 24 h na Neynar)
-const APPROVAL_TIMEOUT = 10 * 60 * 1000;
-const POLL_INTERVAL = 2000;
-
-type SignerStart = {
-  signerUuid?: string;
-  approvalUrl?: string;
-  qrCode?: string;
-  error?: string;
-};
-
-type SignerStatus = {
-  status?: string;
-  code?: string;
-  error?: string;
-};
-
+// Botao "Farcaster" do login/cadastro. O code aprovado fica na aba
+// (sessionStorage) e o /auth?provider=FARCASTER o envia no corpo do
+// /auth/oauth/FARCASTER/exists; o backend so aceita no navegador que criou o
+// signer (cookie httpOnly) e uma vez so.
 export const FarcasterProvider = () => {
   const modal = useModals();
   const t = useT();
-  // o fork nao tem o cookie oauth_state do upstream, entao o login nao leva
-  // &state (divergencia registrada na triagem de out/2026)
-  const gotoLogin = useCallback((code: string) => {
-    window.location.href = `/auth?provider=FARCASTER&code=${encodeURIComponent(
-      code
-    )}`;
+  const gotoLogin = useCallback((requestId: string) => {
+    stashFarcasterCode('login', requestId);
+    window.location.href = '/auth?provider=FARCASTER';
   }, []);
   const open = useCallback(() => {
     modal.openModal({
+      id: 'farcaster-login',
       title: t('farcaster', 'Farcaster'),
       withCloseButton: true,
       classNames: {
@@ -53,7 +31,7 @@ export const FarcasterProvider = () => {
       children: (close) => (
         <FarcasterApproval
           endpoint={FARCASTER_LOGIN_SIGNER_ENDPOINT}
-          login={gotoLogin}
+          onApproved={gotoLogin}
           onFail={close}
         />
       ),
@@ -88,172 +66,6 @@ export const FarcasterProvider = () => {
         </defs>
       </svg>
       <div className="block xs:hidden">{t('farcaster', 'Farcaster')}</div>
-    </div>
-  );
-};
-
-// Cria o signer, mostra o QR/link de aprovacao e consulta o status ate o
-// usuario aprovar no app do Farcaster. Usado no login e na conexao de canal.
-export const FarcasterApproval: FC<{
-  endpoint: string;
-  login: (code: string) => void;
-  onFail: () => void;
-}> = (props) => {
-  const { endpoint, login, onFail } = props;
-  const fetch = useFetch();
-  const toaster = useToaster();
-  const t = useT();
-  // started: o StrictMode roda o efeito duas vezes e cada POST cria um signer
-  // na Neynar; alive: fechar o modal antes do POST voltar nao inicia o polling
-  const started = useRef(false);
-  const alive = useRef(true);
-  const activeSigner = useRef('');
-  const [approvalUrl, setApprovalUrl] = useState('');
-  const [qrCode, setQrCode] = useState('');
-
-  const fail = (message: string) => {
-    activeSigner.current = '';
-    toaster.show(message, 'warning');
-    onFail();
-  };
-
-  const failureMessage = (error?: string) =>
-    error === 'not_configured'
-      ? t(
-          'farcaster_not_configured',
-          'Farcaster is not configured on this instance. Ask the administrator to set the Neynar variables.'
-        )
-      : t('farcaster_signer_failed', 'Failed to start the Farcaster connection');
-
-  const poll = async (signerUuid: string) => {
-    activeSigner.current = signerUuid;
-    const startedAt = Date.now();
-    while (alive.current && activeSigner.current === signerUuid) {
-      let data: SignerStatus = {};
-      try {
-        data = await (
-          await fetch(
-            `${endpoint}?signerUuid=${encodeURIComponent(signerUuid)}`
-          )
-        ).json();
-      } catch (err) {
-        // instabilidade de rede: segue consultando ate aprovar ou expirar
-      }
-
-      if (!alive.current || activeSigner.current !== signerUuid) {
-        return;
-      }
-
-      if (data.status === 'approved' && data.code) {
-        activeSigner.current = '';
-        login(data.code);
-        return;
-      }
-
-      if (data.status === 'revoked') {
-        fail(
-          t(
-            'farcaster_signer_revoked',
-            'The Farcaster approval was revoked, please try again'
-          )
-        );
-        return;
-      }
-
-      // "failed" e transitorio (Neynar fora do ar); o resto nao se resolve
-      if (data.error && data.error !== 'failed') {
-        fail(failureMessage(data.error));
-        return;
-      }
-
-      if (Date.now() - startedAt > APPROVAL_TIMEOUT) {
-        fail(
-          t(
-            'farcaster_approval_timeout',
-            'Farcaster approval timed out, please try again'
-          )
-        );
-        return;
-      }
-
-      await timer(POLL_INTERVAL);
-    }
-  };
-
-  const start = async () => {
-    let data: SignerStart = {};
-    try {
-      data = await (await fetch(endpoint, { method: 'POST' })).json();
-    } catch (err) {
-      // tratado abaixo como falha generica
-    }
-
-    if (!alive.current) {
-      return;
-    }
-
-    if (!data.approvalUrl || !data.signerUuid) {
-      fail(failureMessage(data.error));
-      return;
-    }
-
-    setApprovalUrl(data.approvalUrl);
-    setQrCode(data.qrCode || '');
-    poll(data.signerUuid);
-  };
-
-  const copyLink = useCallback(() => {
-    copy(approvalUrl);
-    toaster.show(
-      t('link_copied_to_clipboard', 'Link copied to clipboard'),
-      'success'
-    );
-  }, [approvalUrl, toaster, t]);
-
-  useEffect(() => {
-    alive.current = true;
-    if (!started.current) {
-      started.current = true;
-      start();
-    }
-    return () => {
-      alive.current = false;
-    };
-  }, []);
-
-  if (!approvalUrl) {
-    return (
-      <div className="flex justify-center py-[20px]">
-        <Loading width={40} height={40} />
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-col items-center gap-[12px] py-[20px] text-center">
-      {!!qrCode && (
-        <img
-          src={qrCode}
-          alt={t(
-            'farcaster_qr_alt',
-            'QR code to approve the access in the Farcaster app'
-          )}
-          className="w-[200px] h-[200px] rounded-[8px] bg-white"
-        />
-      )}
-      <div className="max-w-[400px]">
-        {t(
-          'farcaster_scan_instructions',
-          'Scan the QR code with your phone, or copy the link and open it on your phone, then approve the access request in the Farcaster app.'
-        )}
-      </div>
-      <Button onClick={copyLink}>
-        {t('farcaster_copy_link', 'Copy Farcaster link')}
-      </Button>
-      <div className="flex items-center gap-[8px] text-sm opacity-70">
-        <Loading width={20} height={20} />
-        {t('farcaster_waiting_for_approval', 'Waiting for your approval...')}
-      </div>
     </div>
   );
 };

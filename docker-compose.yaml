@@ -108,6 +108,8 @@ services:
       # Farcaster (Neynar managed signers) — docs/operations/farcaster-neynar.md
       NEYNAR_SECRET_KEY: ''
       NEYNAR_APP_FID: ''
+      # frase de recuperação da conta do app (controla a conta inteira): defina
+      # via gerenciador de segredos/.env do deploy, nunca em texto neste arquivo
       NEYNAR_APP_MNEMONIC: ''
       NEYNAR_SPONSOR_SIGNERS: 'false'
       NEYNAR_CLIENT_ID: '' # só liga o botão de login com Farcaster

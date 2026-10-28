@@ -1,69 +1,55 @@
+jest.mock('@gitroom/nestjs-libraries/integrations/integration.manager', () => ({
+  IntegrationManager: class {},
+}));
+
 import 'reflect-metadata';
-import { FarcasterProvider as FarcasterSocialProvider } from '@gitroom/nestjs-libraries/integrations/social/farcaster.provider';
+import { HttpException } from '@nestjs/common';
 import { FarcasterProvider } from './farcaster.provider';
 
-const SIGNER = '19d0c5fd-9b33-4a48-a0e2-bc7b0555baec';
-const codeFor = (data: Record<string, unknown>) =>
-  Buffer.from(JSON.stringify(data)).toString('base64');
+const REQUEST_ID = 'A'.repeat(32);
 
+// O login delega ao FarcasterSignerService: o code e o requestId opaco do
+// registro (vinculo e uso unico ficam no AuthController/service).
 describe('FarcasterProvider (login)', () => {
-  let lookupSigner: jest.SpyInstance;
+  const setup = () => {
+    const signers = {
+      loginToken: jest.fn(),
+      loginIdentity: jest.fn(),
+    };
+    return { signers, provider: new FarcasterProvider(signers as any) };
+  };
 
-  beforeEach(() => {
-    lookupSigner = jest.spyOn(FarcasterSocialProvider.prototype, 'lookupSigner');
+  it('getToken devolve o token do service (o proprio requestId)', async () => {
+    const { signers, provider } = setup();
+    signers.loginToken.mockResolvedValue(REQUEST_ID);
+
+    await expect(provider.getToken(REQUEST_ID)).resolves.toBe(REQUEST_ID);
+    expect(signers.loginToken).toHaveBeenCalledWith(REQUEST_ID);
   });
 
-  afterEach(() => {
-    lookupSigner.mockRestore();
+  it('getToken propaga o 400 estavel de code invalido (nunca 500)', async () => {
+    const { signers, provider } = setup();
+    signers.loginToken.mockRejectedValue(new HttpException('x', 400));
+
+    const error = await provider.getToken('lixo').catch((e) => e);
+    expect(error.getStatus()).toBe(400);
   });
 
-  describe('getToken', () => {
-    it('devolve o signer_uuid quando o signer esta aprovado', async () => {
-      lookupSigner.mockResolvedValue({ status: 'approved', fid: 777 });
+  it('getUser devolve a identidade pelo fid ou false', async () => {
+    const { signers, provider } = setup();
+    signers.loginIdentity
+      .mockResolvedValueOnce({ id: 'farcaster_777', email: 'farcaster_777' })
+      .mockResolvedValueOnce(false);
 
-      await expect(
-        new FarcasterProvider().getToken(codeFor({ signer_uuid: SIGNER, fid: 1 }))
-      ).resolves.toBe(SIGNER);
-      expect(lookupSigner).toHaveBeenCalledWith(SIGNER);
+    await expect(provider.getUser(REQUEST_ID)).resolves.toEqual({
+      id: 'farcaster_777',
+      email: 'farcaster_777',
     });
-
-    it('signer pendente nao vira token', async () => {
-      lookupSigner.mockResolvedValue({ status: 'pending_approval' });
-
-      await expect(
-        new FarcasterProvider().getToken(codeFor({ signer_uuid: SIGNER }))
-      ).resolves.toBe('');
-    });
-
-    it('code invalido nao consulta a Neynar', async () => {
-      await expect(new FarcasterProvider().getToken('lixo')).resolves.toBe('');
-      expect(lookupSigner).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('getUser', () => {
-    it('identifica pelo fid do signer aprovado', async () => {
-      lookupSigner.mockResolvedValue({ status: 'approved', fid: 777 });
-
-      await expect(new FarcasterProvider().getUser(SIGNER)).resolves.toEqual({
-        id: 'farcaster_777',
-        email: 'farcaster_777',
-      });
-    });
-
-    it('signer nao aprovado nao gera identidade (antes saia id vazio)', async () => {
-      lookupSigner.mockResolvedValue({ status: 'revoked' });
-
-      await expect(new FarcasterProvider().getUser(SIGNER)).resolves.toBe(false);
-    });
-
-    it('token vazio ou fora do formato e recusado sem consultar a Neynar', async () => {
-      await expect(new FarcasterProvider().getUser('')).resolves.toBe(false);
-      expect(lookupSigner).not.toHaveBeenCalled();
-    });
+    // signer nao aprovado nao gera identidade (antes saia id vazio)
+    await expect(provider.getUser(REQUEST_ID)).resolves.toBe(false);
   });
 
   it('generateLink continua vazio (o fork nao tem o cookie oauth_state)', () => {
-    expect(new FarcasterProvider().generateLink()).toBe('');
+    expect(setup().provider.generateLink()).toBe('');
   });
 });

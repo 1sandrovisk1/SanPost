@@ -14,12 +14,25 @@ jest.mock('@gitroom/helpers/utils/timer', () => ({
   timer: jest.fn().mockResolvedValue(undefined),
 }));
 
+const mockRedis = new Map<string, string>();
+jest.mock('@gitroom/nestjs-libraries/redis/redis.service', () => ({
+  ioRedis: {
+    set: jest.fn(async (key: string, value: string) => {
+      mockRedis.set(key, value);
+      return 'OK';
+    }),
+    get: jest.fn(async (key: string) => mockRedis.get(key) ?? null),
+    del: jest.fn(async (key: string) => (mockRedis.delete(key) ? 1 : 0)),
+  },
+}));
+
 import {
-  decodeFarcasterSignerUuid,
   FARCASTER_RECONNECT_MESSAGE,
+  FarcasterNeynarError,
   FarcasterNotConfiguredError,
   FarcasterProvider,
 } from './farcaster.provider';
+import { farcasterSignerRegistry } from './farcaster.signer.registry';
 import {
   BadBody,
   RefreshToken,
@@ -29,7 +42,6 @@ import {
 const TEST_MNEMONIC =
   'test test test test test test test test test test test junk';
 const SIGNER = '19d0c5fd-9b33-4a48-a0e2-bc7b0555baec';
-const OTHER_SIGNER = '0b1e2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d';
 const PUBLIC_KEY = `0x${'ab'.repeat(32)}`;
 const APPROVAL_URL =
   'https://client.farcaster.xyz/deeplinks/signed-key-request?token=0xabc';
@@ -52,14 +64,22 @@ const call = (index: number) => {
   };
 };
 
-const codeFor = (data: Record<string, unknown>) =>
-  Buffer.from(JSON.stringify(data)).toString('base64');
+const issueChannel = (state = 'state1234') =>
+  farcasterSignerRegistry.issue({
+    purpose: 'channel',
+    signerUuid: SIGNER,
+    orgId: 'org-1',
+    userId: 'user-1',
+    profileId: null,
+    state,
+  });
 
 const ENV_KEYS = [
   'NEYNAR_SECRET_KEY',
   'NEYNAR_APP_FID',
   'NEYNAR_APP_MNEMONIC',
   'NEYNAR_SPONSOR_SIGNERS',
+  'NEYNAR_CLIENT_ID',
 ];
 
 describe('FarcasterProvider (Neynar managed signers)', () => {
@@ -74,7 +94,9 @@ describe('FarcasterProvider (Neynar managed signers)', () => {
     process.env.NEYNAR_APP_FID = '4242';
     process.env.NEYNAR_APP_MNEMONIC = TEST_MNEMONIC;
     delete process.env.NEYNAR_SPONSOR_SIGNERS;
+    delete process.env.NEYNAR_CLIENT_ID;
     mockSsrfSafeFetch.mockReset();
+    mockRedis.clear();
     provider = new FarcasterProvider();
   });
 
@@ -134,6 +156,8 @@ describe('FarcasterProvider (Neynar managed signers)', () => {
       expect(create.url).toBe('https://api.neynar.com/v2/farcaster/signer/');
       expect(create.options.method).toBe('POST');
       expect(create.headers['x-api-key']).toBe('neynar-secret-key');
+      // toda chamada a Neynar leva timeout
+      expect(create.options.signal).toBeInstanceOf(AbortSignal);
 
       const register = call(1);
       expect(register.url).toBe(
@@ -169,20 +193,40 @@ describe('FarcasterProvider (Neynar managed signers)', () => {
       });
       expect(signer).toBe(mnemonicToAccount(TEST_MNEMONIC).address);
 
-      // nada de segredo no que volta ao navegador
+      // nada de segredo no que volta ao chamador
       expect(JSON.stringify(result)).not.toContain('neynar-secret-key');
       expect(JSON.stringify(result)).not.toContain('junk');
     });
 
-    it('NEYNAR_SPONSOR_SIGNERS=true pede o patrocinio da Neynar', async () => {
+    it('so patrocina quando o chamador pede (rota do canal)', async () => {
       process.env.NEYNAR_SPONSOR_SIGNERS = 'true';
       mockSsrfSafeFetch
         .mockResolvedValueOnce(json({ signer_uuid: SIGNER, public_key: PUBLIC_KEY }))
+        .mockResolvedValueOnce(json({ signer_approval_url: APPROVAL_URL }))
+        .mockResolvedValueOnce(json({ signer_uuid: SIGNER, public_key: PUBLIC_KEY }))
         .mockResolvedValueOnce(json({ signer_approval_url: APPROVAL_URL }));
 
+      await provider.createSigner({ sponsor: true });
       await provider.createSigner();
 
       expect(call(1).body.sponsor).toEqual({ sponsored_by_neynar: true });
+      // sem o pedido explicito (login) a env nao basta
+      expect(call(3).body.sponsor).toBeUndefined();
+    });
+
+    it('falha do registro nao leva signer_uuid/assinatura aos details do Temporal', async () => {
+      mockSsrfSafeFetch
+        .mockResolvedValueOnce(json({ signer_uuid: SIGNER, public_key: PUBLIC_KEY }))
+        .mockResolvedValueOnce(
+          json({ message: `bad request for ${SIGNER}` }, 400)
+        );
+
+      const error = await provider.createSigner().catch((e) => e);
+
+      expect(error).toBeInstanceOf(BadBody);
+      const serialized = JSON.stringify(error.details);
+      expect(serialized).not.toContain(SIGNER);
+      expect(serialized).not.toContain('signature');
     });
 
     it.each([
@@ -209,30 +253,83 @@ describe('FarcasterProvider (Neynar managed signers)', () => {
     });
   });
 
-  describe('signerStatus (polling da aprovacao)', () => {
-    it('pendente devolve so o status, sem code', async () => {
+  describe('isLoginEnabled', () => {
+    it('exige NEYNAR_CLIENT_ID (gate do botao) e a Neynar configurada', () => {
+      expect(provider.isLoginEnabled()).toBe(false);
+      process.env.NEYNAR_CLIENT_ID = 'client-id';
+      expect(provider.isLoginEnabled()).toBe(true);
+      delete process.env.NEYNAR_APP_MNEMONIC;
+      expect(provider.isLoginEnabled()).toBe(false);
+    });
+  });
+
+  describe('lookupSigner (polling da aprovacao)', () => {
+    it('le o status na Neynar sem retentar e com timeout', async () => {
       mockSsrfSafeFetch.mockResolvedValueOnce(
         json({ signer_uuid: SIGNER, status: 'pending_approval' })
       );
 
-      await expect(provider.signerStatus(SIGNER)).resolves.toEqual({
+      await expect(provider.lookupSigner(SIGNER)).resolves.toEqual({
         status: 'pending_approval',
       });
       expect(call(0).url).toBe(
         `https://api.neynar.com/v2/farcaster/signer/?signer_uuid=${SIGNER}`
       );
-      expect(mockSsrfSafeFetch).toHaveBeenCalledTimes(1);
+      expect(call(0).options.signal).toBeInstanceOf(AbortSignal);
     });
 
-    it('revogado devolve revoked', async () => {
-      mockSsrfSafeFetch.mockResolvedValueOnce(json({ status: 'revoked' }));
+    it('aprovado devolve o fid', async () => {
+      mockSsrfSafeFetch.mockResolvedValueOnce(json({ status: 'approved', fid: 777 }));
 
-      await expect(provider.signerStatus(SIGNER)).resolves.toEqual({
-        status: 'revoked',
+      await expect(provider.lookupSigner(SIGNER)).resolves.toEqual({
+        status: 'approved',
+        fid: 777,
       });
     });
 
-    it('aprovado devolve o code com o fid e o perfil lidos da Neynar', async () => {
+    it('status desconhecido da Neynar vira pending_approval', async () => {
+      mockSsrfSafeFetch.mockResolvedValueOnce(json({ status: 'whatever' }));
+
+      await expect(provider.lookupSigner(SIGNER)).resolves.toEqual({
+        status: 'pending_approval',
+      });
+    });
+
+    it.each([
+      [404, 'invalid_signer'],
+      [400, 'invalid_signer'],
+      [403, 'invalid_signer'],
+      [401, 'key_refused'],
+      [402, 'no_credits'],
+      [429, 'rate_limited'],
+      [500, 'failed'],
+    ])('HTTP %s vira motivo estavel %s (nunca RefreshToken)', async (status, reason) => {
+      mockSsrfSafeFetch.mockResolvedValueOnce(json({ message: 'x' }, status));
+
+      const error = await provider.lookupSigner(SIGNER).catch((e) => e);
+
+      expect(error).toBeInstanceOf(FarcasterNeynarError);
+      expect(error.reason).toBe(reason);
+      expect(error).not.toBeInstanceOf(RefreshToken);
+      expect(mockSsrfSafeFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('timeout/erro de rede vira failed', async () => {
+      mockSsrfSafeFetch.mockRejectedValueOnce(new Error('The operation was aborted'));
+
+      const error = await provider.lookupSigner(SIGNER).catch((e) => e);
+      expect(error.reason).toBe('failed');
+    });
+
+    it('rejeita signer_uuid fora do formato sem chamar a Neynar', async () => {
+      const error = await provider.lookupSigner('../user?x=1').catch((e) => e);
+      expect(error.reason).toBe('invalid_signer');
+      expect(mockSsrfSafeFetch).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('authenticate (conexao de canal)', () => {
+    const approved = () =>
       mockSsrfSafeFetch
         .mockResolvedValueOnce(json({ status: 'approved', fid: 777 }))
         .mockResolvedValueOnce(
@@ -248,86 +345,127 @@ describe('FarcasterProvider (Neynar managed signers)', () => {
           })
         );
 
-      const result = await provider.signerStatus(SIGNER);
-
-      expect(result.status).toBe('approved');
-      expect(JSON.parse(Buffer.from(result.code!, 'base64').toString())).toEqual({
-        signer_uuid: SIGNER,
-        fid: 777,
-        username: 'alice',
-        display_name: 'Alice',
-        pfp_url: 'https://img.example/a.png',
-      });
-      expect(call(1).url).toBe(
-        'https://api.neynar.com/v2/farcaster/user/bulk/?fids=777'
-      );
-      expect(mockSsrfSafeFetch).toHaveBeenCalledTimes(2);
-    });
-
-    it('rejeita signer_uuid fora do formato sem chamar a Neynar', async () => {
-      await expect(provider.signerStatus('../user?x=1')).rejects.toThrow(
-        'signer_uuid inválido'
-      );
-      expect(mockSsrfSafeFetch).not.toHaveBeenCalled();
-    });
-
-    it('status desconhecido da Neynar vira pending_approval', async () => {
-      mockSsrfSafeFetch.mockResolvedValueOnce(json({ status: 'whatever' }));
-
-      await expect(provider.signerStatus(SIGNER)).resolves.toEqual({
-        status: 'pending_approval',
-      });
-    });
-  });
-
-  describe('authenticate', () => {
-    it('usa so o signer_uuid do code e confirma fid/perfil na Neynar', async () => {
-      mockSsrfSafeFetch
-        .mockResolvedValueOnce(json({ status: 'approved', fid: 777 }))
-        .mockResolvedValueOnce(
-          json({ users: [{ fid: 777, username: 'alice', display_name: 'Alice' }] })
-        );
+    it('aceita o requestId do registro com o mesmo state, le a conta na Neynar e consome', async () => {
+      const requestId = await issueChannel();
+      approved();
 
       const auth = await provider.authenticate({
-        // fid/nome forjados pelo cliente sao ignorados
-        code: codeFor({ signer_uuid: SIGNER, fid: 1, username: 'mallory' }),
+        code: requestId,
         codeVerifier: 'x',
+        state: 'state1234',
       });
 
       expect(auth).toMatchObject({
         id: '777',
         name: 'Alice',
         username: 'alice',
+        picture: 'https://img.example/a.png',
         accessToken: SIGNER,
         refreshToken: '',
       });
+      expect(call(1).url).toBe(
+        'https://api.neynar.com/v2/farcaster/user/bulk/?fids=777'
+      );
+      // uso unico
+      await expect(farcasterSignerRegistry.get(requestId)).resolves.toBeNull();
     });
 
-    it('recusa signer que ainda nao foi aprovado', async () => {
+    it('state de outro fluxo e recusado antes de chamar a Neynar', async () => {
+      const requestId = await issueChannel('state1234');
+
+      await expect(
+        provider.authenticate({
+          code: requestId,
+          codeVerifier: 'x',
+          state: 'outroState1',
+        })
+      ).rejects.toThrow('Código de conexão do Farcaster inválido');
+      expect(mockSsrfSafeFetch).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['desconhecido', 'A'.repeat(32)],
+      ['fora do formato', SIGNER],
+      [
+        'antigo do SIWN',
+        Buffer.from(JSON.stringify({ signer_uuid: SIGNER })).toString('base64'),
+      ],
+    ])('code %s e recusado sem chamar a Neynar', async (_name, code) => {
+      await expect(
+        provider.authenticate({ code, codeVerifier: 'x', state: 'state1234' })
+      ).rejects.toThrow('Código de conexão do Farcaster inválido');
+      expect(mockSsrfSafeFetch).not.toHaveBeenCalled();
+    });
+
+    it('code de login nao conecta canal', async () => {
+      const requestId = await farcasterSignerRegistry.issue({
+        purpose: 'login',
+        signerUuid: SIGNER,
+        nonceHash: 'ab'.repeat(32),
+      });
+
+      await expect(
+        provider.authenticate({
+          code: requestId,
+          codeVerifier: 'x',
+          state: 'state1234',
+        })
+      ).rejects.toThrow('Código de conexão do Farcaster inválido');
+    });
+
+    it('signer ainda nao aprovado nao conecta nem consome', async () => {
+      const requestId = await issueChannel();
       mockSsrfSafeFetch.mockResolvedValueOnce(json({ status: 'pending_approval' }));
 
       await expect(
-        provider.authenticate({ code: codeFor({ signer_uuid: SIGNER }), codeVerifier: 'x' })
+        provider.authenticate({
+          code: requestId,
+          codeVerifier: 'x',
+          state: 'state1234',
+        })
       ).rejects.toThrow('A aprovação do Farcaster ainda não foi concluída');
+      await expect(farcasterSignerRegistry.get(requestId)).resolves.not.toBeNull();
     });
 
-    it.each(['nao-e-base64-json', codeFor({ signer_uuid: 'abc' }), codeFor({})])(
-      'recusa code invalido (%s) sem chamar a Neynar',
-      async (code) => {
-        await expect(
-          provider.authenticate({ code, codeVerifier: 'x' })
-        ).rejects.toThrow('Código de conexão do Farcaster inválido');
-        expect(mockSsrfSafeFetch).not.toHaveBeenCalled();
-      }
-    );
+    it('segundo uso do mesmo code e recusado', async () => {
+      const requestId = await issueChannel();
+      approved();
+      await provider.authenticate({
+        code: requestId,
+        codeVerifier: 'x',
+        state: 'state1234',
+      });
+
+      await expect(
+        provider.authenticate({
+          code: requestId,
+          codeVerifier: 'x',
+          state: 'state1234',
+        })
+      ).rejects.toThrow('Código de conexão do Farcaster inválido');
+    });
+
+    it('perfil ausente na Neynar falha claro (nao salva canal sem nome)', async () => {
+      const requestId = await issueChannel();
+      mockSsrfSafeFetch
+        .mockResolvedValueOnce(json({ status: 'approved', fid: 777 }))
+        .mockResolvedValueOnce(json({ users: [] }));
+
+      await expect(
+        provider.authenticate({
+          code: requestId,
+          codeVerifier: 'x',
+          state: 'state1234',
+        })
+      ).rejects.toThrow('A Neynar não devolveu o perfil do FID 777');
+    });
   });
 
-  describe('decodeFarcasterSignerUuid', () => {
-    it('extrai o signer_uuid do code em base64', () => {
-      expect(decodeFarcasterSignerUuid(codeFor({ signer_uuid: OTHER_SIGNER }))).toBe(
-        OTHER_SIGNER
-      );
-      expect(decodeFarcasterSignerUuid('%%%')).toBeNull();
+  describe('generateAuthUrl', () => {
+    it('nao depende de NEYNAR_CLIENT_ID e leva o state depois do ||', async () => {
+      const { url, state } = await provider.generateAuthUrl();
+      expect(url).toBe(`farcaster||${state}`);
+      expect(url).not.toContain('undefined');
     });
   });
 
@@ -368,6 +506,7 @@ describe('FarcasterProvider (Neynar managed signers)', () => {
       ]);
       expect(call(0).url).toBe('https://api.neynar.com/v2/farcaster/cast/');
       expect(call(0).headers['x-api-key']).toBe('neynar-secret-key');
+      expect(call(0).options.signal).toBeInstanceOf(AbortSignal);
       expect(call(0).body).toEqual({
         signer_uuid: SIGNER,
         text: 'gm',
@@ -375,6 +514,25 @@ describe('FarcasterProvider (Neynar managed signers)', () => {
         channel_id: 'dev',
       });
       expect(call(1).body.channel_id).toBe('base');
+    });
+
+    it('canal antigo (SIWN) publica com so NEYNAR_SECRET_KEY configurada', async () => {
+      delete process.env.NEYNAR_APP_FID;
+      delete process.env.NEYNAR_APP_MNEMONIC;
+      expect(provider.isConfigured()).toBe(false);
+      mockSsrfSafeFetch.mockResolvedValueOnce(
+        json({ success: true, cast: { hash: '0xdd', author: { fid: 7 } } })
+      );
+
+      const [result] = await provider.post(
+        '7',
+        SIGNER,
+        [{ id: 'p1', message: 'gm', settings: {} as any }],
+        integration
+      );
+
+      expect(result.postId).toBe('0xdd');
+      expect(call(0).headers['x-api-key']).toBe('neynar-secret-key');
     });
 
     it('sem canal publica no feed e sem username usa a URL de conversa', async () => {
@@ -423,21 +581,27 @@ describe('FarcasterProvider (Neynar managed signers)', () => {
 
   describe('mapeamento de erros da Neynar', () => {
     it.each([
-      [403, { message: 'Forbidden' }, 'refresh-token'],
+      [403, { message: 'Signer is not approved' }, 'refresh-token'],
       [400, { message: 'Signer is not approved' }, 'refresh-token'],
       [404, { message: 'signer not found' }, 'refresh-token'],
+      [403, { message: 'Key was revoked' }, 'refresh-token'],
+      // 403 generico (plano/endpoint) nao desconecta todos os canais
+      [403, { message: 'Forbidden' }, 'bad-body'],
+      [403, {}, 'bad-body'],
       [403, { message: 'User is not allowed to cast in this channel' }, 'bad-body'],
       [401, { message: 'Unauthorized' }, 'bad-body'],
       [402, { message: 'Payment required' }, 'bad-body'],
       [429, { message: 'Too many requests' }, 'bad-body'],
       [400, { message: 'embeds must contain at most 2 items' }, 'bad-body'],
+      [502, {}, 'retry'],
+      [503, {}, 'retry'],
+      [504, {}, 'retry'],
     ])('%s %j vira %s', (status, body, type) => {
       expect(provider.handleErrors(JSON.stringify(body), status)?.type).toBe(type);
     });
 
-    it('5xx fica sem mapeamento para o fetch retentar', () => {
+    it('500 fica sem mapeamento para o fetch retentar', () => {
       expect(provider.handleErrors('{}', 500)).toBeUndefined();
-      expect(provider.handleErrors('<html>', 502)).toBeUndefined();
     });
 
     it('400 generico leva a mensagem da Neynar', () => {
@@ -449,8 +613,10 @@ describe('FarcasterProvider (Neynar managed signers)', () => {
       });
     });
 
-    it('signer revogado no post vira RefreshToken com a mensagem de reconexao', async () => {
-      mockSsrfSafeFetch.mockResolvedValueOnce(json({ message: 'Forbidden' }, 403));
+    it('signer revogado no post vira RefreshToken com a mensagem de reconexao e sem o signer nos details', async () => {
+      mockSsrfSafeFetch.mockResolvedValueOnce(
+        json({ message: `Signer ${SIGNER} is not approved` }, 403)
+      );
 
       const error = await provider
         .post('7', SIGNER, [{ id: 'p1', message: 'gm', settings: {} as any }])
@@ -458,6 +624,19 @@ describe('FarcasterProvider (Neynar managed signers)', () => {
 
       expect(error).toBeInstanceOf(RefreshToken);
       expect(error.message).toBe(FARCASTER_RECONNECT_MESSAGE);
+      expect(JSON.stringify(error.details)).not.toContain(SIGNER);
+    });
+
+    it('403 generico no post vira BadBody (nao desconecta o canal)', async () => {
+      mockSsrfSafeFetch.mockResolvedValueOnce(json({ message: 'Forbidden' }, 403));
+
+      const error = await provider
+        .post('7', SIGNER, [{ id: 'p1', message: 'gm', settings: {} as any }])
+        .catch((e) => e);
+
+      expect(error).toBeInstanceOf(BadBody);
+      expect(error).not.toBeInstanceOf(RefreshToken);
+      expect(JSON.stringify(error.details)).not.toContain(SIGNER);
     });
 
     it('chave da API recusada (401) vira BadBody e nao desconecta o canal', async () => {
@@ -469,6 +648,34 @@ describe('FarcasterProvider (Neynar managed signers)', () => {
 
       expect(error).toBeInstanceOf(BadBody);
       expect(error).not.toBeInstanceOf(RefreshToken);
+    });
+
+    it('502 no post e retentado e publica na tentativa seguinte', async () => {
+      mockSsrfSafeFetch
+        .mockResolvedValueOnce(json({}, 502))
+        .mockResolvedValueOnce(json({ cast: { hash: '0xee' } }));
+
+      const [result] = await provider.post(
+        '7',
+        SIGNER,
+        [{ id: 'p1', message: 'gm', settings: {} as any }],
+        { profile: 'alice' } as any
+      );
+
+      expect(result.postId).toBe('0xee');
+      expect(mockSsrfSafeFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('502 persistente esgota as retentativas com a mensagem de instabilidade', async () => {
+      mockSsrfSafeFetch.mockResolvedValue(json({}, 503));
+
+      const error = await provider
+        .post('7', SIGNER, [{ id: 'p1', message: 'gm', settings: {} as any }])
+        .catch((e) => e);
+
+      expect(error).toBeInstanceOf(BadBody);
+      expect(error.message).toMatch(/instável/);
+      expect(JSON.stringify(error.details)).not.toContain(SIGNER);
     });
 
     it('refreshToken nao renova: pede reconexao com motivo curado', async () => {
@@ -494,7 +701,9 @@ describe('FarcasterProvider (Neynar managed signers)', () => {
     });
 
     it('falha da busca devolve lista vazia em vez de RefreshToken', async () => {
-      mockSsrfSafeFetch.mockResolvedValueOnce(json({ message: 'Forbidden' }, 403));
+      mockSsrfSafeFetch.mockResolvedValueOnce(
+        json({ message: 'Signer is not approved' }, 403)
+      );
 
       await expect(
         provider.subreddits(SIGNER, { word: 'dev' }, '7', {} as any)

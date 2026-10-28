@@ -5,13 +5,35 @@ jest.mock('@gitroom/nestjs-libraries/integrations/integration.manager', () => ({
   IntegrationManager: class {},
 }));
 
-import { Logger } from '@nestjs/common';
+const mockRedis = new Map<string, string>();
+jest.mock('@gitroom/nestjs-libraries/redis/redis.service', () => ({
+  ioRedis: {
+    set: jest.fn(async (key: string, value: string) => {
+      mockRedis.set(key, value);
+      return 'OK';
+    }),
+    get: jest.fn(async (key: string) => mockRedis.get(key) ?? null),
+    del: jest.fn(async (key: string) => (mockRedis.delete(key) ? 1 : 0)),
+  },
+}));
+
+import { HttpException, Logger } from '@nestjs/common';
 import { createMock } from '@gitroom/nestjs-libraries/test';
 import type { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
-import type { FarcasterProvider } from '@gitroom/nestjs-libraries/integrations/social/farcaster.provider';
+import {
+  FarcasterNeynarError,
+  type FarcasterProvider,
+} from '@gitroom/nestjs-libraries/integrations/social/farcaster.provider';
+import { farcasterSignerRegistry } from './farcaster.signer.registry';
 import { FarcasterSignerService } from './farcaster.signer.service';
 
 const SIGNER = '19d0c5fd-9b33-4a48-a0e2-bc7b0555baec';
+const CREATED = {
+  signerUuid: SIGNER,
+  approvalUrl: 'https://client.farcaster.xyz/x',
+  qrCode: 'data:image/png;base64,AAA',
+};
+const CHANNEL = { orgId: 'org-1', userId: 'user-1', profileId: 'profile-1' };
 
 describe('FarcasterSignerService', () => {
   let provider: ReturnType<typeof createMock<FarcasterProvider>>;
@@ -19,13 +41,16 @@ describe('FarcasterSignerService', () => {
   let service: FarcasterSignerService;
   let errorLog: jest.SpyInstance;
   let warnLog: jest.SpyInstance;
-  const clientId = process.env.NEYNAR_CLIENT_ID;
+  const sponsor = process.env.NEYNAR_SPONSOR_SIGNERS;
 
   beforeEach(() => {
+    mockRedis.clear();
     provider = createMock<FarcasterProvider>();
     manager = createMock<IntegrationManager>();
     manager.getSocialIntegration.mockReturnValue(provider);
     provider.isConfigured.mockReturnValue(true);
+    provider.isLoginEnabled.mockReturnValue(true);
+    provider.createSigner.mockResolvedValue(CREATED);
     service = new FarcasterSignerService(manager);
     errorLog = jest.spyOn(Logger.prototype, 'error').mockImplementation();
     warnLog = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
@@ -34,91 +59,261 @@ describe('FarcasterSignerService', () => {
   afterEach(() => {
     errorLog.mockRestore();
     warnLog.mockRestore();
-    if (clientId === undefined) {
-      delete process.env.NEYNAR_CLIENT_ID;
+    if (sponsor === undefined) {
+      delete process.env.NEYNAR_SPONSOR_SIGNERS;
     } else {
-      process.env.NEYNAR_CLIENT_ID = clientId;
+      process.env.NEYNAR_SPONSOR_SIGNERS = sponsor;
     }
   });
 
-  describe('start', () => {
-    it('usa o provider wrapcast e devolve o pedido de aprovacao', async () => {
-      const request = {
-        signerUuid: SIGNER,
-        approvalUrl: 'https://client.farcaster.xyz/x',
-        qrCode: 'data:image/png;base64,AAA',
-      };
-      provider.createSigner.mockResolvedValue(request);
+  const startLogin = async () => {
+    const { body, nonce } = await service.startLogin();
+    return { requestId: (body as { requestId: string }).requestId, nonce: nonce! };
+  };
 
-      await expect(service.start()).resolves.toEqual(request);
-      expect(manager.getSocialIntegration).toHaveBeenCalledWith('wrapcast');
-    });
+  describe('login (rotas publicas)', () => {
+    it('com o login desligado responde 404 sem criar signer', async () => {
+      provider.isLoginEnabled.mockReturnValue(false);
 
-    it('sem a Neynar configurada devolve not_configured sem criar signer', async () => {
-      provider.isConfigured.mockReturnValue(false);
-
-      await expect(service.start()).resolves.toEqual({ error: 'not_configured' });
+      const error = await service.startLogin().catch((e) => e);
+      expect(error).toBeInstanceOf(HttpException);
+      expect(error.getStatus()).toBe(404);
       expect(provider.createSigner).not.toHaveBeenCalled();
+      await expect(service.loginStatus('x', 'y')).rejects.toBeInstanceOf(
+        HttpException
+      );
     });
 
-    it('falha da Neynar vira codigo generico e o log usa o resumo do erro', async () => {
+    it('cria signer sem patrocinio e devolve so o requestId opaco + nonce do cookie', async () => {
+      process.env.NEYNAR_SPONSOR_SIGNERS = 'true';
+
+      const { body, nonce } = await service.startLogin();
+
+      expect(provider.createSigner).toHaveBeenCalledWith({ sponsor: false });
+      expect(body).toEqual({
+        requestId: expect.stringMatching(/^[A-Za-z0-9]{32}$/),
+        approvalUrl: CREATED.approvalUrl,
+        qrCode: CREATED.qrCode,
+      });
+      expect(JSON.stringify(body)).not.toContain(SIGNER);
+      expect(nonce).toMatch(/^[A-Za-z0-9]{32}$/);
+      // o nonce cru nao vai para o Redis
+      expect([...mockRedis.values()].join()).not.toContain(nonce!);
+    });
+
+    it('status exige o cookie do navegador que criou o signer', async () => {
+      const { requestId, nonce } = await startLogin();
+      provider.lookupSigner.mockResolvedValue({ status: 'pending_approval' });
+
+      await expect(service.loginStatus(requestId, nonce)).resolves.toEqual({
+        status: 'pending_approval',
+      });
+      await expect(service.loginStatus(requestId, 'outro-nonce')).resolves.toEqual(
+        { error: 'invalid_signer' }
+      );
+      await expect(service.loginStatus(requestId, undefined)).resolves.toEqual({
+        error: 'invalid_signer',
+      });
+      expect(provider.lookupSigner).toHaveBeenCalledTimes(1);
+      expect(provider.lookupSigner).toHaveBeenCalledWith(SIGNER);
+    });
+
+    it.each([
+      ['invalid_signer'],
+      ['key_refused'],
+      ['no_credits'],
+      ['rate_limited'],
+    ] as const)('falha permanente da Neynar volta com o codigo %s', async (reason) => {
+      const { requestId, nonce } = await startLogin();
+      provider.lookupSigner.mockRejectedValue(new FarcasterNeynarError(reason));
+
+      await expect(service.loginStatus(requestId, nonce)).resolves.toEqual({
+        error: reason,
+      });
+    });
+
+    it('falha transitoria volta como failed e e logada', async () => {
+      const { requestId, nonce } = await startLogin();
+      provider.lookupSigner.mockRejectedValue(new Error('network down'));
+
+      await expect(service.loginStatus(requestId, nonce)).resolves.toEqual({
+        error: 'failed',
+      });
+      expect(warnLog).toHaveBeenCalledTimes(1);
+    });
+
+    it('assertLoginCode recusa code desconhecido, de canal ou com outro cookie (400)', async () => {
+      const { requestId, nonce } = await startLogin();
+      const channelId = await farcasterSignerRegistry.issue({
+        purpose: 'channel',
+        signerUuid: SIGNER,
+        orgId: 'org-1',
+        userId: 'user-1',
+        profileId: null,
+        state: 'state1234',
+      });
+
+      await expect(service.assertLoginCode(requestId, nonce)).resolves.toBeUndefined();
+      for (const [code, cookie] of [
+        ['A'.repeat(32), nonce],
+        [channelId, nonce],
+        [requestId, 'outro'],
+        [requestId, undefined],
+      ]) {
+        const error = await service.assertLoginCode(code, cookie).catch((e) => e);
+        expect(error).toBeInstanceOf(HttpException);
+        expect(error.getStatus()).toBe(400);
+        expect(error.getResponse()).toMatchObject({
+          code: 'farcaster_invalid_code',
+        });
+      }
+      expect(provider.lookupSigner).not.toHaveBeenCalled();
+    });
+
+    it('assertLoginCode respeita o gate do login (404)', async () => {
+      const { requestId, nonce } = await startLogin();
+      provider.isLoginEnabled.mockReturnValue(false);
+
+      const error = await service.assertLoginCode(requestId, nonce).catch((e) => e);
+      expect(error.getStatus()).toBe(404);
+    });
+
+    it('loginToken devolve o proprio requestId so com o signer aprovado', async () => {
+      const { requestId } = await startLogin();
+      provider.lookupSigner.mockResolvedValueOnce({ status: 'approved', fid: 7 });
+      await expect(service.loginToken(requestId)).resolves.toBe(requestId);
+
+      provider.lookupSigner.mockResolvedValueOnce({ status: 'pending_approval' });
+      await expect(service.loginToken(requestId)).rejects.toBeInstanceOf(
+        HttpException
+      );
+
+      // Neynar 404 (signer desconhecido) vira 400 estavel, nunca 500
+      provider.lookupSigner.mockRejectedValueOnce(
+        new FarcasterNeynarError('invalid_signer')
+      );
+      const error = await service.loginToken(requestId).catch((e) => e);
+      expect(error.getStatus()).toBe(400);
+    });
+
+    it('loginIdentity identifica pelo fid e nega signer nao aprovado', async () => {
+      const { requestId } = await startLogin();
+      provider.lookupSigner.mockResolvedValueOnce({ status: 'approved', fid: 777 });
+      await expect(service.loginIdentity(requestId)).resolves.toEqual({
+        id: 'farcaster_777',
+        email: 'farcaster_777',
+      });
+
+      provider.lookupSigner.mockResolvedValueOnce({ status: 'revoked' });
+      await expect(service.loginIdentity(requestId)).resolves.toBe(false);
+
+      provider.lookupSigner.mockRejectedValueOnce(
+        new FarcasterNeynarError('invalid_signer')
+      );
+      await expect(service.loginIdentity(requestId)).resolves.toBe(false);
+
+      await expect(service.loginIdentity('A'.repeat(32))).resolves.toBe(false);
+    });
+
+    it('consumeLogin apaga o registro (uso unico)', async () => {
+      const { requestId, nonce } = await startLogin();
+
+      await service.consumeLogin(requestId);
+
+      await expect(service.assertLoginCode(requestId, nonce)).rejects.toBeInstanceOf(
+        HttpException
+      );
+    });
+
+    it('falha ao criar o signer vira codigo generico e o log usa o resumo do erro', async () => {
       provider.createSigner.mockRejectedValue(
         new Error('boom Authorization: Bearer sk-secret-123456789')
       );
 
-      await expect(service.start()).resolves.toEqual({ error: 'failed' });
-      expect(errorLog).toHaveBeenCalledTimes(1);
+      const { body, nonce } = await service.startLogin();
+      expect(body).toEqual({ error: 'failed' });
+      expect(nonce).toBeUndefined();
       expect(String(errorLog.mock.calls[0][0])).not.toContain('sk-secret-123456789');
     });
   });
 
-  describe('status', () => {
-    it.each([undefined, '', 'abc', '../signer', 42])(
-      'signerUuid invalido (%s) nao chega a Neynar',
-      async (value) => {
-        await expect(service.status(value)).resolves.toEqual({
-          error: 'invalid_signer',
-        });
-        expect(provider.signerStatus).not.toHaveBeenCalled();
+  describe('canal (rotas autenticadas)', () => {
+    const flowState = 'state1234';
+    const seedState = (org = CHANNEL.orgId, profile: string | null = CHANNEL.profileId) => {
+      mockRedis.set(`organization:${flowState}`, org);
+      if (profile) {
+        mockRedis.set(`profile:${flowState}`, profile);
       }
-    );
-
-    it('repassa o status do provider', async () => {
-      provider.signerStatus.mockResolvedValue({ status: 'approved', code: 'abc' });
-
-      await expect(service.status(SIGNER)).resolves.toEqual({
-        status: 'approved',
-        code: 'abc',
-      });
-      expect(provider.signerStatus).toHaveBeenCalledWith(SIGNER);
-    });
+    };
 
     it('sem a Neynar configurada devolve not_configured', async () => {
+      seedState();
       provider.isConfigured.mockReturnValue(false);
 
-      await expect(service.status(SIGNER)).resolves.toEqual({
+      await expect(service.startChannel(flowState, CHANNEL)).resolves.toEqual({
         error: 'not_configured',
+      });
+      expect(provider.createSigner).not.toHaveBeenCalled();
+    });
+
+    it('amarra o signer a org/usuario/perfil/state e patrocina conforme a env', async () => {
+      seedState();
+      process.env.NEYNAR_SPONSOR_SIGNERS = 'true';
+
+      const result = await service.startChannel(flowState, CHANNEL);
+
+      expect(provider.createSigner).toHaveBeenCalledWith({ sponsor: true });
+      const { requestId } = result as { requestId: string };
+      await expect(farcasterSignerRegistry.get(requestId)).resolves.toEqual({
+        purpose: 'channel',
+        signerUuid: SIGNER,
+        orgId: 'org-1',
+        userId: 'user-1',
+        profileId: 'profile-1',
+        state: flowState,
+      });
+      expect(JSON.stringify(result)).not.toContain(SIGNER);
+    });
+
+    it.each([
+      ['state de outra org', () => seedState('org-2')],
+      ['state de outro perfil', () => seedState(CHANNEL.orgId, 'profile-2')],
+      ['state inexistente', () => undefined],
+    ])('recusa %s sem criar signer', async (_name, seed) => {
+      seed();
+
+      await expect(service.startChannel(flowState, CHANNEL)).resolves.toEqual({
+        error: 'invalid_state',
+      });
+      expect(provider.createSigner).not.toHaveBeenCalled();
+    });
+
+    it('recusa state fora do formato', async () => {
+      await expect(service.startChannel('../x', CHANNEL)).resolves.toEqual({
+        error: 'invalid_state',
       });
     });
 
-    it('falha transitoria devolve failed para o modal seguir consultando', async () => {
-      provider.signerStatus.mockRejectedValue(new Error('network down'));
+    it('status so para a mesma org e o mesmo usuario', async () => {
+      seedState();
+      const { requestId } = (await service.startChannel(flowState, CHANNEL)) as {
+        requestId: string;
+      };
+      provider.lookupSigner.mockResolvedValue({ status: 'approved', fid: 7 });
 
-      await expect(service.status(SIGNER)).resolves.toEqual({ error: 'failed' });
-      expect(warnLog).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  describe('isLoginEnabled', () => {
-    it('exige NEYNAR_CLIENT_ID (gate do botao) e a Neynar configurada', () => {
-      delete process.env.NEYNAR_CLIENT_ID;
-      expect(service.isLoginEnabled()).toBe(false);
-
-      process.env.NEYNAR_CLIENT_ID = 'client-id';
-      expect(service.isLoginEnabled()).toBe(true);
-
-      provider.isConfigured.mockReturnValue(false);
-      expect(service.isLoginEnabled()).toBe(false);
+      await expect(
+        service.channelStatus(requestId, { orgId: 'org-1', userId: 'user-1' })
+      ).resolves.toEqual({ status: 'approved' });
+      await expect(
+        service.channelStatus(requestId, { orgId: 'org-2', userId: 'user-1' })
+      ).resolves.toEqual({ error: 'invalid_signer' });
+      await expect(
+        service.channelStatus(requestId, { orgId: 'org-1', userId: 'user-2' })
+      ).resolves.toEqual({ error: 'invalid_signer' });
+      await expect(
+        service.channelStatus('A'.repeat(32), { orgId: 'org-1', userId: 'user-1' })
+      ).resolves.toEqual({ error: 'invalid_signer' });
+      expect(provider.lookupSigner).toHaveBeenCalledTimes(1);
     });
   });
 });
