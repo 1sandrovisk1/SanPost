@@ -329,3 +329,48 @@ describe('SocialAbstract.fetch (retentativas esgotadas)', () => {
     });
   });
 });
+
+// upstream 0c9d3940: erro ja classificado pelo provider dentro do
+// runInConcurrent nao vira 'Unknown Error'.
+describe('SocialAbstract.runInConcurrent (erro classificado)', () => {
+  const provider = new TestProvider();
+  const errorLog = jest
+    .spyOn((SocialAbstract as any).logger, 'error')
+    .mockImplementation(() => undefined);
+
+  afterAll(() => errorLog.mockRestore());
+
+  it('BadBody do provider sai com a propria mensagem', async () => {
+    const original = new BadBody('test', '{}', '', 'Video too large');
+    await expect(
+      provider.runInConcurrent(async () => {
+        throw original;
+      })
+    ).rejects.toBe(original);
+  });
+
+  it('RefreshToken do provider continua RefreshToken', async () => {
+    const original = new RefreshToken('test', '{}', '', 'expired');
+    await expect(
+      provider.runInConcurrent(async () => {
+        throw original;
+      })
+    ).rejects.toBe(original);
+  });
+
+  it('erro cru passa pelo handleErrors e o log sai resumido', async () => {
+    errorLog.mockClear();
+    const raw = Object.assign(new Error('falhou'), {
+      data: { error: 'expired token', access_token: 'segredo-que-nao-pode-vazar' },
+    });
+
+    await expect(
+      provider.runInConcurrent(async () => {
+        throw raw;
+      })
+    ).rejects.toBeInstanceOf(RefreshToken);
+    expect(String(errorLog.mock.calls[0][0])).not.toContain(
+      'segredo-que-nao-pode-vazar'
+    );
+  });
+});

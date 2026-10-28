@@ -10,6 +10,8 @@ import { AxiosInstance } from 'axios';
 import { readFileSync } from 'fs';
 import { resolve, sep } from 'path';
 import { setHeartbeatDetails } from '@gitroom/nestjs-libraries/temporal/temporal.heartbeat';
+import { summarizeError } from '@gitroom/nestjs-libraries/services/error.summary';
+import { Logger } from '@nestjs/common';
 
 // Temporal persiste ApplicationFailure inteira no historico e a transporta por
 // gRPC. Respostas de provider podem conter HTML, stacks ou blobs enormes; os
@@ -116,6 +118,7 @@ function safeStringify(obj: any) {
 }
 
 export abstract class SocialAbstract {
+  protected static readonly logger = new Logger('SocialAbstract');
   abstract identifier: string;
   maxConcurrentJob = 1;
   hiddenFromList = false;
@@ -198,15 +201,21 @@ export abstract class SocialAbstract {
     try {
       value = await func();
     } catch (err) {
-      // Log cru do erro antes de passar por handleErrors — caso contrario
-      // o wrapper do runInConcurrent joga fora o stack e a mensagem original
-      // do provider (ex.: resposta da API do X/Twitter), dificultando
-      // diagnosticar falhas no worker do Temporal. Divergencia documentada
+      // Ja classificado pelo provider (ex.: mediaSize/mediaChunk do X): mantem
+      // a mensagem em vez de virar 'Unknown Error' (upstream 0c9d3940)
+      if (
+        err instanceof BadBody ||
+        err instanceof RefreshToken ||
+        err instanceof PublishedWithError
+      ) {
+        throw err;
+      }
+      // Resumo do erro antes de passar por handleErrors — o wrapper joga fora
+      // a mensagem original do provider. Resumido: o objeto cru levava o corpo
+      // da resposta (tokens, URLs assinadas) ao log. Divergencia documentada
       // em .claude/skills/sync-upstream/SKILL.md.
-      console.error(
-        '[runInConcurrent] provider error:',
-        (err as any)?.data || (err as any)?.message || err,
-        (err as any)?.stack || ''
+      SocialAbstract.logger.error(
+        `[runInConcurrent] provider error: ${summarizeError(err)}`
       );
       const handle = this.handleErrors(safeStringify(err), 200);
       value = { err: true, value: 'Unknown Error', ...(handle || {}) };

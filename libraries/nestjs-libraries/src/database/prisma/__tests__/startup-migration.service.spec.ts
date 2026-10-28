@@ -181,25 +181,39 @@ describe('StartupMigrationService.reconcileRefreshTokensCron', () => {
     $executeRawUnsafe: jest.fn(),
   });
 
-  const buildService = (ensure: jest.Mock) =>
+  const buildService = (
+    ensure: jest.Mock,
+    reconcile = jest.fn().mockResolvedValue({ started: 0 })
+  ) =>
     new StartupMigrationService(
       buildPrisma() as any,
-      { reconcileWorkflows: jest.fn().mockResolvedValue({ started: 0 }) } as any,
+      { reconcileWorkflows: reconcile } as any,
       { ensureRefreshTokensCronWorkflow: ensure } as any
     );
 
-  it('garante o workflow cron de refresh (singleton) no boot', async () => {
+  // o cliente do Temporal so fica pronto no onModuleInit do TemporalService,
+  // que corre em paralelo com o nosso: os passos que iniciam workflow vao para
+  // o bootstrap (depois de todos os onModuleInit)
+  it('garante o cron de refresh e os reposts so no bootstrap', async () => {
     const ensure = jest.fn().mockResolvedValue(undefined);
+    const reconcile = jest.fn().mockResolvedValue({ started: 0 });
+    const service = buildService(ensure, reconcile);
 
-    await buildService(ensure).onModuleInit();
+    await service.onModuleInit();
+    expect(ensure).not.toHaveBeenCalled();
+    expect(reconcile).not.toHaveBeenCalled();
 
+    await service.onApplicationBootstrap();
     expect(ensure).toHaveBeenCalledTimes(1);
+    expect(reconcile).toHaveBeenCalledTimes(1);
   });
 
   it('nao derruba o boot quando o start do cron falha', async () => {
     const ensure = jest.fn().mockRejectedValue(new Error('temporal down'));
 
-    await expect(buildService(ensure).onModuleInit()).resolves.toBeUndefined();
+    await expect(
+      buildService(ensure).onApplicationBootstrap()
+    ).resolves.toBeUndefined();
   });
 });
 

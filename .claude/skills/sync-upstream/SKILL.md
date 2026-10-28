@@ -234,10 +234,13 @@ lista durante o proprio sync e registre no CHANGELOG.
     `BadBody('Unknown Error')` SEM logar o erro original. Resultado: falhas
     reais de APIs de provider (X, Facebook, etc) aparecem no Temporal como
     "Unknown Error" sem stack trace nem mensagem do provider.
-  - **Nosso fix:** adicionado `console.error('[runInConcurrent] provider error:', ...)`
-    logando `err.data`, `err.message` e `err.stack` antes do `handleErrors`,
-    para que o worker do orchestrator mostre a causa real no terminal / docker
-    logs.
+  - **Nosso fix:** log `[runInConcurrent] provider error: <summarizeError(err)>`
+    (Nest `Logger`) antes do `handleErrors`, para que o worker do orchestrator
+    mostre a causa real no docker logs — resumido, porque o `err.data` cru
+    levava o corpo da resposta (tokens, URLs assinadas) ao log. O upstream
+    `0c9d3940` (28/10/2026) passou a relançar `BadBody`/`RefreshToken`/
+    `Disconnect` já classificados; no fork o relançamento cobre `BadBody`,
+    `RefreshToken` e `PublishedWithError` (o fork não tem `Disconnect`).
   - **Ao sincronizar:** se o upstream tambem nao estiver logando, preserve
     nosso `console.error`. Se o upstream introduziu log proprio, aceitar a
     versao upstream desde que o erro original seja visivel nos logs.

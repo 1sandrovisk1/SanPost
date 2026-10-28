@@ -7,6 +7,13 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 
 ## [Unreleased]
 
+### Corrigido — testes do RC 0.7.0-rc.2 em produção (28/10/2026)
+
+- **Tags do post pelo painel:** desde o PR #327 a tag escolhida no editor não era gravada (o painel envia o nome da tag e o backend passou a exigir o id), e criar uma tag nova pelo próprio editor quebrava o salvamento. A tag agora é encontrada pelo id (API/MCP) ou pelo nome (painel), sempre dentro do perfil.
+- **Workflows do Temporal no boot:** a reconciliação dos reposts e o cron de renovação de tokens em lote rodavam antes do cliente do Temporal ficar pronto (`Temporal Service is not initialized` / `0/N repost workflow(s) reconciliados`). Passam a rodar depois da inicialização de todos os módulos.
+- **Motivo da falha do post preservado** (porte do Postiz `0c9d3940`): um erro já classificado pelo provider (ex.: tamanho de mídia no upload em partes do X) não vira mais "Unknown Error". O log do worker resume o erro do provider em vez de imprimir o corpo da resposta.
+- **Prévia de vídeo:** fechar o player antes do vídeo começar não registra mais um erro no log do backend.
+
 ### Melhorado — ferramentas de texto das automações (28/10/2026)
 
 - Resposta pública usa diretamente a etapa verde; pedido para seguir vira switch com apenas suas subetapas expansíveis. Alternativas privadas ganham boxes próprios para texto e botão/link.

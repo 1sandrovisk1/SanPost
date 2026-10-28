@@ -680,6 +680,47 @@ export class PostsRepository {
     });
   }
 
+  // O painel manda { value: nome, label: nome }; API/MCP mandam
+  // { value: id, label: nome }. Casa pelo id quando ele existe no escopo e cai
+  // para o nome; sempre na org e no perfil (sem tag homonima de outro cliente).
+  private async resolvePostTags(
+    orgId: string,
+    profileId: string | undefined,
+    tags: { value: string; label: string }[]
+  ) {
+    const text = (v: unknown) =>
+      typeof v === 'string' && v.trim() ? v.trim() : undefined;
+    const ids = tags.map((t) => text(t?.value)).filter(Boolean) as string[];
+    const names = tags
+      .flatMap((t) => [text(t?.label), text(t?.value)])
+      .filter(Boolean) as string[];
+    if (!names.length) {
+      return [];
+    }
+
+    const found = await this._tags.model.tags.findMany({
+      where: {
+        orgId,
+        ...(profileId ? { profileId } : {}),
+        deletedAt: null,
+        OR: [{ id: { in: ids } }, { name: { in: names } }],
+      },
+    });
+
+    const chosen = new Map<string, (typeof found)[number]>();
+    for (const tag of tags) {
+      const hit =
+        found.find((f) => f.id === text(tag?.value)) ||
+        found.find(
+          (f) => f.name === text(tag?.label) || f.name === text(tag?.value)
+        );
+      if (hit) {
+        chosen.set(hit.id, hit);
+      }
+    }
+    return [...chosen.values()];
+  }
+
   async createOrUpdatePost(
     state: 'draft' | 'schedule' | 'now' | 'update',
     orgId: string,
@@ -789,17 +830,7 @@ export class PostsRepository {
         });
 
         if (tags.length) {
-          const tagsList = await this._tags.model.tags.findMany({
-            where: {
-              orgId: orgId,
-              ...(profileId ? { profileId } : {}),
-              deletedAt: null,
-              id: { in: tags.map((tag) => tag.value) },
-              name: {
-                in: tags.map((tag) => tag.label).filter((f) => f),
-              },
-            },
-          });
+          const tagsList = await this.resolvePostTags(orgId, profileId, tags);
 
           if (tagsList.length) {
             await this._post.model.post.update({

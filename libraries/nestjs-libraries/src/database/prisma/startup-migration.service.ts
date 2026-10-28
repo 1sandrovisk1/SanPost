@@ -1,11 +1,18 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnApplicationBootstrap,
+  OnModuleInit,
+} from '@nestjs/common';
 import { PrismaService } from './prisma.service';
 import { RepostService } from './repost/repost.service';
 import { RefreshIntegrationService } from '@gitroom/nestjs-libraries/integrations/refresh.integration.service';
 import { AuthService } from '@gitroom/helpers/auth/auth.service';
 
 @Injectable()
-export class StartupMigrationService implements OnModuleInit {
+export class StartupMigrationService
+  implements OnModuleInit, OnApplicationBootstrap
+{
   private readonly logger = new Logger(StartupMigrationService.name);
 
   constructor(
@@ -23,6 +30,13 @@ export class StartupMigrationService implements OnModuleInit {
     await this.cleanupExpiredStatusEvents();
     await this.cleanupExpiredScheduledAutomationEvents();
     await this.backfillFlowsToDefaultProfile();
+  }
+
+  // Passos que iniciam workflows no Temporal: o cliente do nestjs-temporal-core
+  // so fica pronto no onModuleInit dele, que corre em paralelo com o nosso
+  // ("Temporal Service is not initialized"). O bootstrap roda depois de todos
+  // os onModuleInit.
+  async onApplicationBootstrap() {
     await this.reconcileRepostWorkflows();
     await this.reconcileRefreshTokensCron();
   }

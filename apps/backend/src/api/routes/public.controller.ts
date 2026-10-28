@@ -313,12 +313,20 @@ export class PublicController {
         return res.status(400).send('Blocked URL');
       }
 
-      r = await fetch(currentUrl, {
-        signal: ac.signal,
-        redirect: 'manual',
-        // @ts-ignore — undici option, not in lib.dom fetch types
-        dispatcher: ssrfSafeDispatcher,
-      });
+      try {
+        r = await fetch(currentUrl, {
+          signal: ac.signal,
+          redirect: 'manual',
+          // @ts-ignore — undici option, not in lib.dom fetch types
+          dispatcher: ssrfSafeDispatcher,
+        });
+      } catch (err) {
+        // o player fechou antes da resposta: nada a enviar nem a logar
+        if (ac.signal.aborted) {
+          return;
+        }
+        throw err;
+      }
 
       if (r.status >= 300 && r.status < 400) {
         const location = r.headers.get('location');
