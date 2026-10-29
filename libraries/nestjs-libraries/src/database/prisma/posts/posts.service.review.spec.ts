@@ -1,8 +1,7 @@
 // Mocks topo-de-modulo (mesma razao dos outros specs de PostsService).
-jest.mock(
-  '@gitroom/nestjs-libraries/integrations/integration.manager',
-  () => ({ IntegrationManager: class IntegrationManagerMock {} })
-);
+jest.mock('@gitroom/nestjs-libraries/integrations/integration.manager', () => ({
+  IntegrationManager: class IntegrationManagerMock {},
+}));
 jest.mock(
   '@gitroom/nestjs-libraries/integrations/refresh.integration.service',
   () => ({ RefreshIntegrationService: class RefreshIntegrationServiceMock {} })
@@ -11,10 +10,9 @@ jest.mock(
   '@gitroom/nestjs-libraries/database/prisma/media/media.service',
   () => ({ MediaService: class MediaServiceMock {} })
 );
-jest.mock(
-  '@gitroom/nestjs-libraries/short-linking/short.link.service',
-  () => ({ ShortLinkService: class ShortLinkServiceMock {} })
-);
+jest.mock('@gitroom/nestjs-libraries/short-linking/short.link.service', () => ({
+  ShortLinkService: class ShortLinkServiceMock {},
+}));
 
 import { PostsService } from './posts.service';
 import { createMock } from '@gitroom/nestjs-libraries/test';
@@ -132,12 +130,60 @@ describe('PostsService - revisao (aprovar/comentar por perfil)', () => {
         id: 'post-1',
         profileId: 'prof-dell',
       } as any);
-      repo.getComments.mockResolvedValue([{ id: 'c-1' }] as any);
+      jest.spyOn(service, 'getPostsRecursively').mockResolvedValue([
+        {
+          id: 'post-1',
+          organizationId: 'org-1',
+          profileId: 'prof-dell',
+          content: '<p>Post</p>',
+        },
+        {
+          id: 'post-child',
+          organizationId: 'org-1',
+          profileId: 'prof-dell',
+          content: '<p>Thread</p>',
+        },
+      ] as any);
+      repo.getComments.mockResolvedValue([
+        {
+          id: 'c-1',
+          postId: 'post-child',
+          parentId: null,
+          kind: 'COMMENT',
+          content: 'Ajustar o titulo',
+          anchorStart: null,
+          anchorEnd: null,
+          anchorQuote: null,
+          resolvedAt: null,
+          createdAt: new Date('2026-10-29T12:00:00Z'),
+          userId: 'user-1',
+          reviewLinkId: null,
+          guestName: null,
+          user: { name: 'Revisor', email: 'private@example.com' },
+        },
+      ] as any);
 
-      const res = await service.getReviewComments('org-1', 'post-1', 'prof-dell');
+      const res = await service.getReviewComments(
+        'org-1',
+        'post-1',
+        'prof-dell'
+      );
 
-      expect(res).toEqual([{ id: 'c-1' }]);
-      expect(repo.getComments).toHaveBeenCalledWith('post-1', 'org-1');
+      expect(res).toEqual([
+        expect.objectContaining({
+          id: 'c-1',
+          postId: 'post-child',
+          author: 'member',
+          name: 'Revisor',
+          memberIndex: null,
+        }),
+      ]);
+      expect(res[0]).not.toHaveProperty('userId');
+      expect(res[0]).not.toHaveProperty('user');
+      expect(repo.getComments).toHaveBeenCalledWith(
+        ['post-1', 'post-child'],
+        'org-1'
+      );
     });
   });
 });

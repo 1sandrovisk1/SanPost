@@ -13,6 +13,7 @@ export class WebhooksRepository {
         organizationId: orgId,
         ...(profileId ? { profileId } : {}),
         deletedAt: null,
+        organization: { deletedAt: null },
       },
     });
   }
@@ -23,6 +24,7 @@ export class WebhooksRepository {
         organizationId: orgId,
         ...(profileId ? { profileId } : {}),
         deletedAt: null,
+        organization: { deletedAt: null },
       },
       include: {
         integrations: {

@@ -405,3 +405,78 @@ describe('PostActivity - PublishedWithError', () => {
   });
 });
 
+describe('PostActivity V102 - snapshots de organizacao excluida', () => {
+  it.each([
+    ['ausente', null],
+    ['desativado', { ...integration, disabled: true }],
+    [
+      'excluido',
+      { ...integration, deletedAt: new Date('2026-10-29T12:00:00Z') },
+    ],
+  ])(
+    'postSocial recusa canal %s antes de provider ou decifragem',
+    async (_label, live) => {
+      const {
+        activity,
+        integrationService,
+        provider,
+        encryption,
+        postService,
+      } = buildActivity();
+      integrationService.getIntegrationById.mockResolvedValue(live as any);
+      await expect(
+        activity.postSocial({ ...integration } as any, [post as any])
+      ).rejects.toMatchObject({
+        nonRetryable: true,
+        type: 'ChannelUnavailable',
+      });
+      expect(integrationService.getIntegrationById).toHaveBeenCalledWith(
+        'org-1',
+        'integration-1'
+      );
+      expect(provider.post).not.toHaveBeenCalled();
+      expect(encryption.decrypt).not.toHaveBeenCalled();
+      expect(postService.updateTags).not.toHaveBeenCalled();
+    }
+  );
+  it.each([
+    ['ausente', null],
+    ['desativado', { ...integration, disabled: true }],
+    [
+      'excluido',
+      { ...integration, deletedAt: new Date('2026-10-29T12:00:00Z') },
+    ],
+  ])(
+    'postComment recusa canal %s mesmo com credencial no historico',
+    async (_label, live) => {
+      const {
+        activity,
+        integrationService,
+        provider,
+        encryption,
+        postService,
+      } = buildActivity();
+      const comment = jest.fn();
+      (provider as any).comment = comment;
+      integrationService.getIntegrationById.mockResolvedValue(live as any);
+      await expect(
+        activity.postComment(
+          'released-post',
+          undefined,
+          { ...integration } as any,
+          [post as any]
+        )
+      ).rejects.toMatchObject({
+        nonRetryable: true,
+        type: 'ChannelUnavailable',
+      });
+      expect(integrationService.getIntegrationById).toHaveBeenCalledWith(
+        'org-1',
+        'integration-1'
+      );
+      expect(comment).not.toHaveBeenCalled();
+      expect(encryption.decrypt).not.toHaveBeenCalled();
+      expect(postService.updateTags).not.toHaveBeenCalled();
+    }
+  );
+});

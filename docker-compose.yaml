@@ -25,6 +25,9 @@ services:
       # POST_WORKFLOW_V112_ALL: 'false' # somente apos todos os smoke tests
       IS_GENERAL: 'true'
       DISABLE_REGISTRATION: 'false'
+      # Anonymous preview comments (reCAPTCHA v2 checkbox; empty = disabled)
+      RECAPTCHA_SITE_KEY: '${RECAPTCHA_SITE_KEY:-}'
+      RECAPTCHA_SECRET_KEY: '${RECAPTCHA_SECRET_KEY:-}'
 
       # === Storage Settings
       STORAGE_PROVIDER: 'local'

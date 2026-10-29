@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { OrganizationDeletionSettings } from './organization-deletion.component';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import dynamic from 'next/dynamic';
 import AuthenticationComponent from '@gitroom/frontend/components/settings/authentication.component';
@@ -28,6 +29,7 @@ export const GlobalSettings = () => {
       <LanguagePreferenceComponent />
       <ShortlinkPreferenceComponent />
       <ShareZernioWithProfilesComponent />
+      <OrganizationDeletionSettings />
     </div>
   );
 };

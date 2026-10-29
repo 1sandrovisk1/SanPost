@@ -9,6 +9,7 @@ datasource db {
 }
 
 model Organization {
+  deletedAt               DateTime?
   id                      String               @id @default(uuid())
   name                    String
   description             String?
@@ -63,6 +64,7 @@ model Organization {
   unmatchedComments       UnmatchedComment[]
   ignoredMedias           IgnoredMedia[]
 
+  @@index([deletedAt])
   @@index([apiKey])
   @@index([streakSince])
   @@index([paymentId])
@@ -432,6 +434,14 @@ model Comments {
   guestIp        String?
   guestUserAgent String?
   kind           CommentKind  @default(COMMENT)
+  // comentarios no preview (upstream #2079): resposta a um comentario raiz,
+  // trecho do texto do item (offsets no texto puro do HTML sanitizado) e
+  // conversa resolvida pela equipe
+  parentId       String?
+  anchorStart    Int?
+  anchorEnd      Int?
+  anchorQuote    String?
+  resolvedAt     DateTime?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   deletedAt      DateTime?
@@ -439,6 +449,8 @@ model Comments {
   post           Post         @relation(fields: [postId], references: [id])
   user           User?        @relation(fields: [userId], references: [id])
   reviewLink     ReviewLink?  @relation(fields: [reviewLinkId], references: [id])
+  parent         Comments?    @relation("CommentReplies", fields: [parentId], references: [id])
+  replies        Comments[]   @relation("CommentReplies")
 
   @@index([createdAt])
   @@index([organizationId])
@@ -446,6 +458,8 @@ model Comments {
   @@index([postId])
   @@index([reviewLinkId])
   @@index([kind])
+  @@index([parentId])
+  @@index([resolvedAt])
   @@index([deletedAt])
 }
 

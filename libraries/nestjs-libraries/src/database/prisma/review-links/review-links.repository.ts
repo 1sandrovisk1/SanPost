@@ -111,7 +111,7 @@ export class ReviewLinksRepository {
         postId,
         revokedAt: null,
         OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-        post: { deletedAt: null },
+        post: { deletedAt: null, organization: { deletedAt: null } },
       },
       select: {
         id: true,
@@ -142,6 +142,11 @@ export class ReviewLinksRepository {
     guestIp: string | null;
     guestUserAgent: string | null;
     kind: CommentKind;
+    // item da thread, resposta ou trecho (ja validados pelo PostsService)
+    parentId?: string;
+    anchorStart?: number;
+    anchorEnd?: number;
+    anchorQuote?: string;
   }) {
     return this._comments.model.comments.create({
       data: {
@@ -154,6 +159,10 @@ export class ReviewLinksRepository {
         guestIp: params.guestIp,
         guestUserAgent: params.guestUserAgent,
         kind: params.kind,
+        parentId: params.parentId ?? null,
+        anchorStart: params.anchorStart ?? null,
+        anchorEnd: params.anchorEnd ?? null,
+        anchorQuote: params.anchorQuote ?? null,
       },
       select: {
         id: true,

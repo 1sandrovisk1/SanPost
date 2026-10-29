@@ -7,6 +7,11 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 
 ## [Unreleased]
 
+### Adicionado
+- **Comentários no preview:** visitantes podem comentar com reCAPTCHA e limites por IP, responder conversas e citar trechos. A equipe pode resolver, reabrir e excluir conversas no perfil autorizado; revisão/aprovação por link preservada. A resposta pública oculta identidade da equipe e dados privados dos convidados.
+- **Exclusão de organização pelo administrador da plataforma:** confirmação pelo nome, bloqueio de cobrança vigente e exclusão lógica transacional com revogação de chaves, OAuth e links. Canais, posts e automações são desativados, preservando contas dos usuários e histórico.
+
+
 ### Corrigido — testes do RC 0.7.0-rc.2 em produção (28/10/2026)
 
 - **Tags do post pelo painel:** desde o PR #327 a tag escolhida no editor não era gravada (o painel envia o nome da tag e o backend passou a exigir o id), e criar uma tag nova pelo próprio editor quebrava o salvamento. A tag agora é encontrada pelo id (API/MCP) ou pelo nome (painel), sempre dentro do perfil.

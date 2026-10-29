@@ -27,6 +27,7 @@ export class OAuthRepository {
       where: {
         clientId,
         deletedAt: null,
+        organization: { deletedAt: null },
       },
       include: {
         picture: true,
@@ -163,6 +164,8 @@ export class OAuthRepository {
       where: {
         authorizationCode: encryptedCode,
         revokedAt: null,
+        organization: { deletedAt: null },
+        oauthApp: { deletedAt: null, organization: { deletedAt: null } },
       },
     });
   }
@@ -175,8 +178,8 @@ export class OAuthRepository {
         organization: {
           select: {
             paymentId: true,
-          }
-        }
+          },
+        },
       },
       data: {
         accessToken: encryptedToken,
@@ -191,6 +194,8 @@ export class OAuthRepository {
       where: {
         accessToken: encryptedToken,
         revokedAt: null,
+        organization: { deletedAt: null },
+        oauthApp: { deletedAt: null, organization: { deletedAt: null } },
       },
       include: {
         organization: {

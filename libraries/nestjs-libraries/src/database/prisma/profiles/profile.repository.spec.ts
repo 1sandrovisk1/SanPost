@@ -188,7 +188,14 @@ describe('ProfileRepository', () => {
         id: 'prof-1',
         apiKey: 'key-abc',
         deletedAt: null as Date | null,
-        organization: { id: 'org-1', subscription: { subscriptionTier: 'PRO', totalChannels: 10, isLifetime: false } },
+        organization: {
+          id: 'org-1',
+          subscription: {
+            subscriptionTier: 'PRO',
+            totalChannels: 10,
+            isLifetime: false,
+          },
+        },
       };
       mockFindFirst.mockResolvedValue(fakeProfile);
 
@@ -196,12 +203,20 @@ describe('ProfileRepository', () => {
 
       expect(result).toEqual(fakeProfile);
       expect(mockFindFirst).toHaveBeenCalledWith({
-        where: { apiKey: 'key-abc', deletedAt: null },
+        where: {
+          apiKey: 'key-abc',
+          deletedAt: null,
+          organization: { deletedAt: null },
+        },
         include: {
           organization: {
             include: {
               subscription: {
-                select: { subscriptionTier: true, totalChannels: true, isLifetime: true },
+                select: {
+                  subscriptionTier: true,
+                  totalChannels: true,
+                  isLifetime: true,
+                },
               },
             },
           },

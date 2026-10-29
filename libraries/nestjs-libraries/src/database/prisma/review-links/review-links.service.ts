@@ -6,6 +6,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ReviewLinksRepository } from '@gitroom/nestjs-libraries/database/prisma/review-links/review-links.repository';
+import { PostsService } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.service';
+import {
+  CommentPlacementInput,
+  hasPlacement,
+  sanitizeCommentContent,
+  sanitizeCommentName,
+} from '@gitroom/nestjs-libraries/database/prisma/posts/preview.comments';
 import { ioRedis } from '@gitroom/nestjs-libraries/redis/redis.service';
 import { CommentKind } from '@prisma/client';
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
@@ -17,8 +24,6 @@ const TOKEN_BYTES = 32;
 const RATE_LIMIT_WINDOW_SECONDS = 300;
 const RATE_LIMIT_MAX_ATTEMPTS = 10;
 
-const MAX_CONTENT_LENGTH = 2000;
-const MAX_NAME_LENGTH = 80;
 const MAX_EMAIL_LENGTH = 254;
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -27,29 +32,19 @@ function sha256Hex(value: string) {
   return createHash('sha256').update(value).digest('hex');
 }
 
-function stripHtml(value: string) {
-  return value.replace(/<[^>]*>/g, '');
-}
-
-function sanitizeText(value: unknown, maxLength: number) {
-  if (typeof value !== 'string') return '';
-  return stripHtml(value).replace(/\s+/g, ' ').trim().slice(0, maxLength);
-}
-
-function sanitizeContent(value: unknown) {
-  if (typeof value !== 'string') return '';
-  return stripHtml(value).trim().slice(0, MAX_CONTENT_LENGTH);
-}
-
+// Nome e corpo seguem a mesma sanitizacao do comentario anonimo do preview.
 function sanitizeEmail(value: unknown) {
-  const cleaned = sanitizeText(value, MAX_EMAIL_LENGTH).toLowerCase();
+  const cleaned = sanitizeCommentName(value, MAX_EMAIL_LENGTH).toLowerCase();
   if (!EMAIL_REGEX.test(cleaned)) return '';
   return cleaned;
 }
 
 @Injectable()
 export class ReviewLinksService {
-  constructor(private _repository: ReviewLinksRepository) {}
+  constructor(
+    private _repository: ReviewLinksRepository,
+    private _postsService: PostsService
+  ) {}
 
   // Links expoem o post a convidados: membro USER (`requireProfileId`
   // definido) so age nos posts do proprio perfil — mesma regra dos
@@ -84,10 +79,7 @@ export class ReviewLinksService {
     const requestedDays = Number.isFinite(params.expiresInDays as number)
       ? Math.floor(params.expiresInDays as number)
       : DEFAULT_EXPIRATION_DAYS;
-    const days = Math.min(
-      Math.max(requestedDays, 1),
-      MAX_EXPIRATION_DAYS
-    );
+    const days = Math.min(Math.max(requestedDays, 1), MAX_EXPIRATION_DAYS);
     const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 
     const rawToken = randomBytes(TOKEN_BYTES).toString('base64url');
@@ -123,7 +115,11 @@ export class ReviewLinksService {
     return this._repository.listForPost(postId, orgId);
   }
 
-  async revoke(linkId: string, orgId: string, requireProfileId?: string | null) {
+  async revoke(
+    linkId: string,
+    orgId: string,
+    requireProfileId?: string | null
+  ) {
     if (requireProfileId !== undefined) {
       const link = await this._repository.findLinkPostScope(linkId, orgId);
       if (!link) {
@@ -141,14 +137,21 @@ export class ReviewLinksService {
   }
 
   async resolveToken(postId: string, rawToken: unknown) {
-    if (typeof rawToken !== 'string' || rawToken.length < 16 || rawToken.length > 128) {
+    if (
+      typeof rawToken !== 'string' ||
+      rawToken.length < 16 ||
+      rawToken.length > 128
+    ) {
       return null;
     }
     if (!/^[A-Za-z0-9_-]+$/.test(rawToken)) {
       return null;
     }
     const tokenHash = sha256Hex(rawToken);
-    const link = await this._repository.findActiveByHashAndPost(tokenHash, postId);
+    const link = await this._repository.findActiveByHashAndPost(
+      tokenHash,
+      postId
+    );
     if (!link) return null;
 
     // Defense in depth: verify postId match with constant-time compare
@@ -185,6 +188,8 @@ export class ReviewLinksService {
     guestEmail: unknown;
     content: unknown;
     kind: CommentKind;
+    // so COMMENT: item da thread, resposta ou trecho do texto (upstream #2079)
+    placement?: CommentPlacementInput;
   }) {
     const ipKey = (params.ip || 'unknown').slice(0, 64);
     await this.enforceRateLimit(
@@ -207,9 +212,9 @@ export class ReviewLinksService {
       throw new ForbiddenException();
     }
 
-    const guestName = sanitizeText(params.guestName, MAX_NAME_LENGTH);
+    const guestName = sanitizeCommentName(params.guestName);
     const guestEmail = sanitizeEmail(params.guestEmail);
-    const content = sanitizeContent(params.content);
+    const content = sanitizeCommentContent(params.content);
 
     if (!guestName || !guestEmail) {
       throw new BadRequestException('Name and email are required');
@@ -219,17 +224,31 @@ export class ReviewLinksService {
       throw new BadRequestException('Comment is required');
     }
 
+    if (params.kind !== CommentKind.COMMENT && hasPlacement(params.placement)) {
+      throw new BadRequestException(
+        'Only comments can be placed in the text or replied to'
+      );
+    }
+
+    // a thread e a do post do link, na org do link
+    const placement =
+      params.kind === CommentKind.COMMENT && hasPlacement(params.placement)
+        ? await this._postsService.resolvePreviewPlacement(
+            link.postId,
+            params.placement,
+            link.organizationId
+          )
+        : { postId: link.postId };
+
     const stored = await this._repository.createGuestComment({
       organizationId: link.organizationId,
-      postId: link.postId,
+      ...placement,
       reviewLinkId: link.id,
       content,
       guestName,
       guestEmail,
       guestIp: params.ip ? params.ip.slice(0, 64) : null,
-      guestUserAgent: params.userAgent
-        ? params.userAgent.slice(0, 500)
-        : null,
+      guestUserAgent: params.userAgent ? params.userAgent.slice(0, 500) : null,
       kind: params.kind,
     });
 
@@ -242,5 +261,4 @@ export class ReviewLinksService {
       createdAt: stored.createdAt,
     };
   }
-
 }

@@ -58,7 +58,16 @@ describe('PublicController.getPreview', () => {
 
     const [post] = await controller.getPreview('p1');
     expect(Object.keys(post).sort()).toEqual(
-      ['content', 'delay', 'id', 'image', 'integration', 'publishDate', 'releaseURL', 'state'].sort()
+      [
+        'content',
+        'delay',
+        'id',
+        'image',
+        'integration',
+        'publishDate',
+        'releaseURL',
+        'state',
+      ].sort()
     );
     expect(post).not.toHaveProperty('error');
     expect(post).not.toHaveProperty('childrenPost');
@@ -71,5 +80,131 @@ describe('PublicController.getPreview', () => {
       profile: 'handle',
     });
     expect(JSON.stringify(post)).not.toMatch(/TOKEN|refresh_token/);
+  });
+});
+
+describe('PublicController - comentarios no preview', () => {
+  const oldEnv = process.env;
+  afterEach(() => {
+    process.env = oldEnv;
+  });
+  const buildComments = () => {
+    const posts = {
+      getComments: jest
+        .fn()
+        .mockResolvedValue([
+          {
+            id: 'c',
+            author: 'member',
+            memberIndex: 1,
+            name: null,
+            content: 'Nota',
+          },
+        ]),
+      createAnonymousComment: jest
+        .fn()
+        .mockResolvedValue({ id: 'new', kind: 'COMMENT' }),
+    };
+    const links = {
+      submitGuestAction: jest
+        .fn()
+        .mockResolvedValue({ id: 'guest', kind: 'COMMENT' }),
+    };
+    const controller = new PublicController(
+      null as any,
+      null as any,
+      posts as any,
+      null as any,
+      null as any,
+      links as any
+    );
+    return { controller, posts, links };
+  };
+  it('informa somente site key publica quando a escrita anonima esta configurada', async () => {
+    process.env = {
+      ...oldEnv,
+      RECAPTCHA_SECRET_KEY: 'never-public-secret',
+      RECAPTCHA_SITE_KEY: 'public-site',
+      FRONTEND_URL: 'https://app.example.com',
+    };
+    const { controller, posts } = buildComments();
+    const result = await controller.getComments('root');
+    expect(result).toMatchObject({
+      anonymousEnabled: true,
+      recaptchaSiteKey: 'public-site',
+      comments: [
+        {
+          id: 'c',
+          author: 'member',
+          memberIndex: 1,
+          name: null,
+          content: 'Nota',
+        },
+      ],
+    });
+    expect(posts.getComments).toHaveBeenCalledWith('root');
+    expect(JSON.stringify(result)).not.toContain('never-public-secret');
+  });
+  it('sem secret nao anuncia escrita anonima nem fornece site key', async () => {
+    process.env = {
+      ...oldEnv,
+      RECAPTCHA_SITE_KEY: 'public-site',
+      FRONTEND_URL: 'https://app.example.com',
+    };
+    delete process.env.RECAPTCHA_SECRET_KEY;
+    const { controller } = buildComments();
+    expect(await controller.getComments('root')).toMatchObject({
+      anonymousEnabled: false,
+      recaptchaSiteKey: null,
+    });
+  });
+  it('envio anonimo repassa placement sem criar tipo de aprovacao', async () => {
+    const { controller, posts } = buildComments();
+    const body = {
+      displayName: 'Visitante',
+      content: 'Nota',
+      recaptchaToken: 'captcha',
+      postId: 'child',
+      parentId: 'parent',
+    };
+    await controller.createAnonymousComment(
+      'root',
+      body,
+      '127.0.0.1',
+      'review-browser'
+    );
+    expect(posts.createAnonymousComment).toHaveBeenCalledWith(
+      'root',
+      body,
+      '127.0.0.1',
+      'review-browser'
+    );
+  });
+  it('convidado usa link e placement na mesma acao COMMENT', async () => {
+    const { controller, links } = buildComments();
+    const body = {
+      token: 'private-review-token',
+      guestName: 'Cliente',
+      guestEmail: 'a@example.com',
+      content: 'Nota',
+      postId: 'child',
+      anchorStart: 0,
+      anchorEnd: 5,
+      anchorQuote: 'Texto',
+    };
+    await controller.guestReviewComment(
+      'root',
+      '127.0.0.1',
+      'review-browser',
+      body
+    );
+    expect(links.submitGuestAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        postId: 'root',
+        rawToken: 'private-review-token',
+        kind: 'COMMENT',
+        placement: body,
+      })
+    );
   });
 });
