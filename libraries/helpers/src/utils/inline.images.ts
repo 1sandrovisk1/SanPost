@@ -55,10 +55,11 @@ export const ownMediaPrefixes = (
   ].filter((prefix): prefix is MediaPrefix => !!prefix);
 
 // Nomes gerados pelo storage (data/aleatorio.ext). `&`, `'`, `;` e afins nao
-// sao codificados pelo parser de URL no path e o modo html do
-// stripHtmlValidation decodifica entidades depois do striptags: um `&quot;` no
-// path fecharia o atributo src no HTML enviado ao WordPress/ListMonk.
-const SAFE_PATHNAME = /^[A-Za-z0-9\-._~/%]+$/;
+// sao codificados pelo parser de URL no path (um `&quot;` no path viraria
+// aspas se algum consumidor decodificar entidades) e `%` fica de fora: o
+// `new URL` resolve `%2e%2e` mas mantem `%2f`/`%5c`, que um proxy pode
+// decodificar e tirar o caminho de /uploads/.
+const SAFE_PATHNAME = /^[A-Za-z0-9\-._~/]+$/;
 
 /**
  * Devolve a URL normalizada (origem + path, sem query/fragmento) quando `src`
@@ -90,9 +91,11 @@ export const normalizeOwnMediaUrl = (
     return null;
   }
 
+  // FRONTEND_URL com barra final gera `//uploads/...` no storage local
+  const comparable = url.pathname.replace(/\/{2,}/g, '/');
   const allowed = prefixes.some(
     (prefix) =>
-      url.origin === prefix.origin && url.pathname.startsWith(prefix.pathname)
+      url.origin === prefix.origin && comparable.startsWith(prefix.pathname)
   );
   const normalized = url.origin + url.pathname;
 
@@ -149,6 +152,26 @@ const rewrite = (
     return true;
   });
 };
+
+const collectSources = (node: Node, found: string[]) => {
+  if (node.nodeName === 'img') {
+    found.push(attr(node, 'src') || '');
+  }
+  if (node.content) {
+    collectSources(node.content, found);
+  }
+  for (const child of node.childNodes || []) {
+    collectSources(child, found);
+  }
+  return found;
+};
+
+// `src` de cada <img> (na arvore, nao por regex) — para avisar no editor o
+// que vai cair e para o encurtador de links nao trocar a URL da imagem
+export const imageSources = (html: string): string[] =>
+  typeof html === 'string' && /<img/i.test(html)
+    ? collectSources(parseFragment(html) as unknown as Node, [])
+    : [];
 
 /**
  * Mantem so as `<img>` da midia da instancia, cada uma reduzida a `src`

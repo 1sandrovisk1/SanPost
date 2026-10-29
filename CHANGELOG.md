@@ -7,6 +7,10 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 
 ## [Unreleased]
 
+### Corrigido
+- **Revisão de imagem inline:** análise da colagem usa parser sem carregar recursos externos, preserva entidades no HTML, rejeita separadores codificados e evita conflito entre o arraste do editor e o calendário. Encurtamento preserva os URLs das imagens.
+
+
 ### Adicionado — imagem dentro do conteúdo no WordPress e no ListMonk (2026-10-28)
 
 - Ao personalizar um canal **WordPress** ou **ListMonk**, as imagens vão para dentro do texto, no ponto do cursor: enviar arquivo, colar imagem, arrastar para o editor ou escolher na biblioteca de mídia (inclusive imagem gerada por IA ou criada no editor de design) insere a imagem no conteúdo, que pode ser arrastada para outra posição. O artigo do WordPress e o e-mail do ListMonk saem com as imagens no lugar em que aparecem; nos outros canais nada muda e o texto segue sem imagem. Vídeo não entra no conteúdo (aviso na tela).

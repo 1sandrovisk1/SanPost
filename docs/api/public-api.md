@@ -90,6 +90,9 @@ ou envie `republish: true` quando a nova publicação for intencional. Texto com
 
 **`value[].content` (HTML):** cada linha dentro de `<p>`; tags aceitas: `h1`, `h2`, `h3`, `u`, `strong`, `li`, `ul`, `p`, `a` e `img`. O conteúdo é sanitizado ao salvar. **Imagem dentro do conteúdo** (`<img src="..." alt="...">`) só é publicada por canais que levam a imagem no corpo — **WordPress** (artigo) e **ListMonk** (e-mail) —, no lugar em que aparece; nos outros canais o `<img>` é removido na publicação e as imagens continuam indo por `image[]`. O `src` precisa ser a URL de uma mídia da própria instância (`path` devolvido por `POST /upload` ou pela biblioteca: `FRONTEND_URL/uploads/...` ou o bucket R2 configurado); qualquer outro `src` (outro site, `data:`, caminho relativo), atributos de evento e demais atributos são removidos — só `src` e `alt` ficam. A URL precisa ser pública para o WordPress/leitor do e-mail carregar a imagem.
 
+Na normalização de imagens, separadores codificados no caminho são recusados e barras repetidas são aceitas na comparação de caminhos. Entidades de texto permanecem escapadas na saída HTML; o encurtador não reescreve o `src` das imagens. No editor, a análise da colagem usa um parser sem carregamento de recursos externos.
+
+
 **Pinterest (`settings.board`):** o **id numérico** do board (use a lista de boards do canal), nunca o nome — valor não numérico responde **400** com a orientação. Em `zernio-pinterest` o campo continua obrigatório como string, sem exigir id numérico; hoje o Zernio ignora o valor e publica no primeiro board da conta.
 
 **`settings` por canal:** além de `__type`, aceita opções do provider. No Instagram:

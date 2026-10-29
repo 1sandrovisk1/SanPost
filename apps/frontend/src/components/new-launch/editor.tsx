@@ -12,6 +12,11 @@ import React, {
   useImperativeHandle,
 } from 'react';
 import clsx from 'clsx';
+import {
+  countForeignImages,
+  onlyImages,
+  pasteUploadsInline,
+} from './inline.paste';
 import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import EmojiPicker from 'emoji-picker-react';
 import { Theme } from 'emoji-picker-react';
@@ -151,18 +156,6 @@ const useOwnMedia = (): IsOwnMedia => {
     });
     return (src: unknown) => isOwnMediaUrl(src, prefixes);
   }, [frontEndUrl, cloudflareUrl]);
-};
-
-// imagens em HTML colado que o editor vai descartar (DOMParser nao carrega
-// nem executa nada)
-const countForeignImages = (html: string, isOwnMedia: IsOwnMedia) => {
-  if (!html || !/<img/i.test(html)) {
-    return 0;
-  }
-
-  return Array.from(
-    new DOMParser().parseFromString(html, 'text/html').querySelectorAll('img')
-  ).filter((img) => !isOwnMedia(img.getAttribute('src'))).length;
 };
 
 // devolve quantas ficaram de fora por nao serem da biblioteca de midia
@@ -711,8 +704,8 @@ export const Editor: FC<{
         return files;
       }
 
-      const images = files.filter((file) => file.type.startsWith('image/'));
-      if (images.length < files.length) {
+      const { images, rejected } = onlyImages(files);
+      if (rejected) {
         toaster.show(
           t(
             'only_images_can_be_added_to_the_content',
@@ -782,9 +775,11 @@ export const Editor: FC<{
       // from, so the file wins unless the html has text of its own
       // @ts-ignore
       const html = event.clipboardData.getData('text/html');
-      const uploadInline =
-        !!clipboardFiles.length &&
-        (!html || !slice?.content.textBetween(0, slice.content.size).trim());
+      const uploadInline = pasteUploadsInline(
+        clipboardFiles.length,
+        html,
+        slice?.content.textBetween(0, slice.content.size)
+      );
       if (inlineImages && !uploadInline) {
         // o HTML colado entra pelo parser do editor, que descarta imagem de
         // outro site

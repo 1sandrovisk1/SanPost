@@ -28,9 +28,9 @@ describe('inline.images', () => {
       expect(
         ownMediaPrefixes({ frontendUrl: '', cloudflareUrl: 'nao e url' })
       ).toEqual([]);
-      expect(ownMediaPrefixes({ frontendUrl: 'ftp://app.exemplo.com' })).toEqual(
-        []
-      );
+      expect(
+        ownMediaPrefixes({ frontendUrl: 'ftp://app.exemplo.com' })
+      ).toEqual([]);
     });
 
     it('le FRONTEND_URL e CLOUDFLARE_BUCKET_URL do ambiente por padrao', () => {
@@ -64,6 +64,29 @@ describe('inline.images', () => {
       expect(normalizeOwnMediaUrl(`${own}?v=2#topo`, prefixes)).toBe(own);
     });
 
+    it('aceita barras repetidas geradas pelo storage com FRONTEND_URL finalizada em barra', () => {
+      const src = 'https://app.exemplo.com//uploads/2026//abc.png';
+      const trailingSlashPrefixes = ownMediaPrefixes({
+        frontendUrl: 'https://app.exemplo.com/',
+      });
+      expect(normalizeOwnMediaUrl(src, trailingSlashPrefixes)).toBe(src);
+      expect(
+        normalizeOwnMediaUrl('https://app.exemplo.com//api/abc.png', prefixes)
+      ).toBeNull();
+    });
+
+    it.each(['%2f', '%2F', '%5c', '%5C', '%252f', '%255c'])(
+      'recusa separador codificado %s que um proxy pode decodificar',
+      (separator) => {
+        expect(
+          normalizeOwnMediaUrl(
+            `https://app.exemplo.com/uploads/${separator}..${separator}api/abc.png`,
+            prefixes
+          )
+        ).toBeNull();
+      }
+    );
+
     it.each([
       ['data:', 'data:image/png;base64,AAAA'],
       ['javascript:', 'javascript:alert(1)'],
@@ -74,7 +97,10 @@ describe('inline.images', () => {
       ['fora de /uploads', 'https://app.exemplo.com/api/a.png'],
       ['.. saindo de /uploads', 'https://app.exemplo.com/uploads/../api/a.png'],
       ['credenciais na URL', 'https://u:p@app.exemplo.com/uploads/a.png'],
-      ['aspas/entidade no path', "https://app.exemplo.com/uploads/a&quot;/b'.png"],
+      [
+        'aspas/entidade no path',
+        "https://app.exemplo.com/uploads/a&quot;/b'.png",
+      ],
       ['nao string', 42],
     ])('recusa %s', (_caso, src) => {
       expect(normalizeOwnMediaUrl(src, prefixes)).toBeNull();

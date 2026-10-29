@@ -158,6 +158,12 @@ export const stripHtmlValidation = (
   }
 
   if (type === 'html') {
+    // A saida e HTML (WordPress, ListMonk, Telegram parse_mode HTML): as
+    // entidades do serializer ficam. O upstream (4e903851) decodifica
+    // &lt;/&gt;/&quot;/&amp; depois do striptags, o que transformava texto
+    // digitado como "<img src=...>" ou um &quot; dentro de href em tag/atributo
+    // de verdade no HTML publicado (furando a regra da imagem inline). So o
+    // &nbsp; vira espaco (o Telegram nao conhece a entidade).
     return striptags(
       convertMention(
         inlineImages ? convertImages(value) : value,
@@ -175,13 +181,7 @@ export const stripHtmlValidation = (
         'a',
         ...(inlineImages ? ['img'] : []),
       ]
-    )
-      .replace(/&gt;/gi, '>')
-      .replace(/&lt;/gi, '<')
-      .replace(/&amp;/gi, '&')
-      .replace(/&nbsp;/gi, ' ')
-      .replace(/&quot;/gi, '"')
-      .replace(/&#39;/gi, "'");
+    ).replace(/&nbsp;/gi, ' ');
   }
 
   if (type === 'markdown') {

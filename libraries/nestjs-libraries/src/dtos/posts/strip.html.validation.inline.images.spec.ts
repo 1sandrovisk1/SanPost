@@ -82,4 +82,30 @@ describe('stripHtmlValidation (imagem inline)', () => {
       `<img src="${own}">`
     );
   });
+
+  it.each([true, false])(
+    'mantem tag de imagem digitada como texto literal (inline=%s)',
+    (inline) => {
+      const escaped =
+        '<p>&lt;img src=&quot;https://externo.exemplo.com/p.png&quot;&gt;</p>';
+      const out = html(escaped, inline);
+      expect(out).toContain('&lt;img');
+      expect(out).toContain('&gt;');
+      expect(out).not.toContain('<img');
+    }
+  );
+
+  it('preserva entidades em href sem criar um novo atributo', () => {
+    const input =
+      '<a href="https://exemplo.com/?a=1&amp;b=&quot; onclick=&quot;alert(1)">link</a>';
+    const out = html(input, true);
+    expect(out).toBe(input);
+    expect(out).not.toContain('" onclick="');
+  });
+
+  it('preserva entidades de texto no HTML e mantem modo none como texto puro', () => {
+    const input = '<p>2 &lt; 3 &amp; 5 &gt; 4&nbsp;fim</p>';
+    expect(html(input, false)).toBe('<p>2 &lt; 3 &amp; 5 &gt; 4 fim</p>');
+    expect(stripHtmlValidation('none', input)).toBe('2 < 3 & 5 > 4 fim');
+  });
 });

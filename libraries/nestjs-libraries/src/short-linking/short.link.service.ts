@@ -7,6 +7,7 @@ import { Kutt } from './providers/kutt';
 import { LinkDrip } from './providers/linkdrip';
 import { uniq } from 'lodash';
 import striptags from 'striptags';
+import { imageSources } from '@gitroom/helpers/utils/inline.images';
 
 const getProvider = (): ShortLinking => {
   if (process.env.DUB_TOKEN) {
@@ -46,8 +47,11 @@ export class ShortLinkService {
       return false;
     }
 
+    const pictures = new Set(imageSources(mergeMessages));
     return urls.some(
-      (url) => url.indexOf(ShortLinkService.provider.shortLinkDomain) === -1
+      (url) =>
+        url.indexOf(ShortLinkService.provider.shortLinkDomain) === -1 &&
+        !pictures.has(url)
     );
   }
 
@@ -74,11 +78,17 @@ export class ShortLinkService {
         }
 
         const replacementMap: Record<string, string> = {};
+        // imagem inline: o src precisa continuar sendo a midia da instancia,
+        // senao o sanitizer/publicacao derruba a imagem (inline.images.ts)
+        const pictures = new Set(imageSources(text));
 
         // Process each URL asynchronously
         await Promise.all(
           urls.map(async (url) => {
-            if (url.indexOf(ShortLinkService.provider.shortLinkDomain) === -1) {
+            if (
+              url.indexOf(ShortLinkService.provider.shortLinkDomain) === -1 &&
+              !pictures.has(url)
+            ) {
               replacementMap[url] =
                 await ShortLinkService.provider.convertLinkToShortLink(id, url);
             } else {
