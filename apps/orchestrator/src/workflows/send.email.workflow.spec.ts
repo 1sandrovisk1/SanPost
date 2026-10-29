@@ -46,6 +46,14 @@ describe('sendSingleEmailWorkflow (upstream 1f5f24e5)', () => {
     }
   });
 
+  it('limita a activity a uma tentativa para nao reenviar apos resultado incerto', () => {
+    for (const options of mockProxyOptions.filter(
+      (option) => option.taskQueue !== 'main'
+    )) {
+      expect(options.retry).toEqual({ maximumAttempts: 1 });
+    }
+  });
+
   it('e-mail prioritario (top) vai para a fila email com idioma', async () => {
     await sendSingleEmailWorkflow({ ...email, addTo: 'top' });
 

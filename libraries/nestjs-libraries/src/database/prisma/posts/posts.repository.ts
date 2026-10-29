@@ -1131,6 +1131,7 @@ export class PostsRepository {
     const posts = await this._post.model.post.findMany({
       where: {
         id: postId,
+        integrationId,
         deletedAt: null,
         parentPostId: null,
       },

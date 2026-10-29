@@ -140,6 +140,17 @@ class HistoryBuilder {
     return this;
   }
 
+  patch(id: string) {
+    this.push('MARKER_RECORDED', {
+      markerName: 'core_patch',
+      details: {
+        'patch-data': { payloads: [jsonPayload({ id, deprecated: false })] },
+      },
+      workflowTaskCompletedEventId: String(this.lastTaskCompleted),
+    });
+    return this;
+  }
+
   completed() {
     this.push('WORKFLOW_EXECUTION_COMPLETED', {
       workflowTaskCompletedEventId: String(this.lastTaskCompleted),
@@ -185,6 +196,38 @@ const missingPostBeforePatch = () => {
   }
   return history.startTimer('3600s').build();
 };
+
+// Historicos com marcador ja persistido: replay a cada reinicio do worker.
+const autopostAfterPatch = () => {
+  const history = new HistoryBuilder()
+    .started('autoPostWorkflow', [{ id: 'auto-1', immediately: true }])
+    .workflowTask()
+    .activity('autoPost')
+    .workflowTask()
+    .startTimer('3600s')
+    .fireTimer()
+    .workflowTask()
+    .patch('autopost-continue-as-new');
+  return history
+    .activity('autoPost')
+    .workflowTask()
+    .startTimer('3600s')
+    .build();
+};
+const missingPostAfterPatch = () =>
+  new HistoryBuilder()
+    .started('missingPostWorkflow')
+    .workflowTask()
+    .activity('searchForMissingThreeHoursPosts')
+    .workflowTask()
+    .startTimer('3600s')
+    .fireTimer()
+    .workflowTask()
+    .patch('missing-post-continue-as-new')
+    .activity('searchForMissingThreeHoursPosts')
+    .workflowTask()
+    .startTimer('3600s')
+    .build();
 
 const email = {
   to: 'to@example.com',
@@ -261,6 +304,8 @@ describe('replay real dos workflows de longa duracao (bundle de producao)', () =
       historiesPath,
       JSON.stringify([
         { workflowId: 'autopost-auto-1', history: autopostBeforePatch() },
+        { workflowId: 'autopost-patched', history: autopostAfterPatch() },
+        { workflowId: 'missing-patched', history: missingPostAfterPatch() },
         {
           workflowId: 'missing-post-workflow',
           history: missingPostBeforePatch(),
@@ -282,6 +327,8 @@ describe('replay real dos workflows de longa duracao (bundle de producao)', () =
 
     expect(results).toEqual({
       'autopost-auto-1': null,
+      'autopost-patched': null,
+      'missing-patched': null,
       'missing-post-workflow': null,
       send_email: null,
       send_email_single: null,

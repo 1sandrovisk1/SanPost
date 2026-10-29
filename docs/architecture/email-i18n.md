@@ -81,13 +81,27 @@ rodapé no `lang`) para uma fila só de e-mail:
 - `EXCLUDE_QUEUE` aceita `email`/`email-bulk`; pelo menos um container precisa
   consumir as duas filas, senão nenhum e-mail sai.
 - `sendEmailSync` tenta até 3 vezes (700ms entre tentativas). O
-  `ResendProvider` agora **lança** o erro devolvido pela API (ex.: 429) para
-  essa retentativa funcionar; antes o erro era engolido.
+  `ResendProvider` classifica somente recusas explícitas `rate_limit_exceeded`
+  (429) e `internal_server_error` (500) como repetíveis. `application_error`
+  também representa falha de rede sem resultado no SDK instalado: não é
+  repetido, assim como SMTP e erros permanentes. Ao esgotar, o erro sanitizado
+  chega ao Temporal; as novas activities têm `maximumAttempts: 1`, evitando
+  uma segunda camada de retentativas após um resultado incerto. A fronteira
+  da activity marca a falha final como não repetível também para a fila legada. Nenhum
+  destinatário ou corpo de resposta do provider é registrado no log.
 - `sendEmailWorkflow` (o singleton antigo) continua registrado e com o código
   intacto só para a execução `send_email` aberta antes do deploy drenar a fila
   e o replay seguir determinístico. Pode sair quando não houver execução
   `send_email` aberta (`temporal workflow list --query
   'WorkflowType="sendEmailWorkflow" AND ExecutionStatus="Running"'`).
+- O singleton antigo **não termina sozinho**: a condição de fila não tem
+  timeout. Após todos os backends terem o código novo, verificar no Temporal
+  que não há activities pendentes/em execução e que a fila está drenada
+  (a execução aguarda sinal, sem envios ou timers pendentes). Só então
+  encerrar manualmente a execução:
+  `temporal workflow terminate --workflow-id send_email --reason "Migração para envio individual; fila drenada"`.
+  Não encerrar durante envio ou com fila pendente. Manter o workflow registrado
+  até a drenagem; em rollback, o backend antigo volta a criar o singleton.
 - **Divergência do upstream:** no Postiz, ativação/reenvio/redefinição de senha
   passaram a chamar `sendEmailSync` direto no backend. O fork mantém esses
   e-mails pelo Temporal (fila `email`): um envio síncrono dentro da requisição

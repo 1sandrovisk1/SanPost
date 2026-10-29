@@ -1,3 +1,4 @@
+import { EmailDeliveryError } from './email.delivery.error';
 import { Resend } from 'resend';
 import { EmailInterface } from '@gitroom/nestjs-libraries/emails/email.interface';
 
@@ -22,11 +23,16 @@ export class ResendProvider implements EmailInterface {
       ...(replyTo && { reply_to: replyTo }),
     });
 
+    // application_error tambem representa rede sem resposta no SDK: nao repetir.
     // O SDK devolve erros da API (ex.: 429 de rate limit) em vez de lancar:
     // lanca para o EmailService.sendEmailSync repetir o envio (upstream
     // 1f5f24e5). Antes o erro era engolido e o e-mail se perdia em silencio.
     if (sends.error) {
-      throw new Error(`${sends.error.name}: ${sends.error.message}`);
+      throw new EmailDeliveryError(
+        ['rate_limit_exceeded', 'internal_server_error'].includes(
+          sends.error.name
+        )
+      );
     }
 
     return sends;

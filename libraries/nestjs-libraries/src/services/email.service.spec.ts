@@ -1,3 +1,4 @@
+import { EmailDeliveryError } from '../emails/email.delivery.error';
 import { EmailService } from './email.service';
 
 describe('EmailService', () => {
@@ -58,11 +59,34 @@ describe('EmailService', () => {
       expect(sent).not.toHaveBeenCalled();
     });
 
+    it.each([new Error('socket hang up'), new EmailDeliveryError(false)])(
+      'nao repete resultado incerto ou recusa permanente',
+      async (error) => {
+        sent.mockRejectedValue(error);
+        await expect(
+          service.sendEmailSync('to@x.com', 'Assunto', '<p>x</p>')
+        ).rejects.toThrow('Email delivery failed');
+        expect(sent).toHaveBeenCalledTimes(1);
+      }
+    );
+
+    it('nao registra destinatario nem resposta crua do provider', async () => {
+      const log = jest.spyOn(console, 'log').mockImplementation(() => {});
+      sent.mockRejectedValue(new Error('to@x.com secret-provider-body'));
+      await expect(
+        service.sendEmailSync('to@x.com', 'Assunto', '<p>x</p>')
+      ).rejects.toThrow();
+      expect(JSON.stringify(log.mock.calls)).not.toMatch(
+        /to@x.com|secret-provider-body/
+      );
+      log.mockRestore();
+    });
+
     // o provider lanca o erro da API (ex.: 429 do Resend): repete ate 3 vezes
     it('repete o envio recusado pelo provider e para no primeiro sucesso', async () => {
       jest.useFakeTimers();
       sent
-        .mockRejectedValueOnce(new Error('rate_limit_exceeded: Too many'))
+        .mockRejectedValueOnce(new EmailDeliveryError(true))
         .mockResolvedValueOnce('ok');
 
       const sending = service.sendEmailSync('to@x.com', 'Assunto', '<p>x</p>');
@@ -73,13 +97,15 @@ describe('EmailService', () => {
       jest.useRealTimers();
     });
 
-    it('desiste depois de 3 tentativas sem lancar', async () => {
+    it('devolve falha ao Temporal depois de 3 tentativas', async () => {
       jest.useFakeTimers();
-      sent.mockRejectedValue(new Error('rate_limit_exceeded: Too many'));
+      sent.mockRejectedValue(new EmailDeliveryError(true));
 
-      const sending = service.sendEmailSync('to@x.com', 'Assunto', '<p>x</p>');
+      const sending = expect(
+        service.sendEmailSync('to@x.com', 'Assunto', '<p>x</p>')
+      ).rejects.toThrow('Email delivery failed');
       await jest.runAllTimersAsync();
-      await expect(sending).resolves.toBeUndefined();
+      await sending;
 
       expect(sent).toHaveBeenCalledTimes(3);
       jest.useRealTimers();

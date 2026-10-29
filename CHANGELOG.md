@@ -7,6 +7,10 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 
 ## [Unreleased]
 
+### Corrigido
+- **Revisão do épico Temporal:** envio de e-mail só repete recusas explícitas transitórias, limita tentativas e propaga a falha sanitizada; novas activities não repetem resultados incertos e não registram o destinatário. Webhook filtra o canal também na busca pelo ID interno. Detector de posts ausentes inicia após o cliente Temporal e reconcilia o singleton. Replay cobre históricos com e sem marcador; documentado o encerramento manual do singleton de e-mail após drenagem.
+
+
 ### Corrigido — workflows Temporal: webhooks, mídia travada, e-mails e históricos longos (28/10/2026)
 
 - **Webhooks de publicação com o post de volta:** o payload enviado aos webhooks após publicar chegava sempre vazio, porque o workflow passa o ID do post na rede social. Agora o post é encontrado pelo ID da publicação no próprio canal e o webhook recebe conteúdo, data, link e canal (porte do Postiz #2087).

@@ -21,12 +21,14 @@ const { sendEmail } = proxyActivities<EmailActivity>({
 const { sendEmail: sendPriorityEmail } = proxyActivities<EmailActivity>({
   startToCloseTimeout: '10 minute',
   taskQueue: emailQueues.priority.taskQueue,
+  retry: { maximumAttempts: 1 },
   cancellationType: 'ABANDON',
 });
 
 const { sendEmail: sendBulkEmail } = proxyActivities<EmailActivity>({
   startToCloseTimeout: '10 minute',
   taskQueue: emailQueues.bulk.taskQueue,
+  retry: { maximumAttempts: 1 },
   cancellationType: 'ABANDON',
 });
 

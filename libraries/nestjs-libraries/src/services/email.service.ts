@@ -7,7 +7,7 @@ import { TemporalService } from 'nestjs-temporal-core';
 import { timer } from '@gitroom/helpers/utils/timer';
 import { emailT } from '@gitroom/nestjs-libraries/emails/i18n/email.i18n';
 import { randomUUID } from 'crypto';
-import { summarizeError } from '@gitroom/nestjs-libraries/services/error.summary';
+import { EmailDeliveryError } from '../emails/email.delivery.error';
 
 @Injectable()
 export class EmailService {
@@ -135,10 +135,9 @@ export class EmailService {
     </div>
     `;
 
-    let lastErr: unknown;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const sends = await this.emailService.sendEmail(
+        await this.emailService.sendEmail(
           to,
           subject,
           modifiedHtml,
@@ -146,22 +145,18 @@ export class EmailService {
           process.env.EMAIL_FROM_ADDRESS,
           replyTo
         );
-        console.log(sends);
         return;
       } catch (err) {
-        // o provider agora lanca o erro da API (ex.: 429 do Resend) para esta
-        // retentativa funcionar (upstream 1f5f24e5)
-        lastErr = err;
-        console.log(
-          `Email attempt ${attempt + 1}/3 failed: ${summarizeError(err)}`
-        );
-        if (attempt < 2) {
-          await timer(700);
+        // Resultado de rede incerto nunca e reenviado: o provider pode ter aceitado.
+        if (
+          !(err instanceof EmailDeliveryError) ||
+          !err.retryable ||
+          attempt === 2
+        ) {
+          throw new EmailDeliveryError(false);
         }
+        await timer(700);
       }
     }
-    console.log(
-      `Email to ${to} failed after 3 attempts: ${summarizeError(lastErr)}`
-    );
   }
 }

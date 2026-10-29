@@ -516,7 +516,7 @@ describe('PostsRepository.getPostByForWebhookId', () => {
     await expect(repo.getPostByForWebhookId('post-1', 'int-1')).resolves.toEqual([{ id: 'post-1' }]);
 
     expect(findMany).toHaveBeenCalledTimes(1);
-    expect(findMany.mock.calls[0][0].where).toEqual({ id: 'post-1', deletedAt: null, parentPostId: null });
+    expect(findMany.mock.calls[0][0].where).toEqual({ id: 'post-1', integrationId: 'int-1', deletedAt: null, parentPostId: null });
   });
 
   it('cai no releaseId restrito ao canal quando o id e o da plataforma', async () => {

@@ -61,7 +61,26 @@ describe('ResendProvider.sendEmail (upstream 1f5f24e5)', () => {
         'Robo',
         'from@x.com'
       )
-    ).rejects.toThrow('rate_limit_exceeded: Too many requests');
+    ).rejects.toMatchObject({
+      message: 'Email delivery failed',
+      retryable: true,
+    });
+  });
+
+  it.each([
+    ['rate_limit_exceeded', true],
+    ['application_error', false],
+    ['internal_server_error', true],
+    ['validation_error', false],
+    ['missing_api_key', false],
+  ])('classifica recusa %s sem expor corpo da API', async (name, retryable) => {
+    mockSend.mockResolvedValue({
+      data: null,
+      error: { name, message: 'private@example.com secret' },
+    });
+    await expect(
+      new ResendProvider().sendEmail('to@x.com', 'A', 'H', 'R', 'from@x.com')
+    ).rejects.toMatchObject({ message: 'Email delivery failed', retryable });
   });
 
   it('nao engole falha de rede do SDK', async () => {
