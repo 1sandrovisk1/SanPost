@@ -7,6 +7,10 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 
 ## [Unreleased]
 
+### Corrigido
+- **Farcaster:** troca do código de login é reservada atomicamente entre as rotas antes de cadastro/convite/sessão; segundo consumo é recusado. O fallback local do Redis respeita NX, expiração EX e o resultado real de DEL.
+
+
 ### Alterado — Farcaster com managed signers da Neynar (28/10/2026)
 
 - **Conexão do Farcaster por QR code** (porte do Postiz #2078/#2080): Adicionar canal, Reconectar canal e o login com Farcaster abrem um modal com QR code e "Copiar link do Farcaster"; o usuário aprova o acesso no app do Farcaster pelo celular e o modal conclui sozinho. Substitui o "Sign In With Neynar", que abria uma janela em branco.

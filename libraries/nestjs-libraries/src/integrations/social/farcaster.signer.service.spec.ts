@@ -8,7 +8,8 @@ jest.mock('@gitroom/nestjs-libraries/integrations/integration.manager', () => ({
 const mockRedis = new Map<string, string>();
 jest.mock('@gitroom/nestjs-libraries/redis/redis.service', () => ({
   ioRedis: {
-    set: jest.fn(async (key: string, value: string) => {
+    set: jest.fn(async (key: string, value: string, ...args: unknown[]) => {
+      if (args.includes('NX') && mockRedis.has(key)) return null;
       mockRedis.set(key, value);
       return 'OK';
     }),
@@ -213,6 +214,23 @@ describe('FarcasterSignerService', () => {
       await expect(service.loginIdentity(requestId)).resolves.toBe(false);
 
       await expect(service.loginIdentity('A'.repeat(32))).resolves.toBe(false);
+    });
+
+    it('reserva o code antes dos efeitos e recusa trocas concorrentes', async () => {
+      const { requestId, nonce } = await startLogin();
+      const results = await Promise.allSettled([
+        service.claimLoginCode(requestId, nonce), service.claimLoginCode(requestId, nonce),
+      ]);
+      expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+      expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
+      await service.releaseLoginClaim(requestId);
+      await expect(service.claimLoginCode(requestId, nonce)).resolves.toBeUndefined();
+    });
+
+    it('segundo consumo falha em vez de entregar outra sessao', async () => {
+      const { requestId } = await startLogin();
+      await service.consumeLogin(requestId);
+      await expect(service.consumeLogin(requestId)).rejects.toBeInstanceOf(HttpException);
     });
 
     it('consumeLogin apaga o registro (uso unico)', async () => {

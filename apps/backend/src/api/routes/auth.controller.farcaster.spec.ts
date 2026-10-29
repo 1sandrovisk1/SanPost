@@ -40,7 +40,8 @@ describe('AuthController — login com Farcaster', () => {
         nonce: 'nonce-1',
       }),
       loginStatus: jest.fn().mockResolvedValue({ status: 'pending_approval' }),
-      assertLoginCode: jest.fn().mockResolvedValue(undefined),
+      claimLoginCode: jest.fn().mockResolvedValue(undefined),
+      releaseLoginClaim: jest.fn().mockResolvedValue(undefined),
       consumeLogin: jest.fn().mockResolvedValue(undefined),
     };
     const authService = {
@@ -118,8 +119,8 @@ describe('AuthController — login com Farcaster', () => {
       res
     );
 
-    expect(farcaster.assertLoginCode).toHaveBeenCalledWith(REQUEST_ID, 'nonce-1');
-    expect(farcaster.assertLoginCode.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(farcaster.claimLoginCode).toHaveBeenCalledWith(REQUEST_ID, 'nonce-1');
+    expect(farcaster.claimLoginCode.mock.invocationCallOrder[0]).toBeLessThan(
       authService.checkExists.mock.invocationCallOrder[0]
     );
     expect(farcaster.consumeLogin).toHaveBeenCalledWith(REQUEST_ID);
@@ -143,12 +144,13 @@ describe('AuthController — login com Farcaster', () => {
     );
 
     expect(res.json).toHaveBeenCalledWith({ token: REQUEST_ID });
+    expect(farcaster.releaseLoginClaim).toHaveBeenCalledWith(REQUEST_ID);
     expect(farcaster.consumeLogin).not.toHaveBeenCalled();
   });
 
   it('exists com code de outro navegador e recusado antes do checkExists', async () => {
     const { controller, farcaster, authService } = setup();
-    farcaster.assertLoginCode.mockRejectedValue(new HttpException('x', 400));
+    farcaster.claimLoginCode.mockRejectedValue(new HttpException('x', 400));
 
     const error = await controller
       .oauthExists({ cookies: {} } as any, REQUEST_ID, undefined as any, 'FARCASTER', response())
@@ -170,7 +172,7 @@ describe('AuthController — login com Farcaster', () => {
       response()
     );
 
-    expect(farcaster.assertLoginCode).not.toHaveBeenCalled();
+    expect(farcaster.claimLoginCode).not.toHaveBeenCalled();
     expect(farcaster.consumeLogin).not.toHaveBeenCalled();
   });
 
@@ -188,15 +190,28 @@ describe('AuthController — login com Farcaster', () => {
         await controller.login(req, body, res, 'ip', 'ua');
       }
 
-      expect(farcaster.assertLoginCode).toHaveBeenCalledWith(REQUEST_ID, 'nonce-1');
+      expect(farcaster.claimLoginCode).toHaveBeenCalledWith(REQUEST_ID, 'nonce-1');
       expect(authService.routeAuth).toHaveBeenCalled();
+      expect(farcaster.claimLoginCode.mock.invocationCallOrder[0]).toBeLessThan(authService.routeAuth.mock.invocationCallOrder[0]);
       expect(farcaster.consumeLogin).toHaveBeenCalledWith(REQUEST_ID);
     }
   );
 
+  it.each(['register', 'login'] as const)('/%s nao entrega sessao quando perde o consumo', async (route) => {
+    const { controller, farcaster } = setup();
+    farcaster.consumeLogin.mockRejectedValue(new HttpException('Invalid code', 400));
+    const req = { cookies: { farcaster_login: 'nonce-1' } } as any;
+    const body = { provider: 'FARCASTER', providerToken: REQUEST_ID } as any;
+    const res = response();
+    if (route === 'register') await controller.register(req, body, res, 'ip', 'ua', 'pt');
+    else await controller.login(req, body, res, 'ip', 'ua');
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.cookie).not.toHaveBeenCalledWith('auth', expect.anything(), expect.anything());
+  });
+
   it('/register com code recusado responde 400 sem routeAuth', async () => {
     const { controller, farcaster, authService } = setup();
-    farcaster.assertLoginCode.mockRejectedValue(
+    farcaster.claimLoginCode.mockRejectedValue(
       new HttpException({ message: 'Invalid or expired Farcaster login' }, 400)
     );
     const res = response();

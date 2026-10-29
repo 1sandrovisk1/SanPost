@@ -180,6 +180,17 @@ export class FarcasterSignerService {
     }
   }
 
+  // Reserva compartilhada entre exists/login/register ANTES de criar conta,
+  // aceitar convite ou emitir sessao. Falha fecha o code ate novo fluxo.
+  async claimLoginCode(code: string, nonce: unknown): Promise<void> {
+    await this.assertLoginCode(code, nonce);
+    if (!await farcasterSignerRegistry.claimLogin(code)) throw invalidLoginCode();
+  }
+
+  async releaseLoginClaim(code: string): Promise<void> {
+    await farcasterSignerRegistry.releaseLoginClaim(code);
+  }
+
   // AuthProvider.getToken: o token do login e o proprio requestId (o
   // signer_uuid nao sai do servidor)
   async loginToken(code: string): Promise<string> {
@@ -227,7 +238,7 @@ export class FarcasterSignerService {
   // login continua aprovado ate o usuario revogar no app, mas a instancia nao o
   // guarda nem aceita o requestId de novo.
   async consumeLogin(code: unknown): Promise<void> {
-    await farcasterSignerRegistry.consume(code);
+    if (!await farcasterSignerRegistry.consume(code)) throw invalidLoginCode();
   }
 
   // ---- canal (rotas autenticadas) ----

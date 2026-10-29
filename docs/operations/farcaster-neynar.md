@@ -156,3 +156,11 @@ uma carteira de custódia. Ver `libraries/nestjs-libraries/src/integrations/soci
 | Modal: "Esta aprovação do Farcaster não é mais válida" | Registro expirado (15 min), cookie do login ausente (outra aba/navegador, `NOT_SECURED` entre origens) ou state de outro fluxo. |
 | Modal: "Muitas tentativas de conexão com o Farcaster" | Limite por cliente ou teto global atingido (429). |
 | Todos os canais Farcaster falharam de uma vez com "recusou a chave da API" | `NEYNAR_SECRET_KEY` errada ou revogada. Os canais não são desconectados. |
+
+### Trocas simultâneas do login
+
+`exists`, `login` e `register` reservam o mesmo código atomicamente no Redis
+antes dos efeitos de autenticação/cadastro. Somente a requisição vencedora
+prossegue; o consumo final também exige a exclusão efetiva do registro.
+O caminho de conta nova em `exists` libera a reserva para o cadastro seguinte.
+Se a troca falhar, reiniciar a aprovação; a reserva expira em até 15 minutos.

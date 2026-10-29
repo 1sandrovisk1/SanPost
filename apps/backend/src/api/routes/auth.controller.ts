@@ -81,7 +81,7 @@ export class AuthController {
     try {
       const farcaster = body.provider === FARCASTER;
       if (farcaster) {
-        await this._farcasterSignerService.assertLoginCode(
+        await this._farcasterSignerService.claimLoginCode(
           body.providerToken,
           req?.cookies?.[FARCASTER_LOGIN_COOKIE]
         );
@@ -170,7 +170,7 @@ export class AuthController {
     try {
       const farcaster = body.provider === FARCASTER;
       if (farcaster) {
-        await this._farcasterSignerService.assertLoginCode(
+        await this._farcasterSignerService.claimLoginCode(
           body.providerToken,
           req?.cookies?.[FARCASTER_LOGIN_COOKIE]
         );
@@ -374,7 +374,7 @@ export class AuthController {
     // signer, e e rejeitado antes de qualquer chamada a Neynar
     const farcaster = provider?.toUpperCase() === FARCASTER;
     if (farcaster) {
-      await this._farcasterSignerService.assertLoginCode(
+      await this._farcasterSignerService.claimLoginCode(
         code,
         req?.cookies?.[FARCASTER_LOGIN_COOKIE]
       );
@@ -388,6 +388,7 @@ export class AuthController {
 
     // conta nova: o mesmo code segue para o /auth/register (consumido la)
     if (token) {
+      if (farcaster) await this._farcasterSignerService.releaseLoginClaim(code);
       return response.json({ token });
     }
 

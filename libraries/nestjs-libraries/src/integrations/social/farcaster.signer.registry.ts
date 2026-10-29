@@ -90,6 +90,14 @@ export const farcasterSignerRegistry = {
     }
   },
 
+  async claimLogin(requestId: string): Promise<boolean> {
+    return (await ioRedis.set(`farcaster:exchange:${requestId}`, '1', 'EX', FARCASTER_SIGNER_TTL_SECONDS, 'NX')) === 'OK';
+  },
+
+  async releaseLoginClaim(requestId: string): Promise<void> {
+    await ioRedis.del(`farcaster:exchange:${requestId}`);
+  },
+
   // uso unico: so quem apagar a chave (DEL = 1) conclui; sem GETDEL porque o
   // MockRedis do fallback nao tem
   async consume(requestId: unknown): Promise<boolean> {
