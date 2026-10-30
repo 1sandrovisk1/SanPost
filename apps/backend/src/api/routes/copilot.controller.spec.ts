@@ -2,7 +2,10 @@
 // importar o controller. Os testes de erro lancam antes de tocar Mastra /
 // CopilotRuntime / OpenAI, entao mocks vazios bastam. Mesmo padrao de
 // subscription.service.spec.ts.
-jest.mock('@gitroom/nestjs-libraries/integrations/integration.manager', () => ({}));
+jest.mock(
+  '@gitroom/nestjs-libraries/integrations/integration.manager',
+  () => ({})
+);
 jest.mock(
   '@gitroom/nestjs-libraries/database/prisma/integrations/integration.service',
   () => ({ IntegrationService: jest.fn() })
@@ -16,13 +19,19 @@ jest.mock('@copilotkit/runtime', () => ({
   copilotRuntimeNodeHttpEndpoint: jest.fn(),
   copilotRuntimeNextJSAppRouterEndpoint: jest.fn(),
 }));
+jest.mock('@copilotkit/runtime/v2', () => ({
+  AgentRunner: class {},
+  InMemoryAgentRunner: jest.fn(),
+}));
 jest.mock('@ag-ui/mastra', () => ({
   MastraAgent: { getLocalAgents: jest.fn() },
 }));
 jest.mock('@mastra/core/di', () => ({ RequestContext: jest.fn() }));
 jest.mock('openai', () => ({ __esModule: true, default: jest.fn() }));
 jest.mock('@ai-sdk/openai', () => ({ createOpenAI: jest.fn() }));
-jest.mock('@openrouter/ai-sdk-provider', () => ({ createOpenRouter: jest.fn() }));
+jest.mock('@openrouter/ai-sdk-provider', () => ({
+  createOpenRouter: jest.fn(),
+}));
 
 import { CopilotController } from './copilot.controller';
 import { SubscriptionService } from '@gitroom/nestjs-libraries/database/prisma/subscriptions/subscription.service';
@@ -33,6 +42,14 @@ import { createMock } from '@gitroom/nestjs-libraries/test';
 import { MockProxy } from 'jest-mock-extended';
 import { HttpException } from '@nestjs/common';
 import { Organization, Profile } from '@prisma/client';
+import {
+  CopilotRuntime,
+  OpenAIAdapter,
+  copilotRuntimeNodeHttpEndpoint,
+  copilotRuntimeNextJSAppRouterEndpoint,
+} from '@copilotkit/runtime';
+import { MastraAgent } from '@ag-ui/mastra';
+import { RequestContext } from '@mastra/core/di';
 
 describe('CopilotController', () => {
   let controller: CopilotController;
@@ -51,6 +68,7 @@ describe('CopilotController', () => {
   };
 
   beforeEach(() => {
+    jest.clearAllMocks();
     subscriptionService = createMock<SubscriptionService>();
     mastraService = createMock<MastraService>();
     profileService = createMock<ProfileService>();
@@ -63,10 +81,38 @@ describe('CopilotController', () => {
     );
   });
 
+  it.each(['agent', 'chatAgent'] as const)(
+    'recusa mutacoes novas antes do runtime em %s',
+    async (route) => {
+      for (const body of [
+        { method: 'threads/clear' },
+        {
+          method: 'resource/request',
+          params: { path: '/threads/clear', httpMethod: 'POST' },
+        },
+        {
+          method: 'resource/request',
+          params: { path: '/threads/known', httpMethod: 'DELETE' },
+        },
+      ]) {
+        const res = mockRes();
+        await controller[route]({ body } as any, res, org, null);
+        expect(res.status).toHaveBeenCalledWith(405);
+      }
+      expect(
+        aiClientFactory.buildOpenAiCompatibleClient
+      ).not.toHaveBeenCalled();
+      expect(CopilotRuntime).not.toHaveBeenCalled();
+    }
+  );
+
   describe('chatAgent (/copilot/chat)', () => {
     it('deve responder 412 (sem pendurar) quando a credencial nao esta configurada', async () => {
       aiClientFactory.buildOpenAiCompatibleClient.mockRejectedValue(
-        new HttpException('Configure suas chaves em Configuracoes > Modelos de IA.', 412)
+        new HttpException(
+          'Configure suas chaves em Configuracoes > Modelos de IA.',
+          412
+        )
       );
       const req: any = {};
       const res = mockRes();
@@ -100,9 +146,148 @@ describe('CopilotController', () => {
   });
 
   describe('agent (/copilot/agent)', () => {
+    const prepareAgent = () => {
+      const context = new Map<string, unknown>();
+      const mastra = { getAgent: jest.fn() };
+      const agents = { postiz: { id: 'local-agent' } };
+      const handler = jest.fn().mockResolvedValue('node-response');
+      (RequestContext as unknown as jest.Mock).mockImplementation(
+        () => context
+      );
+      (MastraAgent.getLocalAgents as jest.Mock).mockReturnValue(agents);
+      (copilotRuntimeNodeHttpEndpoint as jest.Mock).mockReturnValue(handler);
+      // O contrato antigo tambem responde para que a regressao falhe pelas
+      // assercoes de transporte/contexto, nao por um mock incompleto.
+      (copilotRuntimeNextJSAppRouterEndpoint as jest.Mock).mockReturnValue({
+        handleRequest: jest.fn().mockResolvedValue('node-response'),
+      });
+      aiClientFactory.buildOpenAiCompatibleClient.mockResolvedValue({
+        client: {} as any,
+        model: 'modelo-configurado-no-perfil',
+        languageModel: {
+          specificationVersion: 'v2',
+          modelId: 'profile-chat-model',
+        },
+      } as any);
+      mastraService.mastra.mockResolvedValue(mastra as any);
+      return { context, mastra, agents, handler };
+    };
+
+    it('usa o transporte Node e encaminha os mesmos request e response', async () => {
+      const { handler, agents } = prepareAgent();
+      const req: any = { body: { forwardedProps: { integrations: [] } } };
+      const res = mockRes();
+
+      await expect(controller.agent(req, res, org, null)).resolves.toBe(
+        'node-response'
+      );
+
+      expect(CopilotRuntime).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agents,
+          runner: expect.objectContaining({
+            run: expect.any(Function),
+            connect: expect.any(Function),
+          }),
+        })
+      );
+      expect(copilotRuntimeNodeHttpEndpoint).toHaveBeenCalledWith(
+        expect.objectContaining({ endpoint: '/copilot/agent' })
+      );
+      expect(handler).toHaveBeenCalledWith(req, res);
+      expect(copilotRuntimeNextJSAppRouterEndpoint).not.toHaveBeenCalled();
+      const adapter = (OpenAIAdapter as jest.Mock).mock.instances.at(-1);
+      expect(adapter.getLanguageModel()).toEqual({
+        specificationVersion: 'v2',
+        modelId: 'profile-chat-model',
+      });
+    });
+
+    it('prioriza canais do forwardedProps e preserva identidade e persona do perfil', async () => {
+      const { context, mastra } = prepareAgent();
+      const integrations = [
+        { id: 'channel-profile-1', name: 'Canal do perfil' },
+      ];
+      const persona = { tone: 'Amigavel', targetAudience: 'Comunidade' };
+      const profile = { id: 'prof-1' } as Profile;
+      profileService.getPersonaForAgent.mockResolvedValue(persona as any);
+      const req: any = {
+        body: {
+          forwardedProps: { integrations },
+          variables: {
+            properties: { integrations: [{ id: 'legacy-channel' }] },
+          },
+        },
+      };
+
+      await controller.agent(req, mockRes(), org, profile);
+
+      expect(context.get('integrations')).toEqual(integrations);
+      expect(context.get('organization')).toBe(JSON.stringify(org));
+      expect(context.get('profileId')).toBe('prof-1');
+      expect(context.get('persona')).toBe(JSON.stringify(persona));
+      expect(context.get('ui')).toBe('true');
+      expect(profileService.getPersonaForAgent).toHaveBeenCalledWith('prof-1');
+      expect(aiClientFactory.buildOpenAiCompatibleClient).toHaveBeenCalledWith(
+        'org-1',
+        'prof-1'
+      );
+      expect(MastraAgent.getLocalAgents).toHaveBeenCalledWith({
+        resourceId: 'org-1',
+        mastra,
+        requestContext: context,
+      });
+    });
+
+    it('preserva canais no envelope single-route do CopilotKit novo', async () => {
+      const { context } = prepareAgent();
+      const integrations = [{ id: 'new-channel' }];
+      const req: any = {
+        body: {
+          method: 'agent/run',
+          body: { forwardedProps: { integrations } },
+        },
+      };
+      await controller.agent(req, mockRes(), org, null);
+      expect(context.get('integrations')).toEqual(integrations);
+    });
+
+    it('mantem o contexto de canais do cliente legado sem forwardedProps', async () => {
+      const { context, handler } = prepareAgent();
+      const integrations = [{ id: 'legacy-channel' }];
+      const req: any = {
+        body: { variables: { properties: { integrations } } },
+      };
+      const res = mockRes();
+
+      await controller.agent(req, res, org, null);
+
+      expect(context.get('integrations')).toEqual(integrations);
+      expect(context.get('profileId')).toBeUndefined();
+      expect(profileService.getPersonaForAgent).not.toHaveBeenCalled();
+      expect(handler).toHaveBeenCalledWith(req, res);
+    });
+
+    it('nao recupera selecao antiga quando forwardedProps traz lista vazia', async () => {
+      const { context } = prepareAgent();
+      const req: any = {
+        body: {
+          forwardedProps: { integrations: [] },
+          variables: { properties: { integrations: [{ id: 'old-channel' }] } },
+        },
+      };
+
+      await controller.agent(req, mockRes(), org, null);
+
+      expect(context.get('integrations')).toEqual([]);
+    });
+
     it('deve responder 412 e NAO montar o runtime Mastra quando a credencial falha', async () => {
       aiClientFactory.buildOpenAiCompatibleClient.mockRejectedValue(
-        new HttpException('Configure suas chaves em Configuracoes > Modelos de IA.', 412)
+        new HttpException(
+          'Configure suas chaves em Configuracoes > Modelos de IA.',
+          412
+        )
       );
       const req: any = { body: {} };
       const res = mockRes();
@@ -117,6 +302,8 @@ describe('CopilotController', () => {
       expect(res.status).toHaveBeenCalledWith(412);
       // Falhou antes de tocar o Mastra — nao deve montar o agente.
       expect(mastraService.mastra).not.toHaveBeenCalled();
+      expect(copilotRuntimeNodeHttpEndpoint).not.toHaveBeenCalled();
+      expect(MastraAgent.getLocalAgents).not.toHaveBeenCalled();
     });
 
     it('deve propagar status generico 500 para erro sem HttpException', async () => {

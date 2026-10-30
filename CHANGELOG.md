@@ -7,6 +7,13 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 
 ## [Unreleased]
 
+### Melhorado — Mastra, CopilotKit e MCP
+
+- Atualizados Mastra, memória PostgreSQL, AG-UI e CopilotKit para as versões portadas do Postiz. O chat usa o transporte HTTP Node e aceita o payload novo de canais, mantendo compatibilidade anterior, credenciais por perfil, persona e erro 412 de configuração. Preservado Chat Completions para os provedores OpenAI compatíveis, incluindo o caminho de ferramentas do editor.
+- O cache intermediário do CopilotKit recebe isolamento por organização/perfil para execução, histórico e reconexão; limpeza global e novas mutações ficam bloqueadas. Inspector técnico desativado na interface.
+- MCP aceita clientes dos protocolos 2025 e 2026 e encerra streams de assinatura ociosos após 10 segundos, mantendo autenticação e contexto por requisição.
+- Espelhadas as 45 tabelas e os índices do armazenamento Mastra. A sincronização no boot preserva tabelas vetoriais `kb_*`, valida e aplica somente SQL aditivo em transação e interrompe diante de tabelas desconhecidas ou operações destrutivas, sem aceitar perda automática de dados.
+
 ### Adicionado — compositor e fuso horário
 
 - Novo compositor responsivo do Postiz: edição e preview no celular, seleção de canais, configurações, tags, recorrência e data em painéis inferiores, com toolbar acima do teclado. Preservados os lotes, as datas por canal, a confirmação de republicação e o tratamento de salvamento parcial do Robô MultiPost.

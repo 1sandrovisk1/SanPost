@@ -13,9 +13,12 @@ import {
   CopilotRuntime,
   OpenAIAdapter,
   copilotRuntimeNodeHttpEndpoint,
-  copilotRuntimeNextJSAppRouterEndpoint,
 } from '@copilotkit/runtime';
 import { Throttle } from '@nestjs/throttler';
+import {
+  ScopedCopilotRunner,
+  isCopilotThreadMutation,
+} from '@gitroom/nestjs-libraries/chat/scoped-copilot-runner';
 import { GetOrgFromRequest } from '@gitroom/nestjs-libraries/user/org.from.request';
 import { GetProfileFromRequest } from '@gitroom/nestjs-libraries/user/profile.from.request';
 import { Organization, Profile } from '@prisma/client';
@@ -27,7 +30,10 @@ import { AiClientFactory } from '@gitroom/nestjs-libraries/ai/ai-client.factory'
 import { Request, Response } from 'express';
 import { RequestContext } from '@mastra/core/di';
 import { CheckPolicies } from '@gitroom/backend/services/auth/permissions/permissions.ability';
-import { AuthorizationActions, Sections } from '@gitroom/backend/services/auth/permissions/permission.exception.class';
+import {
+  AuthorizationActions,
+  Sections,
+} from '@gitroom/backend/services/auth/permissions/permission.exception.class';
 
 export type ChannelsContext = {
   integrations: string;
@@ -60,12 +66,14 @@ export class CopilotController {
     organizationId: string,
     profileId?: string
   ): Promise<OpenAIAdapter> {
-    const { client, model } =
+    const { client, model, languageModel } =
       await this._aiClientFactory.buildOpenAiCompatibleClient(
         organizationId,
         profileId
       );
-    return new OpenAIAdapter({ openai: client as any, model });
+    const adapter = new OpenAIAdapter({ openai: client as any, model });
+    adapter.getLanguageModel = () => languageModel;
+    return adapter;
   }
 
   /**
@@ -98,6 +106,8 @@ export class CopilotController {
     @GetOrgFromRequest() organization: Organization,
     @GetProfileFromRequest() profile: Profile | null
   ) {
+    if (isCopilotThreadMutation(req.body))
+      return res.status(405).json({ message: 'Thread mutation is disabled' });
     // Passa profile?.id para respeitar o gate shareDefault do resolver:
     // perfil secundario sem chave propria e sem compartilhamento -> 412
     // (mesma regra do /copilot/agent).
@@ -113,7 +123,13 @@ export class CopilotController {
 
     const copilotRuntimeHandler = copilotRuntimeNodeHttpEndpoint({
       endpoint: '/copilot/chat',
-      runtime: new CopilotRuntime(),
+      runtime: new CopilotRuntime({
+        runner: new ScopedCopilotRunner(
+          organization.id,
+          profile?.id ?? null,
+          'chat'
+        ),
+      }),
       serviceAdapter,
     });
 
@@ -129,6 +145,8 @@ export class CopilotController {
     @GetOrgFromRequest() organization: Organization,
     @GetProfileFromRequest() profile: Profile | null
   ) {
+    if (isCopilotThreadMutation(req.body))
+      return res.status(405).json({ message: 'Thread mutation is disabled' });
     // Resolve a credencial da UI (OpenAI/OpenRouter) ANTES de montar o runtime.
     // Falha de credencial responde 412 aqui em vez de deixar a request pendurar
     // (o que antes gerava 504 no nginx). O adapter em si nao faz a inferencia do
@@ -147,7 +165,10 @@ export class CopilotController {
     const requestContext = new RequestContext<ChannelsContext>();
     requestContext.set(
       'integrations',
-      req?.body?.variables?.properties?.integrations || []
+      req?.body?.body?.forwardedProps?.integrations ??
+        req?.body?.forwardedProps?.integrations ??
+        req?.body?.variables?.properties?.integrations ??
+        []
     );
 
     requestContext.set('organization', JSON.stringify(organization));
@@ -183,17 +204,22 @@ export class CopilotController {
     });
 
     const runtime = new CopilotRuntime({
+      runner: new ScopedCopilotRunner(
+        organization.id,
+        profile?.id ?? null,
+        'agent'
+      ),
       agents,
     });
 
-    const copilotRuntimeHandler = copilotRuntimeNextJSAppRouterEndpoint({
+    const copilotRuntimeHandler = copilotRuntimeNodeHttpEndpoint({
       endpoint: '/copilot/agent',
       runtime,
       // properties: req.body.variables.properties,
       serviceAdapter,
     });
 
-    return copilotRuntimeHandler.handleRequest(req, res);
+    return copilotRuntimeHandler(req, res);
   }
 
   @Get('/credits')
@@ -302,9 +328,7 @@ function normalizeMessageForUi(m: any): { role: string; content: string } {
   if (raw && typeof raw === 'object' && Array.isArray(raw.parts)) {
     const text = raw.parts
       .map((part: any) =>
-        part?.type === 'text' && typeof part.text === 'string'
-          ? part.text
-          : ''
+        part?.type === 'text' && typeof part.text === 'string' ? part.text : ''
       )
       .filter(Boolean)
       .join('\n');
