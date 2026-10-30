@@ -13,7 +13,6 @@
   "automation_emoji_objects": "Objects",
   "automation_emoji_symbols": "Symbols",
   "automation_emoji_flags": "Flags",
-
   "automation_stage_selected_one": "{count} selected",
   "automation_stage_keywords_pending": "Set a keyword",
   "automation_stage_variations_one": "{count} variation",
@@ -2786,5 +2785,6 @@
   "delete_only_from": "Only from",
   "batch_save_partial_failure": "Some channels were saved but others failed. Open the post again to review them.",
   "post_channel_date_in_past": "Choose a future date for this channel",
-  "batch_delete_partial_failure": "The post was deleted from some channels but not from others. Check the calendar."
+  "batch_delete_partial_failure": "The post was deleted from some channels but not from others. Check the calendar.",
+  "media_settings_save_failed": "Could not save the media settings. Try again; your changes are still open."
 }

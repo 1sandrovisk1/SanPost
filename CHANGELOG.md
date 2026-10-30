@@ -7,6 +7,10 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 
 ## [Unreleased]
 
+### Corrigido
+- **Thumbnail de vídeo no editor e no YouTube:** miniaturas pequenas e a prévia do YouTube passam a mostrar a imagem salva. Captura aguarda o quadro decodificado após mover a posição do vídeo, inclusive no final; salvamento recusado mantém o modal aberto com erro. Timestamp zero e limpeza da capa preservados. Prioridade da capa antiga específica do YouTube mantida e testada.
+
+
 ### Corrigido — testes do RC 0.7.0-rc.2 em produção (28/10/2026)
 
 - **Tags do post pelo painel:** desde o PR #327 a tag escolhida no editor não era gravada (o painel envia o nome da tag e o backend passou a exigir o id), e criar uma tag nova pelo próprio editor quebrava o salvamento. A tag agora é encontrada pelo id (API/MCP) ou pelo nome (painel), sempre dentro do perfil.

@@ -13,7 +13,6 @@
   "automation_emoji_objects": "Objetos",
   "automation_emoji_symbols": "Símbolos",
   "automation_emoji_flags": "Bandeiras",
-
   "automation_stage_selected_one": "{count} selecionada",
   "automation_stage_keywords_pending": "Defina a palavra-chave",
   "automation_stage_variations_one": "{count} variação",
@@ -2786,5 +2785,6 @@
   "delete_only_from": "Só de",
   "batch_save_partial_failure": "Alguns canais foram salvos, mas outros falharam. Abra a publicação de novo para revisá-los.",
   "post_channel_date_in_past": "Escolha uma data futura para este canal",
-  "batch_delete_partial_failure": "A publicação foi excluída de alguns canais, mas não de outros. Confira o calendário."
+  "batch_delete_partial_failure": "A publicação foi excluída de alguns canais, mas não de outros. Confira o calendário.",
+  "media_settings_save_failed": "Não foi possível salvar as configurações da mídia. Tente novamente; suas alterações continuam abertas."
 }

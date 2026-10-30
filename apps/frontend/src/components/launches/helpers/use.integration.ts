@@ -14,6 +14,7 @@ export const IntegrationContext = createContext<{
     image?: Array<{
       path: string;
       id: string;
+      thumbnail?: string;
     }>;
   }>;
 }>({
