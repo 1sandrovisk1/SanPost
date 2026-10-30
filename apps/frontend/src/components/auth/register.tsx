@@ -5,7 +5,7 @@ import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import Link from 'next/link';
 import { Button } from '@gitroom/react/form/button';
 import { Input } from '@gitroom/react/form/input';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { classValidatorResolver } from '@hookform/resolvers/class-validator';
 import { CreateOrgUserDto } from '@gitroom/nestjs-libraries/dtos/auth/create.org.user.dto';
 import { GithubProvider } from '@gitroom/frontend/components/auth/providers/github.provider';
@@ -23,6 +23,10 @@ import dynamic from 'next/dynamic';
 import { WalletUiProvider } from '@gitroom/frontend/components/auth/providers/placeholder/wallet.ui.provider';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import useCookie from 'react-use-cookie';
+import {
+  clearFarcasterCode,
+  peekFarcasterCode,
+} from '@gitroom/frontend/components/farcaster/farcaster.code';
 const WalletProvider = dynamic(
   () => import('@gitroom/frontend/components/auth/providers/wallet.provider'),
   {
@@ -41,27 +45,53 @@ export function Register({ invited = false }: { invited?: boolean }) {
   const getQuery = useSearchParams();
   const fetch = useFetch();
   const [provider] = useState(getQuery?.get('provider')?.toUpperCase());
-  const [code, setCode] = useState(getQuery?.get('code') || '');
+  // Farcaster: o code (requestId do signer) vem da aba, nunca da URL — um link
+  // com ?code= nao faz login (CSRF) e o backend ainda exige o cookie do signer
+  const farcaster = provider === 'FARCASTER';
+  const [code, setCode] = useState(
+    farcaster ? '' : getQuery?.get('code') || ''
+  );
   const [show, setShow] = useState(false);
+  const started = useRef(false);
+  const load = useCallback(
+    async (value: string) => {
+      const { token } = await (
+        await fetch(
+          `/auth/oauth/${provider?.toUpperCase() || 'LOCAL'}/exists`,
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              code: value,
+            }),
+          }
+        )
+      ).json();
+      if (token) {
+        setCode(token);
+        setShow(true);
+      }
+    },
+    [provider]
+  );
   useEffect(() => {
+    if (started.current) {
+      return;
+    }
+    started.current = true;
+    if (farcaster) {
+      const stored = peekFarcasterCode('login');
+      clearFarcasterCode('login');
+      if (!stored) {
+        window.location.href = '/auth';
+        return;
+      }
+      load(stored);
+      return;
+    }
     if (provider && code) {
-      load();
+      load(code);
     }
   }, []);
-  const load = useCallback(async () => {
-    const { token } = await (
-      await fetch(`/auth/oauth/${provider?.toUpperCase() || 'LOCAL'}/exists`, {
-        method: 'POST',
-        body: JSON.stringify({
-          code,
-        }),
-      })
-    ).json();
-    if (token) {
-      setCode(token);
-      setShow(true);
-    }
-  }, [provider, code]);
   if (!code && !provider) {
     return <RegisterAfter token="" provider="LOCAL" invited={invited} />;
   }

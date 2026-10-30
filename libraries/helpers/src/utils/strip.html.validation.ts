@@ -1,5 +1,6 @@
 import striptags from 'striptags';
 import { parseFragment, serialize } from 'parse5';
+import { rewriteInlineImages } from '@gitroom/helpers/utils/inline.images';
 
 const bold = {
   a: '𝗮',
@@ -137,7 +138,8 @@ export const stripHtmlValidation = (
   replaceBold = false,
   none = false,
   plain = false,
-  convertMentionFunction?: (idOrHandle: string, name: string) => string
+  convertMentionFunction?: (idOrHandle: string, name: string) => string,
+  inlineImages = false
 ): string => {
   if (plain) {
     return val;
@@ -156,23 +158,31 @@ export const stripHtmlValidation = (
   }
 
   if (type === 'html') {
-    return striptags(convertMention(value, convertMentionFunction), [
-      'ul',
-      'li',
-      'h1',
-      'h2',
-      'h3',
-      'p',
-      'strong',
-      'u',
-      'a',
-    ])
-      .replace(/&gt;/gi, '>')
-      .replace(/&lt;/gi, '<')
-      .replace(/&amp;/gi, '&')
-      .replace(/&nbsp;/gi, ' ')
-      .replace(/&quot;/gi, '"')
-      .replace(/&#39;/gi, "'");
+    // A saida e HTML (WordPress, ListMonk, Telegram parse_mode HTML): as
+    // entidades do serializer ficam. O upstream (4e903851) decodifica
+    // &lt;/&gt;/&quot;/&amp; depois do striptags, o que transformava texto
+    // digitado como "<img src=...>" ou um &quot; dentro de href em tag/atributo
+    // de verdade no HTML publicado (furando a regra da imagem inline). So o
+    // &nbsp; vira espaco (o Telegram nao conhece a entidade).
+    return striptags(
+      convertMention(
+        inlineImages ? convertImages(value) : value,
+        convertMentionFunction
+      ),
+      [
+        'ul',
+        'ol',
+        'li',
+        'h1',
+        'h2',
+        'h3',
+        'p',
+        'strong',
+        'u',
+        'a',
+        ...(inlineImages ? ['img'] : []),
+      ]
+    ).replace(/&nbsp;/gi, ' ');
   }
 
   if (type === 'markdown') {
@@ -267,6 +277,13 @@ export const stripHtmlValidation = (
     .replace(/&gt;/gi, '>')
     .replace(/&lt;/gi, '<');
 };
+
+// Imagem inline (upstream 2aae02fe): so a midia da propria instancia, com
+// src normalizado e alt sem aspas/`&` — o resto do modo html decodifica
+// entidades depois do striptags. O upstream aceita qualquer http(s) e reescreve
+// por regex; aqui a reescrita e na arvore (ver inline.images.ts).
+export const convertImages = (value: string) =>
+  rewriteInlineImages(value, { plainAlt: true });
 
 export const convertMention = (
   value: string,

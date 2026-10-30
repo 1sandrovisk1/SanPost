@@ -1,5 +1,6 @@
 'use client';
 
+import TumblrProvider from './tumblr/tumblr.provider';
 import DevtoProvider from '@gitroom/frontend/components/new-launch/providers/devto/devto.provider';
 import XProvider from '@gitroom/frontend/components/new-launch/providers/x/x.provider';
 import LinkedinProvider from '@gitroom/frontend/components/new-launch/providers/linkedin/linkedin.provider';
@@ -45,6 +46,7 @@ export const Empty: FC = () => {
 };
 
 export const Providers = [
+  {identifier:'tumblr',component:TumblrProvider},
   {
     identifier: 'devto',
     component: DevtoProvider,
@@ -91,6 +93,10 @@ export const Providers = [
   },
   {
     identifier: 'tiktok',
+    component: TiktokProvider,
+  },
+  {
+    identifier: 'tiktok-business',
     component: TiktokProvider,
   },
   {

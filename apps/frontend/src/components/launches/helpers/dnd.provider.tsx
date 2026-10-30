@@ -3,8 +3,21 @@
 import { FC, ReactNode } from 'react';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { DndProvider } from 'react-dnd';
+import { skipDragsInsideEditor } from '@gitroom/frontend/components/launches/helpers/editor.drag.guard';
+
+// dragging text or pictures inside the post editor must not be cancelled by
+// the calendar's drag and drop (see editor.drag.guard.ts)
+const CalendarBackend: typeof HTML5Backend = (manager, context, options) =>
+  skipDragsInsideEditor(HTML5Backend(manager, context, options));
+
+const dndContext = typeof window === 'undefined' ? undefined : window;
+
 export const DNDProvider: FC<{
   children: ReactNode;
 }> = ({ children }) => {
-  return <DndProvider backend={HTML5Backend}>{children}</DndProvider>;
+  return (
+    <DndProvider backend={CalendarBackend} context={dndContext}>
+      {children}
+    </DndProvider>
+  );
 };

@@ -4,7 +4,9 @@ import { useLaunchStore } from '@gitroom/frontend/components/new-launch/store';
 import { useMediaDirectory } from '@gitroom/react/helpers/use.media.directory';
 import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validation';
 import { textSlicer } from '@gitroom/helpers/utils/count.length';
-import { VideoOrImage } from '@gitroom/react/helpers/video.or.image';
+import { VideoFrame } from '@gitroom/react/helpers/video.frame';
+import { useSettings } from '@gitroom/frontend/components/launches/helpers/use.values';
+import { useWatch } from 'react-hook-form';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 
 export const YoutubePreview: FC<{
@@ -13,6 +15,10 @@ export const YoutubePreview: FC<{
   const { value: topValue, integration } = useIntegration();
   const current = useLaunchStore((state) => state.current);
   const mediaDir = useMediaDirectory();
+  const { control } = useSettings();
+  const legacyThumbnail = useWatch({ control, name: 'thumbnail' });
+  const thumbnail =
+    legacyThumbnail?.path || topValue?.[0]?.image?.[0]?.thumbnail;
   const t = useT();
 
   const renderContent = topValue.map((p) => {
@@ -39,7 +45,10 @@ export const YoutubePreview: FC<{
         .replace(/\[\[\[([.\s\S]*?)]]]/, (match, match1) => {
           return `<span class="font-bold font-[arial]" style="color: #ae8afc">${match1}</span>`;
         }) +
-      `<mark class="bg-red-500" data-tooltip-id="tooltip" data-tooltip-content="${t('text_will_be_cropped', 'This text will be cropped')}">` +
+      `<mark class="bg-red-500" data-tooltip-id="tooltip" data-tooltip-content="${t(
+        'text_will_be_cropped',
+        'This text will be cropped'
+      )}">` +
       newContent.slice(end).replace(/\[\[\[([.\s\S]*?)]]]/, (match, match1) => {
         return `<span class="font-bold font-[arial]" style="color: #ae8afc">${match1}</span>`;
       }) +
@@ -55,11 +64,12 @@ export const YoutubePreview: FC<{
         className="!bg-cover w-full aspect-[calc(16/9)] rounded-[4px] overflow-hidden"
       >
         {!!renderContent?.[0]?.images?.[0]?.path && (
-          <VideoOrImage
-            imageClassName="w-full aspect-[calc(16/9)]"
-            videoClassName="w-full aspect-[calc(16/9)] bg-black"
-            autoplay={true}
-            src={mediaDir.set(renderContent?.[0]?.images?.[0]?.path || '')}
+          <VideoFrame
+            thumbnail={thumbnail ? mediaDir.set(thumbnail) : undefined}
+            autoplay={!thumbnail}
+            muted
+            loop
+            url={mediaDir.set(renderContent?.[0]?.images?.[0]?.path || '')}
           />
         )}
       </div>

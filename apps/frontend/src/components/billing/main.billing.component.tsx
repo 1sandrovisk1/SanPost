@@ -1,4 +1,5 @@
 'use client';
+import { fromUtc } from '@gitroom/helpers/utils/user.timezone';
 
 import { Slider } from '@gitroom/react/form/slider';
 import React, { FC, useCallback, useEffect, useMemo, useState } from 'react';
@@ -155,7 +156,10 @@ const Accept: FC<{ resolve: (res: boolean) => void }> = ({ resolve }) => {
   return (
     <div>
       <div className="mb-[20px]">
-        {t('accept_discount_offer', 'Would you accept 50% discount for 3 months instead?')}
+        {t(
+          'accept_discount_offer',
+          'Would you accept 50% discount for 3 months instead?'
+        )}
       </div>
       <div className="flex gap-[10px]">
         <Button loading={loading} onClick={apply}>
@@ -292,7 +296,12 @@ export const MainBillingComponent: FC<{
             cancelAt: cancel_at,
           }));
 
-          toast.show(t('subscription_reactivated', 'Subscription reactivated successfully'));
+          toast.show(
+            t(
+              'subscription_reactivated',
+              'Subscription reactivated successfully'
+            )
+          );
           setLoading(false);
           return;
         }
@@ -303,7 +312,10 @@ export const MainBillingComponent: FC<{
           pricing[subscription?.subscriptionTier!]?.team_members
         ) {
           messages.push(
-            t('team_members_will_be_removed', 'Your team members will be removed from your organization')
+            t(
+              'team_members_will_be_removed',
+              'Your team members will be removed from your organization'
+            )
           );
         }
         if (billing === 'FREE') {
@@ -369,7 +381,12 @@ export const MainBillingComponent: FC<{
               cancelAt: cancel_at,
             }));
             if (cancel_at)
-              toast.show(t('subscription_canceled', 'Subscription set to canceled successfully'));
+              toast.show(
+                t(
+                  'subscription_canceled',
+                  'Subscription set to canceled successfully'
+                )
+              );
             setLoading(false);
           }
           return;
@@ -429,7 +446,9 @@ export const MainBillingComponent: FC<{
               revalidate: false,
             }
           );
-          toast.show(t('subscription_updated', 'Subscription updated successfully'));
+          toast.show(
+            t('subscription_updated', 'Subscription updated successfully')
+          );
         }
         setLoading(false);
       },
@@ -510,10 +529,9 @@ export const MainBillingComponent: FC<{
                       ? t('current_plan', 'Current Plan')
                       : name.toUpperCase() === 'FREE'
                       ? subscription?.cancelAt
-                        ? `Downgrade on ${dayjs
-                            .utc(subscription?.cancelAt)
-                            .local()
-                            .format('D MMM, YYYY')}`
+                        ? `Downgrade on ${fromUtc(
+                            dayjs.utc(subscription?.cancelAt)
+                          ).format('D MMM, YYYY')}`
                         : t('cancel_subscription', 'Cancel subscription')
                       : // @ts-ignore
                       (user?.tier === 'FREE' ||
@@ -565,7 +583,7 @@ export const MainBillingComponent: FC<{
             'your_subscription_will_be_canceled_at',
             'Your subscription will be canceled at'
           )}{' '}
-          {newDayjs(subscription.cancelAt).local().format('D MMM, YYYY')}
+          {newDayjs(subscription.cancelAt).format('D MMM, YYYY')}
           <br />
           {t(
             'you_will_never_be_charged_again',

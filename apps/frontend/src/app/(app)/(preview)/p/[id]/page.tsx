@@ -1,5 +1,5 @@
+import { PreviewText } from '@gitroom/frontend/components/preview/preview.text';
 import { internalFetch } from '@gitroom/helpers/utils/internal.fetch';
-import { sanitizePostContent } from '@gitroom/helpers/utils/sanitize.post.content';
 import { getPlatformIconPath } from '@gitroom/frontend/components/launches/helpers/platform-icon.helper';
 export const dynamic = 'force-dynamic';
 import { Metadata } from 'next';
@@ -117,12 +117,7 @@ export default async function Auth(props: {
                       </span>
                     </div>
                     <div className="flex flex-col gap-[20px]">
-                      <div
-                        className="text-sm whitespace-pre-wrap"
-                        dangerouslySetInnerHTML={{
-                          __html: sanitizePostContent(p.content),
-                        }}
-                      />
+                      <PreviewText postId={p.id} content={p.content} />
                       <div className="flex w-full gap-[10px]">
                         {JSON.parse(p?.image || '[]').map(
                           (img: any, idx: number) => (
@@ -149,10 +144,10 @@ export default async function Auth(props: {
         <div className="w-full lg:w-96 lg:flex-shrink-0">
           <div className="p-4 pt-0">
             <CommentsComponents
-            postId={id}
-            token={token}
-            reviewInfo={reviewInfo}
-          />
+              postId={id}
+              token={token}
+              reviewInfo={reviewInfo}
+            />
           </div>
         </div>
       </div>

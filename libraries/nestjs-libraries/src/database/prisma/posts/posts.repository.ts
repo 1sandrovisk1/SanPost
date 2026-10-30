@@ -1,4 +1,7 @@
-import { PrismaRepository, PrismaTransaction } from '@gitroom/nestjs-libraries/database/prisma/prisma.service';
+import {
+  PrismaRepository,
+  PrismaTransaction,
+} from '@gitroom/nestjs-libraries/database/prisma/prisma.service';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Post as PostBody } from '@gitroom/nestjs-libraries/dtos/posts/create.post.dto';
 import {
@@ -185,7 +188,7 @@ export class PostsRepository {
             OR: [
               {
                 organizationId: orgId,
-              }
+              },
             ],
           },
           ...(profileId ? [{ profileId }] : []),
@@ -283,7 +286,11 @@ export class PostsRepository {
       }, [] as any[]);
   }
 
-  async getPostsList(orgId: string, query: GetPostsListDto, profileId?: string) {
+  async getPostsList(
+    orgId: string,
+    query: GetPostsListDto,
+    profileId?: string
+  ) {
     const page = query.page || 0;
     const limit = query.limit || 20;
     const skip = page * limit;
@@ -469,6 +476,7 @@ export class PostsRepository {
         id,
         ...(orgId ? { organizationId: orgId } : {}),
         deletedAt: null,
+        organization: { deletedAt: null },
         ...(isFirst
           ? { OR: [{ profileId: null }, { profile: { deletedAt: null } }] }
           : {}),
@@ -492,11 +500,32 @@ export class PostsRepository {
   }
 
   updatePost(id: string, postId: string, releaseURL: string) {
-    if (this.transaction) return this.transaction.model.$transaction(async tx => {
-      const post = await tx.post.update({ where: { id }, data: { state: 'PUBLISHED', releaseURL, releaseId: postId, error: null } });
-      if (postId && postId !== 'missing') await tx.scheduledAutomationTarget.updateMany({ where: { postId: id, integrationId: post.integrationId, publishedReleaseId: null, flow: { organizationId: post.organizationId, profileId: post.profileId } }, data: { publishedReleaseId: postId } });
-      return post;
-    });
+    if (this.transaction)
+      return this.transaction.model.$transaction(async (tx) => {
+        const post = await tx.post.update({
+          where: { id },
+          data: {
+            state: 'PUBLISHED',
+            releaseURL,
+            releaseId: postId,
+            error: null,
+          },
+        });
+        if (postId && postId !== 'missing')
+          await tx.scheduledAutomationTarget.updateMany({
+            where: {
+              postId: id,
+              integrationId: post.integrationId,
+              publishedReleaseId: null,
+              flow: {
+                organizationId: post.organizationId,
+                profileId: post.profileId,
+              },
+            },
+            data: { publishedReleaseId: postId },
+          });
+        return post;
+      });
     return this._post.model.post.update({
       where: {
         id,
@@ -561,11 +590,27 @@ export class PostsRepository {
       releaseId: String(releaseId),
       ...(releaseURL ? { releaseURL } : {}),
     };
-    if (this.transaction) return this.transaction.model.$transaction(async tx => {
-      const post = await tx.post.update({ where: { id, organizationId: orgId, releaseId: 'missing' }, data });
-      if (releaseId && releaseId !== 'missing') await tx.scheduledAutomationTarget.updateMany({ where: { postId: id, integrationId: post.integrationId, publishedReleaseId: null, flow: { organizationId: post.organizationId, profileId: post.profileId } }, data: { publishedReleaseId: String(releaseId) } });
-      return { id: post.id };
-    });
+    if (this.transaction)
+      return this.transaction.model.$transaction(async (tx) => {
+        const post = await tx.post.update({
+          where: { id, organizationId: orgId, releaseId: 'missing' },
+          data,
+        });
+        if (releaseId && releaseId !== 'missing')
+          await tx.scheduledAutomationTarget.updateMany({
+            where: {
+              postId: id,
+              integrationId: post.integrationId,
+              publishedReleaseId: null,
+              flow: {
+                organizationId: post.organizationId,
+                profileId: post.profileId,
+              },
+            },
+            data: { publishedReleaseId: String(releaseId) },
+          });
+        return { id: post.id };
+      });
     return this._post.model.post.update({
       where: {
         id,
@@ -1045,10 +1090,11 @@ export class PostsRepository {
     );
   }
 
-  async getComments(postId: string, orgId?: string) {
+  // Comentarios de todos os itens da thread do preview (upstream #2079).
+  async getComments(postIds: string[], orgId?: string) {
     return this._comments.model.comments.findMany({
       where: {
-        postId,
+        postId: { in: postIds },
         ...(orgId ? { organizationId: orgId } : {}),
         deletedAt: null,
       },
@@ -1057,15 +1103,93 @@ export class PostsRepository {
       },
       select: {
         id: true,
-        content: true,
-        userId: true,
-        guestName: true,
+        postId: true,
+        parentId: true,
         kind: true,
+        content: true,
+        anchorStart: true,
+        anchorEnd: true,
+        anchorQuote: true,
+        resolvedAt: true,
         createdAt: true,
+        userId: true,
+        reviewLinkId: true,
+        guestName: true,
         // Identidade do autor só no caminho autenticado (orgId presente). O
         // endpoint publico/guest (sem orgId) NAO expoe e-mail/nome da equipe.
         ...(orgId ? { user: { select: { email: true, name: true } } } : {}),
       },
+    });
+  }
+
+  // Comentario pai de uma resposta (a thread do preview e conferida no service).
+  getCommentForReply(id: string) {
+    return this._comments.model.comments.findFirst({
+      where: { id, deletedAt: null },
+      select: {
+        id: true,
+        postId: true,
+        parentId: true,
+        resolvedAt: true,
+        kind: true,
+      },
+    });
+  }
+
+  // Comentario da org com o perfil do post, para resolver/excluir.
+  getCommentScope(id: string, orgId: string) {
+    return this._comments.model.comments.findFirst({
+      where: { id, organizationId: orgId, deletedAt: null },
+      select: {
+        id: true,
+        postId: true,
+        parentId: true,
+        kind: true,
+        post: { select: { profileId: true, deletedAt: true } },
+      },
+    });
+  }
+
+  setCommentResolved(id: string, orgId: string, resolvedAt: Date | null) {
+    return this._comments.model.comments.updateMany({
+      where: { id, organizationId: orgId, parentId: null, deletedAt: null },
+      data: { resolvedAt },
+    });
+  }
+
+  // Exclusao logica do comentario e das respostas dele.
+  softDeleteComment(id: string, orgId: string) {
+    return this._comments.model.comments.updateMany({
+      where: {
+        organizationId: orgId,
+        deletedAt: null,
+        OR: [{ id }, { parentId: id }],
+      },
+      data: { deletedAt: new Date() },
+    });
+  }
+
+  getAnchoredComments(postIds: string[]) {
+    return this._comments.model.comments.findMany({
+      where: {
+        postId: { in: postIds },
+        deletedAt: null,
+        anchorStart: { not: null },
+      },
+      select: {
+        id: true,
+        postId: true,
+        anchorStart: true,
+        anchorEnd: true,
+        anchorQuote: true,
+      },
+    });
+  }
+
+  detachAnchors(ids: string[]) {
+    return this._comments.model.comments.updateMany({
+      where: { id: { in: ids } },
+      data: { anchorStart: null, anchorEnd: null },
     });
   }
 
@@ -1135,12 +1259,22 @@ export class PostsRepository {
     return tag;
   }
 
+  // `userId` nulo = visitante anonimo do preview (nome em `guestName`).
   createComment(
     orgId: string,
-    userId: string,
+    userId: string | null,
     postId: string,
     content: string,
-    kind: CommentKind = 'COMMENT'
+    kind: CommentKind = 'COMMENT',
+    extra: {
+      parentId?: string;
+      anchorStart?: number;
+      anchorEnd?: number;
+      anchorQuote?: string;
+      guestName?: string;
+      guestIp?: string | null;
+      guestUserAgent?: string | null;
+    } = {}
   ) {
     return this._comments.model.comments.create({
       data: {
@@ -1149,33 +1283,65 @@ export class PostsRepository {
         postId,
         content,
         kind,
+        parentId: extra.parentId ?? null,
+        anchorStart: extra.anchorStart ?? null,
+        anchorEnd: extra.anchorEnd ?? null,
+        anchorQuote: extra.anchorQuote ?? null,
+        guestName: extra.guestName ?? null,
+        guestIp: extra.guestIp ?? null,
+        guestUserAgent: extra.guestUserAgent ?? null,
       },
+      select: { id: true, kind: true, createdAt: true },
     });
   }
 
-  async getPostByForWebhookId(postId: string) {
-    return this._post.model.post.findMany({
+  async getPostByForWebhookId(postId: string, integrationId: string) {
+    const select = {
+      id: true,
+      content: true,
+      publishDate: true,
+      releaseURL: true,
+      state: true,
+      integration: {
+        select: {
+          id: true,
+          name: true,
+          providerIdentifier: true,
+          picture: true,
+          type: true,
+        },
+      },
+    };
+
+    const posts = await this._post.model.post.findMany({
       where: {
         id: postId,
+        integrationId,
         deletedAt: null,
         parentPostId: null,
       },
-      select: {
-        id: true,
-        content: true,
-        publishDate: true,
-        releaseURL: true,
-        state: true,
-        integration: {
-          select: {
-            id: true,
-            name: true,
-            providerIdentifier: true,
-            picture: true,
-            type: true,
-          },
-        },
+      select,
+    });
+
+    if (posts.length) {
+      return posts;
+    }
+
+    // Os workflows de post (V101/V102/V112) passam o id do post NA PLATAFORMA,
+    // que o updatePost ja gravou como releaseId antes do webhook: sem este
+    // fallback o payload do webhook saia sempre vazio (upstream #2087).
+    return this._post.model.post.findMany({
+      where: {
+        releaseId: postId,
+        integrationId,
+        deletedAt: null,
+        parentPostId: null,
       },
+      orderBy: {
+        updatedAt: 'desc' as const,
+      },
+      take: 1,
+      select,
     });
   }
 

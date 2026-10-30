@@ -27,6 +27,10 @@ const mockUserOrgModel = {
 };
 const mockUserFindFirst = jest.fn();
 const mockUserModel = { model: { user: { findFirst: mockUserFindFirst } } };
+const mockOAuthUpdateMany = jest.fn();
+const mockOAuthAuthModel = {
+  model: { oAuthAuthorization: { updateMany: mockOAuthUpdateMany } },
+};
 const mockMemberDeleteMany = jest.fn();
 const mockProfileMemberModel = {
   model: { profileMember: { deleteMany: mockMemberDeleteMany } },
@@ -41,7 +45,8 @@ describe('OrganizationRepository', () => {
       mockOrgModel as any,
       mockUserOrgModel as any,
       mockUserModel as any,
-      mockProfileMemberModel as any
+      mockProfileMemberModel as any,
+      mockOAuthAuthModel as any
     );
   });
 
@@ -176,6 +181,22 @@ describe('OrganizationRepository', () => {
             userId: 'u-1',
             organizationId: 'org-1',
           },
+        },
+      });
+    });
+
+    it('revoga os apps OAuth que ele aprovou nesta org', async () => {
+      mockMemberDeleteMany.mockResolvedValue({ count: 0 });
+      mockUserOrgDelete.mockResolvedValue({ id: 'uo-1' });
+
+      await repository.deleteTeamMember('org-1', 'u-1');
+
+      expect(mockOAuthUpdateMany).toHaveBeenCalledWith({
+        where: { userId: 'u-1', organizationId: 'org-1', revokedAt: null },
+        data: {
+          revokedAt: expect.any(Date),
+          accessToken: null,
+          authorizationCode: null,
         },
       });
     });

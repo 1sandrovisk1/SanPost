@@ -46,6 +46,52 @@ describe('IntegrationManager.getProviderCredentials', () => {
   });
 });
 
+describe('IntegrationManager - TikTok for Business', () => {
+  const originalEnv = { ...process.env };
+  afterEach(() => {
+    process.env = { ...originalEnv };
+  });
+
+  it('registra o provider tiktok-business', () => {
+    const manager = new IntegrationManager();
+    expect(manager.getAllowedSocialsIntegrations()).toContain('tiktok-business');
+    expect(manager.getSocialIntegration('tiktok-business').name).toBe(
+      'TikTok Business'
+    );
+  });
+
+  it('usa a credencial propria do workspace/perfil, sem alias para o tiktok nativo', async () => {
+    const credentialService = {
+      getRawShared: jest.fn().mockResolvedValue({
+        clientId: 'biz-app',
+        clientSecret: 'biz-secret',
+      }),
+    };
+    const manager = new IntegrationManager(credentialService as any);
+
+    await expect(
+      manager.getProviderCredentials('tiktok-business', 'org-1', 'profile-1')
+    ).resolves.toEqual({ clientId: 'biz-app', clientSecret: 'biz-secret' });
+    expect(credentialService.getRawShared).toHaveBeenCalledWith(
+      'org-1',
+      'tiktok-business',
+      'profile-1'
+    );
+  });
+
+  it('sem credencial salva cai nas variaveis TIKTOK_BUSINESS_*', async () => {
+    process.env.TIKTOK_BUSINESS_CLIENT_ID = 'env-biz';
+    process.env.TIKTOK_BUSINESS_CLIENT_SECRET = 'env-biz-secret';
+    const manager = new IntegrationManager({
+      getRawShared: jest.fn().mockResolvedValue(undefined),
+    } as any);
+
+    await expect(
+      manager.getProviderCredentials('tiktok-business', 'org-1')
+    ).resolves.toEqual({ clientId: 'env-biz', clientSecret: 'env-biz-secret' });
+  });
+});
+
 // CVE-2026-115931: POST /integrations/function executava QUALQUER metodo do
 // provider pelo nome vindo do cliente (ex.: readOrFetch -> readFileSync).
 describe('IntegrationManager.isDashboardCallable', () => {
@@ -63,6 +109,8 @@ describe('IntegrationManager.isDashboardCallable', () => {
   const dashboardCalls: Array<[string, string]> = [
     ['facebook', 'pages'],
     ['instagram', 'pages'],
+    ['instagram','audioSearch'],
+    ['tumblr','pages'],
     ['youtube', 'pages'],
     ['gmb', 'pages'],
     ['linkedin-page', 'companies'],
@@ -96,6 +144,8 @@ describe('IntegrationManager.isDashboardCallable', () => {
     ['wordpress', 'postTypes'],
     ['wordpress', 'categoriesList'],
     ['wordpress', 'tagsList'],
+    ['tiktok-business', 'musicSearch'],
+    ['tiktok-business', 'locationSearch'],
   ];
 
   it.each(dashboardCalls)(
@@ -147,3 +197,12 @@ describe('IntegrationManager.isDashboardCallable', () => {
     expect(manager.isDashboardCallable(provider('facebook'), 'scopes')).toBe(false);
   });
 });
+
+ describe('IntegrationManager - Tumblr',()=>{
+  it('registra Tumblr e resolve app pelo perfil sem alias',async()=>{
+   const credentials={getRawShared:jest.fn().mockResolvedValue({clientId:'tumblr-app',clientSecret:'tumblr-secret'})};const manager=new IntegrationManager(credentials as any);
+   expect(manager.getAllowedSocialsIntegrations()).toContain('tumblr');
+   expect(await manager.getProviderCredentials('tumblr','org','profile')).toEqual({clientId:'tumblr-app',clientSecret:'tumblr-secret'});
+   expect(credentials.getRawShared).toHaveBeenCalledWith('org','tumblr','profile');
+  });
+ });

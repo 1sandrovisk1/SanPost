@@ -30,7 +30,8 @@ export class ProfileRepository {
     private _profileMember: PrismaRepository<'profileMember'>,
     private _profilePersona: PrismaRepository<'profilePersona'>,
     private _userOrganization: PrismaRepository<'userOrganization'>,
-    private _tx: PrismaTransaction
+    private _tx: PrismaTransaction,
+    private _oauthAuth: PrismaRepository<'oAuthAuthorization'>
   ) {}
 
   getProfilesByOrgId(orgId: string) {
@@ -87,7 +88,12 @@ export class ProfileRepository {
 
   createProfile(
     orgId: string,
-    data: { name: string; slug: string; description?: string; avatarUrl?: string }
+    data: {
+      name: string;
+      slug: string;
+      description?: string;
+      avatarUrl?: string;
+    }
   ) {
     return this._profile.model.profile.create({
       data: {
@@ -103,7 +109,12 @@ export class ProfileRepository {
   updateProfile(
     orgId: string,
     profileId: string,
-    data: { name?: string; slug?: string; description?: string; avatarUrl?: string }
+    data: {
+      name?: string;
+      slug?: string;
+      description?: string;
+      avatarUrl?: string;
+    }
   ) {
     return this._profile.model.profile.update({
       where: { id: profileId, organizationId: orgId },
@@ -111,7 +122,10 @@ export class ProfileRepository {
     });
   }
 
-  deleteProfile(orgId: string, profileId: string): Promise<ProfileDeletionResult> {
+  deleteProfile(
+    orgId: string,
+    profileId: string
+  ): Promise<ProfileDeletionResult> {
     return this._tx.model.$transaction(async (tx) => {
       const deletedAt = new Date();
       const scope: {
@@ -230,7 +244,13 @@ export class ProfileRepository {
     });
   }
 
-  removeMember(profileId: string, userId: string) {
+  async removeMember(profileId: string, userId: string) {
+    // tokens de app OAuth que ele aprovou para este perfil deixam de valer (e
+    // nao voltam se ele for adicionado de novo)
+    await this._oauthAuth.model.oAuthAuthorization.updateMany({
+      where: { userId, profileId, revokedAt: null },
+      data: { revokedAt: new Date(), accessToken: null, authorizationCode: null },
+    });
     return this._profileMember.model.profileMember.delete({
       where: {
         profileId_userId: { profileId, userId },
@@ -381,7 +401,7 @@ export class ProfileRepository {
 
   getProfileByApiKey(apiKey: string) {
     return this._profile.model.profile.findFirst({
-      where: { apiKey, deletedAt: null },
+      where: { apiKey, deletedAt: null, organization: { deletedAt: null } },
       include: {
         organization: {
           include: {

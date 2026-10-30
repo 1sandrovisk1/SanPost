@@ -117,6 +117,50 @@ describe('startMcp', () => {
     process.env = originalEnv;
   });
 
+  it('anuncia protocolo dual-era sem forcar resposta JSON nos endpoints HTTP', async () => {
+    expect(MCPServer).toHaveBeenCalledWith(
+      expect.objectContaining({ protocolVersion: '2026-07-28' })
+    );
+    await handlers.get('/mcp')!(
+      request({ headers: { authorization: 'Bearer profile-key' } }),
+      response(),
+      jest.fn()
+    );
+    expect(mockStartHTTP.mock.calls[0][0].options).toEqual({
+      serverless: true,
+    });
+  });
+
+  it('encerra a assinatura apos dez segundos e limpa o timer no fechamento', async () => {
+    jest.useFakeTimers();
+    try {
+      const res = response();
+      const closeCallbacks: Array<() => void> = [];
+      res.once = jest.fn((_event: string, callback: () => void) => {
+        closeCallbacks.push(callback);
+        return res;
+      });
+      await handlers.get('/mcp')!(
+        request({
+          headers: {
+            authorization: 'Bearer profile-key',
+            'mcp-method': 'subscriptions/listen',
+          },
+        }),
+        res,
+        jest.fn()
+      );
+      await jest.advanceTimersByTimeAsync(9999);
+      expect(res.end).not.toHaveBeenCalled();
+      await jest.advanceTimersByTimeAsync(1);
+      expect(res.end).toHaveBeenCalledTimes(1);
+      closeCallbacks.forEach((close) => close());
+      expect(jest.getTimerCount()).toBe(0);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('serve os tres endpoints HTTP sem sessao e preserva o contexto por perfil', async () => {
     const contexts: Array<ReturnType<typeof getContext>> = [];
     mockStartHTTP.mockImplementation(async () => {
@@ -150,7 +194,6 @@ describe('startMcp', () => {
     for (const [{ options }] of mockStartHTTP.mock.calls) {
       expect(options).toEqual({
         serverless: true,
-        enableJsonResponse: true,
       });
       expect(options).not.toHaveProperty('sessionIdGenerator');
     }

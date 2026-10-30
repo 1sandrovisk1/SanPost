@@ -6,6 +6,18 @@ dos workflows `postWorkflowV101`, `postWorkflowV102` e, quando existir,
 não chama providers, não publica conteúdo e não substitui o smoke test real em
 prerelease.
 
+O mesmo comando aceita os workflows de longa duração cujo código mudou com
+`patched()` ou fila nova (porte do upstream `185044d5`/`1f5f24e5`, 28/10/2026):
+`autoPostWorkflow` (`autopost-<id>`), `missingPostWorkflow`
+(`missing-post-workflow`), `sendEmailWorkflow` (`send_email`, obsoleto mas
+ainda drenando) e `sendSingleEmailWorkflow` (`send_email_<uuid>`). Antes do
+deploy que leva esses patches, exporte o histórico da execução **em andamento**
+de `missing-post-workflow` e de um `autopost-*` ativo e rode o replay — as
+execuções abertas seguem o caminho antigo até o primeiro ciclo ao vivo e só
+então reciclam via `continueAsNew`. A spec
+`apps/orchestrator/src/replay/long-running-workflows-replay.spec.ts` faz o
+mesmo com históricos sintéticos de 30 ciclos no bundle real.
+
 ## Segurança dos históricos
 
 Um histórico pode conter argumentos e resultados de activities: texto do post,
@@ -94,6 +106,17 @@ Replay compativel: postWorkflowV102 (facebook-success-v102.json)
 
 Uma saída `Replay incompativel` bloqueia a migração. Registre apenas o tipo da
 falha e os nomes do workflow/arquivo; não anexe o histórico.
+
+Para os workflows de longa duração, exporte sem `--run-id` (pega a execução
+atual) e confira o tipo na saída:
+
+```bash
+temporal workflow show --workflow-id missing-post-workflow --output json \
+  > tmp/temporal-replay/missing-post.json
+pnpm temporal:replay-post -- tmp/temporal-replay/missing-post.json \
+  missing-post-workflow
+# Replay compativel: missingPostWorkflow (missing-post.json)
+```
 
 ## Matriz mínima para qualquer mudança ou rollout V112
 

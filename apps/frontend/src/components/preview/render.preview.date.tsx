@@ -1,4 +1,5 @@
 'use client';
+import { fromUtc } from '@gitroom/helpers/utils/user.timezone';
 
 import { FC } from 'react';
 import dayjs from 'dayjs';
@@ -13,5 +14,5 @@ dayjs.extend(localizedFormat);
 export const RenderPreviewDate: FC<{ date: string }> = ({ date }) => {
   const { i18n } = useTranslation();
   const lang = i18n.language?.toLowerCase().startsWith('pt') ? 'pt-br' : 'en';
-  return <>{dayjs.utc(date).local().locale(lang).format('LLL')}</>;
+  return <>{fromUtc(dayjs.utc(date)).locale(lang).format('LLL')}</>;
 };

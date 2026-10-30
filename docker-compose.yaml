@@ -23,6 +23,9 @@ services:
       # V112 e padrao; agendamentos legados futuros sao migrados automaticamente.
       IS_GENERAL: 'true'
       DISABLE_REGISTRATION: 'false'
+      # Anonymous preview comments (reCAPTCHA v2 checkbox; empty = disabled)
+      RECAPTCHA_SITE_KEY: '${RECAPTCHA_SITE_KEY:-}'
+      RECAPTCHA_SECRET_KEY: '${RECAPTCHA_SECRET_KEY:-}'
 
       # === Storage Settings
       STORAGE_PROVIDER: 'local'
@@ -79,6 +82,10 @@ services:
       YOUTUBE_CLIENT_SECRET: ''
       TIKTOK_CLIENT_ID: ''
       TIKTOK_CLIENT_SECRET: ''
+      TIKTOK_BUSINESS_CLIENT_ID: ''
+      TIKTOK_BUSINESS_CLIENT_SECRET: ''
+      TUMBLR_CLIENT_ID: ''
+      TUMBLR_CLIENT_SECRET: ''
       PINTEREST_CLIENT_ID: ''
       PINTEREST_CLIENT_SECRET: ''
       DRIBBBLE_CLIENT_ID: ''
@@ -103,9 +110,14 @@ services:
       MEWE_APP_ID: ''
       MEWE_HOST: ''
       WHOP_CLIENT_ID: ''
-      NEYNAR_CLIENT_ID: ''
-      NEYNAR_LOGIN_URL: ''
+      # Farcaster (Neynar managed signers) — docs/operations/farcaster-neynar.md
       NEYNAR_SECRET_KEY: ''
+      NEYNAR_APP_FID: ''
+      # frase de recuperação da conta do app (controla a conta inteira): defina
+      # via gerenciador de segredos/.env do deploy, nunca em texto neste arquivo
+      NEYNAR_APP_MNEMONIC: ''
+      NEYNAR_SPONSOR_SIGNERS: 'false'
+      NEYNAR_CLIENT_ID: '' # só liga o botão de login com Farcaster
       DATAFAST_API_KEY: ''
 
       # Chrome Extension Settings

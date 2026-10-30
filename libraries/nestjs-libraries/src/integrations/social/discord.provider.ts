@@ -410,6 +410,14 @@ export class DiscordProvider extends SocialAbstract implements SocialProvider {
       };
     }
 
+    if (body.includes('401: Unauthorized')) {
+      return {
+        type: 'bad-body',
+        value:
+          'Discord rejected the bot token. Contact the instance administrator to check the bot credentials.',
+      };
+    }
+
     return undefined;
   }
 }

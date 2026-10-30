@@ -6,6 +6,8 @@ import { NodeMailerProvider } from '@gitroom/nestjs-libraries/emails/node.mailer
 import { TemporalService } from 'nestjs-temporal-core';
 import { timer } from '@gitroom/helpers/utils/timer';
 import { emailT } from '@gitroom/nestjs-libraries/emails/i18n/email.i18n';
+import { randomUUID } from 'crypto';
+import { EmailDeliveryError } from '../emails/email.delivery.error';
 
 @Injectable()
 export class EmailService {
@@ -43,15 +45,19 @@ export class EmailService {
     replyTo?: string,
     lang?: string
   ) {
+    // mesmo filtro que o handler do antigo singleton `send_email` aplicava
+    if (!to || !subject) {
+      return undefined;
+    }
+
+    // Um workflow por e-mail na fila main; o envio roda nas filas de e-mail
+    // limitadas pelo servidor (email.queues.ts) — upstream 1f5f24e5.
     return this._temporalService.client
       .getRawClient()
-      ?.workflow.signalWithStart('sendEmailWorkflow', {
+      ?.workflow.start('sendSingleEmailWorkflow', {
         taskQueue: 'main',
-        workflowId: 'send_email',
-        signal: 'sendEmail',
-        args: [{ queue: [] }],
-        signalArgs: [{ to, subject, html, replyTo, addTo, lang }],
-        workflowIdConflictPolicy: 'USE_EXISTING',
+        workflowId: `send_email_${randomUUID()}`,
+        args: [{ to, subject, html, replyTo, addTo, lang }],
       });
   }
 
@@ -129,10 +135,9 @@ export class EmailService {
     </div>
     `;
 
-    let lastErr: unknown;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const sends = await this.emailService.sendEmail(
+        await this.emailService.sendEmail(
           to,
           subject,
           modifiedHtml,
@@ -140,16 +145,18 @@ export class EmailService {
           process.env.EMAIL_FROM_ADDRESS,
           replyTo
         );
-        console.log(sends);
         return;
       } catch (err) {
-        lastErr = err;
-        console.log(`Email attempt ${attempt + 1}/3 failed:`, err);
-        if (attempt < 2) {
-          await timer(700);
+        // Resultado de rede incerto nunca e reenviado: o provider pode ter aceitado.
+        if (
+          !(err instanceof EmailDeliveryError) ||
+          !err.retryable ||
+          attempt === 2
+        ) {
+          throw new EmailDeliveryError(false);
         }
+        await timer(700);
       }
     }
-    console.log(`Email to ${to} failed after 3 attempts:`, lastErr);
   }
 }

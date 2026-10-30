@@ -14,11 +14,12 @@ import {
   managedMediaSchema,
   managedSettingsSchema,
   managedTagsSchema,
+  POST_CONTENT_DESCRIPTION,
 } from '../../dtos/posts/post-management.dto';
 import { CreatePostDto } from '../../dtos/posts/create.post.dto';
 import { HttpException } from '@nestjs/common';
 import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validation';
-import { countLength, countLengthUnit } from '@gitroom/helpers/utils/count.length';
+import { countPostContent, countLengthUnit } from '@gitroom/helpers/utils/count.length';
 import { coerceJsonSettingValue, stringKeysOf } from './settings.value.coercion';
 import {
   isAllowedMediaPath,
@@ -52,7 +53,10 @@ export const schedulePostInputSchema = z
               .array(
                 z
                   .object({
-                    content: z.string().max(100000),
+                    content: z
+                      .string()
+                      .max(100000)
+                      .describe(POST_CONTENT_DESCRIPTION),
                     attachments: z
                       .array(z.string().max(4096))
                       .max(100)
@@ -175,7 +179,7 @@ export class IntegrationSchedulePostTool implements AgentToolInterface {
               )
                 fail('POST_TAG_NOT_FOUND');
             }
-            const value = post.postsAndComments.map((message) => {
+            const value = post.postsAndComments.map((message, index) => {
               if (message.attachments?.length && message.media?.length)
                 fail('AMBIGUOUS_POST_MEDIA');
               const images =
@@ -194,13 +198,8 @@ export class IntegrationSchedulePostTool implements AgentToolInterface {
                     checkPublicHttpsUrl(String(item.thumbnail)))
                 )
                   fail('POST_MEDIA_PATH_INVALID');
-              const content = stripHtmlValidation(
-                'normal',
-                message.content,
-                true
-              );
-              const length = countLength(provider.identifier, content);
-              if (length > (provider.maxLength(post.isPremium) || 1000000))
+              const length = countPostContent(provider.identifier, message.content, settings, index);
+              if (length > (provider.maxLength(post.isPremium, index === 0 ? settings : undefined) || 1000000))
                 fail(countLengthUnit(provider.identifier) === 'bytes' ? 'POST_CONTENT_TOO_LONG_BYTES' : 'POST_CONTENT_TOO_LONG');
               return {
                 id: makeId(10),

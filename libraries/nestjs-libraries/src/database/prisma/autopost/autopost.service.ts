@@ -10,6 +10,10 @@ import { ChatOpenAI, DallEAPIWrapper } from '@langchain/openai';
 import { JSDOM } from 'jsdom';
 import { z } from 'zod';
 import { ChatPromptTemplate } from '@langchain/core/prompts';
+import {
+  UNTRUSTED_SOURCE_RULE,
+  wrapUntrustedSource,
+} from '@gitroom/nestjs-libraries/ai/untrusted.source';
 import { PostsService } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.service';
 import Parser from 'rss-parser';
 import {
@@ -268,6 +272,7 @@ export class AutopostService {
         - Add line breaks between sentences (\\n) 
         - Don't add hashtags
         - Add emojis when needed
+        - {untrustedRule}
         
         'description':
         {content}
@@ -275,7 +280,9 @@ export class AutopostService {
     )
       .pipe(structuredOutput)
       .invoke({
-        content: description,
+        // item do feed vem de terceiros: dado, nunca instrucao
+        content: wrapUntrustedSource(description, state.load.url),
+        untrustedRule: UNTRUSTED_SOURCE_RULE,
       });
 
     return {
@@ -290,6 +297,7 @@ export class AutopostService {
       await ChatPromptTemplate.fromTemplate(
         `
         You are an assistant that gets description and generate a prompt that will be sent to DallE to generate pictures.
+        {untrustedRule}
         
         content:
         {content}
@@ -297,7 +305,13 @@ export class AutopostService {
       )
         .pipe(structuredOutput)
         .invoke({
-          content: state.load.description || state.description,
+          // texto do feed ou o post gerado a partir da pagina: ambos derivam
+          // de conteudo de terceiros
+          content: wrapUntrustedSource(
+            state.load.description || state.description,
+            state.load.url
+          ),
+          untrustedRule: UNTRUSTED_SOURCE_RULE,
         });
 
     const image = await dalle.invoke(generatedTextToBeSentToDallE);

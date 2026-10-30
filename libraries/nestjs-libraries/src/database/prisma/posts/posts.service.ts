@@ -1,3 +1,21 @@
+import { xArticleError } from '../../../integrations/social/x.article';
+import { instagramAudioError } from '../../../integrations/social/instagram.audio';
+import type { InstagramDto } from '../../../dtos/posts/providers-settings/instagram.dto';
+import { createHash } from 'crypto';
+import {
+  CommentPlacementInput,
+  CommentPlacement,
+  assertAnchorMatches,
+  hasPlacement,
+  sanitizeCommentContent,
+  sanitizeCommentName,
+  toPublicPreviewComments,
+  toMemberPreviewComments,
+  isAnonymousPreviewCommentEnabled,
+  verifyRecaptchaToken,
+  consumeRateLimit,
+} from './preview.comments';
+import { CreateAnonymousCommentDto } from '@gitroom/nestjs-libraries/dtos/comments/add.comment.dto';
 import {
   BadRequestException,
   HttpException,
@@ -36,7 +54,10 @@ import utc from 'dayjs/plugin/utc';
 import { MediaService } from '@gitroom/nestjs-libraries/database/prisma/media/media.service';
 import { ShortLinkService } from '@gitroom/nestjs-libraries/short-linking/short.link.service';
 import { CreateTagDto } from '@gitroom/nestjs-libraries/dtos/posts/create.tag.dto';
-import { minifyPostsList, minifyPosts } from '@gitroom/helpers/utils/posts.list.minify';
+import {
+  minifyPostsList,
+  minifyPosts,
+} from '@gitroom/helpers/utils/posts.list.minify';
 import sharp from 'sharp';
 import { readFileSync } from 'fs';
 import { getSsrfSafeAxios } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
@@ -204,7 +225,9 @@ export class PostsService {
     post: { profileId?: string | null } | null | undefined,
     profileId?: string
   ): boolean {
-    return !!post && (!profileId || !post.profileId || post.profileId === profileId);
+    return (
+      !!post && (!profileId || !post.profileId || post.profileId === profileId)
+    );
   }
 
   private assertPostInProfile(
@@ -225,7 +248,10 @@ export class PostsService {
     const post = await this._postRepository.getPostById(postId, orgId);
     this.assertPostInProfile(post, profileId);
     // post legado sem perfil: o canal tambem precisa ser do perfil
-    this.assertPostInProfile({ profileId: post?.integration?.profileId }, profileId);
+    this.assertPostInProfile(
+      { profileId: post?.integration?.profileId },
+      profileId
+    );
 
     // a URL e um bonus: conectar nao pode falhar quando ela nao vem
     // (upstream #2212)
@@ -344,7 +370,10 @@ export class PostsService {
     const post = await this._postRepository.getPostById(postId, orgId);
     this.assertPostInProfile(post, profileId);
     // post legado sem perfil: o canal tambem precisa ser do perfil
-    this.assertPostInProfile({ profileId: post?.integration?.profileId }, profileId);
+    this.assertPostInProfile(
+      { profileId: post?.integration?.profileId },
+      profileId
+    );
     if (!post?.releaseURL) {
       return { releaseURL: '' };
     }
@@ -396,7 +425,11 @@ export class PostsService {
           integration: getIntegration,
         }
       );
-      return { releaseURL: releaseURL || post.releaseURL, pending, unavailable };
+      return {
+        releaseURL: releaseURL || post.releaseURL,
+        pending,
+        unavailable,
+      };
     } catch (e) {
       if (e instanceof RefreshToken && !forceRefresh) {
         return this.getReleaseURL(orgId, postId, profileId, true);
@@ -408,7 +441,12 @@ export class PostsService {
 
     // falha (ou token recusado de novo): cliques seguidos nao voltam a
     // renovar o token nem a consultar a plataforma por 5 min
-    await ioRedis.set(`release-resolve:${orgId}:${post.id}`, 'pending', 'EX', 300);
+    await ioRedis.set(
+      `release-resolve:${orgId}:${post.id}`,
+      'pending',
+      'EX',
+      300
+    );
     return { releaseURL: post.releaseURL, pending: true };
   }
 
@@ -604,10 +642,13 @@ export class PostsService {
       },
     });
 
-    return await validationPipe.transform(mappedValues, {
+    const validated = await validationPipe.transform(mappedValues, {
       type: 'body',
       metatype: CreatePostDto,
     });
+    // Shared by create and the agent's edit/schedule actions.
+    await this.assertSocialExtras(organization, validated);
+    return validated;
   }
 
   async getPostsRecursively(
@@ -644,13 +685,21 @@ export class PostsService {
     return this._postRepository.getPosts(orgId, query, profileId);
   }
 
-  async getPostsMinified(orgId: string, query: GetPostsDto, profileId?: string) {
+  async getPostsMinified(
+    orgId: string,
+    query: GetPostsDto,
+    profileId?: string
+  ) {
     return minifyPosts({
       posts: await this._postRepository.getPosts(orgId, query, profileId),
     });
   }
 
-  async getPostsList(orgId: string, query: GetPostsListDto, profileId?: string) {
+  async getPostsList(
+    orgId: string,
+    query: GetPostsListDto,
+    profileId?: string
+  ) {
     return minifyPostsList(
       await this._postRepository.getPostsList(orgId, query, profileId)
     );
@@ -1092,8 +1141,8 @@ export class PostsService {
     return this._postRepository.countPostsFromDay(orgId, date);
   }
 
-  getPostByForWebhookId(id: string) {
-    return this._postRepository.getPostByForWebhookId(id);
+  getPostByForWebhookId(id: string, integrationId: string) {
+    return this._postRepository.getPostByForWebhookId(id, integrationId);
   }
 
   async startWorkflow(
@@ -1102,19 +1151,32 @@ export class PostsService {
     orgId: string,
     state: State,
     integration: { id: string; providerIdentifier: string },
-    options?: { strict?: boolean; stopOnly?: boolean; deadlineApplied?: boolean }
+    options?: {
+      strict?: boolean;
+      stopOnly?: boolean;
+      deadlineApplied?: boolean;
+    }
   ): Promise<void> {
-    if (options?.strict && state === 'PUBLISHED' && !options.stopOnly) throw new HttpException('POST_SYNC_STATE_UNSUPPORTED', 409);
+    if (options?.strict && state === 'PUBLISHED' && !options.stopOnly)
+      throw new HttpException('POST_SYNC_STATE_UNSUPPORTED', 409);
     if (options?.strict && !options.deadlineApplied) {
       const client = this._temporalService.client.getRawClient();
-      if (!client?.workflow?.withDeadline) throw new HttpException('POST_SCHEDULE_UNAVAILABLE', 503);
-      return client.workflow.withDeadline(Date.now() + 10000, () => this.startWorkflow(taskQueue, postId, orgId, state, integration, { ...options, deadlineApplied: true }));
+      if (!client?.workflow?.withDeadline)
+        throw new HttpException('POST_SCHEDULE_UNAVAILABLE', 503);
+      return client.workflow.withDeadline(Date.now() + 10000, () =>
+        this.startWorkflow(taskQueue, postId, orgId, state, integration, {
+          ...options,
+          deadlineApplied: true,
+        })
+      );
     }
     try {
       const workflows = this._temporalService.client
         .getRawClient()
         ?.workflow.list({
-            query: `postId=${JSON.stringify(postId)} AND ExecutionStatus="Running"`,
+          query: `postId=${JSON.stringify(
+            postId
+          )} AND ExecutionStatus="Running"`,
         });
 
       for await (const executionInfo of workflows) {
@@ -1128,9 +1190,17 @@ export class PostsService {
           ) {
             await workflow.terminate();
           }
-        } catch (err) { if (options?.strict && (err as Error)?.name !== 'WorkflowNotFoundError') throw err; }
+        } catch (err) {
+          if (
+            options?.strict &&
+            (err as Error)?.name !== 'WorkflowNotFoundError'
+          )
+            throw err;
+        }
       }
-    } catch (err) { if (options?.strict) throw err; }
+    } catch (err) {
+      if (options?.strict) throw err;
+    }
 
     if (state === 'DRAFT' || options?.stopOnly) {
       return;
@@ -1165,7 +1235,9 @@ export class PostsService {
             },
           ]),
         });
-    } catch (err) { if (options?.strict) throw err; }
+    } catch (err) {
+      if (options?.strict) throw err;
+    }
   }
 
   // Texto que o TikTok (nativo ou via Zernio) vai recusar e barrado na criacao
@@ -1187,6 +1259,70 @@ export class PostsService {
       if (tooLong) {
         throw new BadRequestException(tooLong);
       }
+    }
+  }
+
+  private async assertSocialExtras(orgId: string, body: CreatePostDto) {
+    if (body.type === 'draft') return;
+    for (const post of body.posts || []) {
+      const settings = post.settings as Omit<
+        Partial<InstagramDto>,
+        'post_type'
+      > & {
+        post_type?: string;
+        text_format_preset_id?: string;
+      };
+      if (
+        settings?.audio == null &&
+        !settings?.text_format_preset_id &&
+        settings?.post_type !== 'article' &&
+        post.value?.length <= 1
+      )
+        continue;
+      const integration = await this._integrationService.getIntegrationById(
+        orgId,
+        post.integration.id
+      );
+      if (!integration) throw new BadRequestException('Integration not found');
+      this.assertTumblrThread(
+        integration.providerIdentifier,
+        post.value?.length || 0
+      );
+      if (settings?.post_type === 'article') {
+        const error = xArticleError(
+          settings,
+          post.value.map((p) => p.image || []),
+          post.value.map((p) => p.content),
+          integration.providerIdentifier === 'x',
+          JSON.parse(integration.additionalSettings || '[]')
+        );
+        if (error) throw new BadRequestException(error);
+      }
+
+      if (settings?.audio != null) {
+        const error = instagramAudioError(
+          settings as Partial<InstagramDto>,
+          post.value?.[0]?.image || [],
+          integration.providerIdentifier === 'instagram'
+        );
+        if (error) throw new BadRequestException(error);
+      }
+      if (
+        settings?.text_format_preset_id &&
+        integration.providerIdentifier !== 'facebook'
+      ) {
+        throw new BadRequestException(
+          'Este fundo exige um canal nativo do Facebook.'
+        );
+      }
+    }
+  }
+
+  private assertTumblrThread(providerIdentifier: string, count: number) {
+    if (providerIdentifier === 'tumblr' && count > 1) {
+      throw new BadRequestException(
+        'Tumblr aceita um único post, sem blocos de comentários. Remova os blocos extras para este canal.'
+      );
     }
   }
 
@@ -1216,7 +1352,9 @@ export class PostsService {
     throw new BadRequestException(
       `This post was already published on ${dayjs
         .utc(post.publishDate)
-        .format('YYYY-MM-DD HH:mm')} UTC. Saving it this way would publish it again to ${
+        .format(
+          'YYYY-MM-DD HH:mm'
+        )} UTC. Saving it this way would publish it again to ${
         post.integration?.providerIdentifier || 'the channel'
       }. To edit without republishing, ${safeUpdate}. To intentionally publish again, pass republish: true.`
     );
@@ -1295,6 +1433,8 @@ export class PostsService {
         }
       }
     }
+
+    await this.assertSocialExtras(orgId, body);
 
     const postList = [];
     // lote (upstream a194e3f4): um por perfil de destino, so com mais de um
@@ -1383,7 +1523,12 @@ export class PostsService {
   }
 
   async changeState(id: string, state: State, err?: any, body?: any) {
-    const updated = await this._postRepository.changeState(id, state, err, body);
+    const updated = await this._postRepository.changeState(
+      id,
+      state,
+      err,
+      body
+    );
 
     if (state === 'ERROR') {
       // Histórico (fail-soft): registra a falha de publicação com snapshot do
@@ -1433,12 +1578,64 @@ export class PostsService {
   ) {
     const getPostById = await this._postRepository.getPostById(id, orgId);
 
-    if (profileId && getPostById?.profileId && getPostById.profileId !== profileId) {
+    if (
+      profileId &&
+      getPostById?.profileId &&
+      getPostById.profileId !== profileId
+    ) {
       throw new BadRequestException('Post does not belong to this profile');
     }
 
     if (action === 'schedule' && republish !== true) {
       this.guardAgainstRepublish(getPostById, 'changeDate');
+    }
+
+    if (
+      getPostById.integration.providerIdentifier === 'tumblr' &&
+      (action === 'schedule' || getPostById.state === 'QUEUE')
+    ) {
+      const chain = await this._postRepository.getPostsByGroup(
+        orgId,
+        getPostById.group
+      );
+      this.assertTumblrThread('tumblr', chain.length);
+    }
+
+    if (action === 'schedule' || getPostById.state === 'QUEUE') {
+      let settings: any;
+      try {
+        settings = JSON.parse(getPostById.settings || '{}');
+      } catch {
+        throw new BadRequestException('Configuração do post inválida.');
+      }
+      if (settings.post_type === 'article') {
+        if (getPostById.integration.providerIdentifier !== 'x')
+          throw new BadRequestException(
+            'Artigos exigem uma conexão nativa do X.'
+          );
+        const chain = await this.getPostsRecursively(
+          getPostById.id,
+          false,
+          orgId,
+          true
+        );
+        if (!chain.length)
+          throw new BadRequestException('Artigo não encontrado.');
+        let media: { path: string }[][];
+        try {
+          media = chain.map((p) => JSON.parse(p.image || '[]'));
+        } catch {
+          throw new BadRequestException('Mídia do artigo inválida.');
+        }
+        const error = xArticleError(
+          settings,
+          media,
+          chain.map((p) => p.content),
+          true,
+          JSON.parse(getPostById.integration.additionalSettings || '[]')
+        );
+        if (error) throw new BadRequestException(error);
+      }
     }
 
     // schedule: Set status to QUEUE and change date (reschedule the post)
@@ -1456,7 +1653,9 @@ export class PostsService {
         await this.startWorkflow(
           getPostById.integration.providerIdentifier.startsWith('zernio-')
             ? 'main'
-            : getPostById.integration.providerIdentifier.split('-')[0].toLowerCase(),
+            : getPostById.integration.providerIdentifier
+                .split('-')[0]
+                .toLowerCase(),
           getPostById.id,
           orgId,
           getPostById.state === 'DRAFT' ? 'DRAFT' : 'QUEUE',
@@ -1471,7 +1670,11 @@ export class PostsService {
     return newDate;
   }
 
-  async generatePostsDraft(orgId: string, body: CreateGeneratedPostsDto, profileId?: string) {
+  async generatePostsDraft(
+    orgId: string,
+    body: CreateGeneratedPostsDto,
+    profileId?: string
+  ) {
     const getAllIntegrations = (
       await this._integrationService.getIntegrationsList(orgId, profileId)
     ).filter((f) => !f.disabled && f.providerIdentifier !== 'reddit');
@@ -1511,43 +1714,47 @@ export class PostsService {
         const group = makeId(10);
         const randomDate = findTime();
 
-        await this.createPost(orgId, {
-          type: 'draft',
-          date: randomDate,
-          order: '',
-          shortLink: false,
-          tags: [],
-          posts: [
-            {
-              group,
-              integration: {
-                id: integration.id,
-              },
-              settings: {
-                __type: integration.providerIdentifier as any,
-                title: '',
-                tags: [],
-                subreddit: [],
-              },
-              value: [
-                ...toPost.list.map((l) => ({
-                  id: '',
-                  content: l.post,
-                  delay: 0,
-                  image: [],
-                })),
-                {
-                  id: '',
-                  delay: 0,
-                  content: `Check out the full story here:\n${
-                    body.postId || body.url
-                  }`,
-                  image: [],
+        await this.createPost(
+          orgId,
+          {
+            type: 'draft',
+            date: randomDate,
+            order: '',
+            shortLink: false,
+            tags: [],
+            posts: [
+              {
+                group,
+                integration: {
+                  id: integration.id,
                 },
-              ],
-            },
-          ],
-        }, profileId);
+                settings: {
+                  __type: integration.providerIdentifier as any,
+                  title: '',
+                  tags: [],
+                  subreddit: [],
+                },
+                value: [
+                  ...toPost.list.map((l) => ({
+                    id: '',
+                    content: l.post,
+                    delay: 0,
+                    image: [],
+                  })),
+                  {
+                    id: '',
+                    delay: 0,
+                    content: `Check out the full story here:\n${
+                      body.postId || body.url
+                    }`,
+                    image: [],
+                  },
+                ],
+              },
+            ],
+          },
+          profileId
+        );
       }
     }
   }
@@ -1564,7 +1771,19 @@ export class PostsService {
     return this._postRepository.findPopularPosts(category, topic);
   }
 
-  async findFreeDateTime(orgId: string, integrationId?: string, profileId?: string) {
+  async findFreeDateTime(
+    orgId: string,
+    integrationId?: string,
+    profileId?: string
+  ) {
+    // os horarios de um canal so para quem alcanca o canal (dashboard e API)
+    if (integrationId && profileId) {
+      await this._integrationService.validateIntegrationProfile(
+        orgId,
+        integrationId,
+        profileId
+      );
+    }
     const findTimes = await this._integrationService.findFreeDateTime(
       orgId,
       integrationId
@@ -1631,19 +1850,186 @@ export class PostsService {
     return date.clone().add(num, 'minutes').format('YYYY-MM-DDTHH:mm:00');
   }
 
-  // Fluxo guest (review link publico) — sem contexto de org.
-  getComments(postId: string) {
-    return this._postRepository.getComments(postId);
+  async getComments(postId: string) {
+    const thread = await this.previewThread(postId);
+    return toPublicPreviewComments(
+      await this._postRepository.getComments(thread.map((post) => post.id))
+    );
   }
 
-  // Fluxo autenticado (membro da org) — escopado por org e perfil.
   async getReviewComments(
     orgId: string,
     postId: string,
     requireProfileId?: string | null
   ) {
     await this.assertPostReviewAccess(orgId, postId, requireProfileId);
-    return this._postRepository.getComments(postId, orgId);
+    const thread = await this.previewThread(postId, orgId);
+    return toMemberPreviewComments(
+      await this._postRepository.getComments(
+        thread.map((post) => post.id),
+        orgId
+      )
+    );
+  }
+
+  private async previewThread(postId: string, orgId?: string) {
+    const thread = await this.getPostsRecursively(postId, false, orgId, true);
+    if (!thread.length) throw new HttpException('Post not found', 404);
+    return thread;
+  }
+
+  async resolvePreviewPlacement(
+    rootId: string,
+    input: CommentPlacementInput = {},
+    orgId?: string
+  ): Promise<CommentPlacement> {
+    const thread = await this.previewThread(rootId, orgId);
+    const target = thread.find((post) => post.id === (input.postId || rootId));
+    if (!target) throw new BadRequestException('Post is outside preview');
+    const hasAnchor =
+      input.anchorStart !== undefined ||
+      input.anchorEnd !== undefined ||
+      input.anchorQuote !== undefined;
+    if (input.parentId) {
+      if (hasAnchor)
+        throw new BadRequestException('Replies cannot have anchors');
+      const parent = await this._postRepository.getCommentForReply(
+        input.parentId
+      );
+      if (
+        !parent ||
+        parent.parentId ||
+        parent.resolvedAt ||
+        parent.kind !== 'COMMENT' ||
+        !thread.some((post) => post.id === parent.postId) ||
+        (input.postId && input.postId !== parent.postId)
+      ) {
+        throw new BadRequestException('Invalid reply');
+      }
+      return { postId: parent.postId, parentId: input.parentId };
+    }
+    if (hasAnchor) {
+      if (
+        !Number.isInteger(input.anchorStart) ||
+        !Number.isInteger(input.anchorEnd) ||
+        typeof input.anchorQuote !== 'string' ||
+        input.anchorQuote.length > 500
+      )
+        throw new BadRequestException('Invalid anchor');
+      assertAnchorMatches(
+        target.content,
+        input.anchorStart!,
+        input.anchorEnd!,
+        input.anchorQuote
+      );
+      return {
+        postId: target.id,
+        anchorStart: input.anchorStart,
+        anchorEnd: input.anchorEnd,
+        anchorQuote: input.anchorQuote,
+      };
+    }
+    return { postId: target.id };
+  }
+
+  async createAnonymousComment(
+    rootId: string,
+    body: CreateAnonymousCommentDto,
+    ip: string | null,
+    userAgent: string | null
+  ) {
+    if (!isAnonymousPreviewCommentEnabled())
+      throw new HttpException('Not found', 404);
+    const ipKey = createHash('sha256')
+      .update(ip || 'unknown')
+      .digest('hex');
+    await consumeRateLimit(`preview-comments:ip:${ipKey}`, 20, 3600);
+    await consumeRateLimit(`preview-comments:post:${rootId}:${ipKey}`, 10, 300);
+    const thread = await this.previewThread(rootId);
+    const content = sanitizeCommentContent(body.content);
+    const name = sanitizeCommentName(body.displayName);
+    if (!content || !name)
+      throw new BadRequestException('Name and comment required');
+    if (!(await verifyRecaptchaToken(body.recaptchaToken)))
+      throw new BadRequestException('Invalid captcha');
+    const placement = await this.resolvePreviewPlacement(
+      rootId,
+      body,
+      thread[0].organizationId
+    );
+    return this._postRepository.createComment(
+      thread[0].organizationId,
+      null,
+      placement.postId,
+      content,
+      'COMMENT',
+      {
+        ...placement,
+        guestName: name,
+        guestIp: ip?.slice(0, 64),
+        guestUserAgent: userAgent?.slice(0, 500),
+      }
+    );
+  }
+
+  private async assertCommentAccess(
+    orgId: string,
+    rootId: string,
+    commentId: string,
+    requireProfileId?: string | null
+  ) {
+    await this.assertPostReviewAccess(orgId, rootId, requireProfileId);
+    const comment = await this._postRepository.getCommentScope(
+      commentId,
+      orgId
+    );
+    if (!comment || comment.post.deletedAt)
+      throw new HttpException('Comment not found', 404);
+    if (
+      requireProfileId !== undefined &&
+      comment.post.profileId !== requireProfileId
+    )
+      throw new HttpException('Post is not in your profile', 403);
+    const thread = await this.previewThread(rootId, orgId);
+    if (!thread.some((post) => post.id === comment.postId))
+      throw new HttpException('Comment not found', 404);
+    return comment;
+  }
+
+  async resolveComment(
+    orgId: string,
+    rootId: string,
+    commentId: string,
+    resolved: boolean,
+    requireProfileId?: string | null
+  ) {
+    const comment = await this.assertCommentAccess(
+      orgId,
+      rootId,
+      commentId,
+      requireProfileId
+    );
+    if (comment.parentId || comment.kind !== 'COMMENT')
+      throw new BadRequestException(
+        'Only comment conversations can be resolved'
+      );
+    await this._postRepository.setCommentResolved(
+      commentId,
+      orgId,
+      resolved ? new Date() : null
+    );
+    return { success: true };
+  }
+
+  async deletePreviewComment(
+    orgId: string,
+    rootId: string,
+    commentId: string,
+    requireProfileId?: string | null
+  ) {
+    await this.assertCommentAccess(orgId, rootId, commentId, requireProfileId);
+    await this._postRepository.softDeleteComment(commentId, orgId);
+    return { success: true };
   }
 
   // Valida que o post pertence a org e, para membro restrito (org-USER), que
@@ -1670,17 +2056,40 @@ export class PostsService {
       kind: CommentKind;
       content: string;
       requireProfileId?: string | null;
+      placement?: CommentPlacementInput;
     }
   ) {
     await this.assertPostReviewAccess(orgId, postId, params.requireProfileId);
     if (params.kind === 'COMMENT' && !params.content?.trim()) {
       throw new HttpException('Comment is required', 400);
     }
+    if (!['COMMENT', 'APPROVAL', 'CHANGE_REQUEST'].includes(params.kind))
+      throw new BadRequestException('Invalid review kind');
+    if (params.kind !== 'COMMENT' && hasPlacement(params.placement))
+      throw new BadRequestException('Only comments accept placement');
+    const content = sanitizeCommentContent(params.content);
+    if (params.kind === 'COMMENT' && !content)
+      throw new BadRequestException('Comment required');
+    if (hasPlacement(params.placement)) {
+      const placement = await this.resolvePreviewPlacement(
+        postId,
+        params.placement,
+        orgId
+      );
+      return this._postRepository.createComment(
+        orgId,
+        userId,
+        placement.postId,
+        content,
+        params.kind,
+        placement
+      );
+    }
     return this._postRepository.createComment(
       orgId,
       userId,
       postId,
-      params.content ?? '',
+      content,
       params.kind
     );
   }

@@ -11,6 +11,10 @@ import { continueProviderList } from '@gitroom/frontend/components/new-launch/pr
 import { IntegrationContext } from '@gitroom/frontend/components/launches/helpers/use.integration';
 import { newDayjs } from '@gitroom/frontend/components/layout/set.timezone';
 import { useVariables } from '@gitroom/react/helpers/variable.context';
+import {
+  clearFarcasterCode,
+  peekFarcasterCode,
+} from '@gitroom/frontend/components/farcaster/farcaster.code';
 
 interface TwoStepState {
   integrationId: string;
@@ -58,6 +62,13 @@ export const ContinueIntegration: FC<{
     [logged, push]
   );
   const modifiedParams = useMemo(() => {
+    // Farcaster: o code (requestId do signer) vem da aba, nunca da URL
+    if (provider === 'wrapcast') {
+      return {
+        ...searchParams,
+        code: peekFarcasterCode('connect'),
+      };
+    }
     if (provider === 'mewe') {
       return {
         state: searchParams.state || '',
@@ -69,6 +80,16 @@ export const ContinueIntegration: FC<{
       return {
         state: searchParams.oauth_token || '',
         code: searchParams.oauth_verifier || '',
+        refresh: searchParams.refresh || '',
+      };
+    }
+
+    if (provider === 'tiktok-business') {
+      // a Business API volta com `auth_code` em vez de `code`; sem ele o
+      // backend falha cedo com a mensagem certa (consentimento recusado)
+      return {
+        state: searchParams.state || '',
+        code: searchParams.auth_code || searchParams.code || '',
         refresh: searchParams.refresh || '',
       };
     }
@@ -97,20 +118,32 @@ export const ContinueIntegration: FC<{
 
   useEffect(() => {
     (async () => {
-      if (provider === 'facebook' && typeof searchParams.state === 'string' && searchParams.state.startsWith('fbauto_')) {
+      if (
+        provider === 'facebook' &&
+        typeof searchParams.state === 'string' &&
+        searchParams.state.startsWith('fbauto_')
+      ) {
         // React dev effects may replay; a one-use OAuth state must be exchanged once.
         if (facebookAutomationStarted.current) return;
         facebookAutomationStarted.current = true;
         try {
-          if (searchParams.error || !searchParams.code) throw new Error('OAUTH_CANCELLED');
+          if (searchParams.error || !searchParams.code)
+            throw new Error('OAUTH_CANCELLED');
           const response = await fetch('/facebook-automations/complete', {
             method: 'POST',
-            body: JSON.stringify({ state: searchParams.state, code: searchParams.code }),
+            body: JSON.stringify({
+              state: searchParams.state,
+              code: searchParams.code,
+            }),
           });
           if (!response.ok) throw new Error('OAUTH_FAILED');
           const result = await response.json();
           window.history.replaceState({}, '', '/integrations/social/facebook');
-          push(`/settings?tab=credentials&facebookAutomation=${encodeURIComponent(result.integrationId)}`);
+          push(
+            `/settings?tab=credentials&facebookAutomation=${encodeURIComponent(
+              result.integrationId
+            )}`
+          );
         } catch {
           window.history.replaceState({}, '', '/integrations/social/facebook');
           setErrorMessage(t('fb_auto_oauth_error'));
@@ -118,7 +151,10 @@ export const ContinueIntegration: FC<{
         }
         return;
       }
-      const timezone = String(dayjs.tz().utcOffset());
+      const timezone = String(newDayjs().utcOffset());
+      if (provider === 'wrapcast') {
+        clearFarcasterCode('connect');
+      }
 
       // Try public endpoint first (handles both public and fallback scenarios)
       let data = await fetch(`/integrations/social-connect/${provider}`, {
@@ -227,9 +263,10 @@ export const ContinueIntegration: FC<{
       }
 
       navigateOrShow(
-        `/launches?added=${provider}&msg=${t('channel_updated', 'Channel Updated')}${
-          onboarding ? '&onboarding=true' : ''
-        }`,
+        `/launches?added=${provider}&msg=${t(
+          'channel_updated',
+          'Channel Updated'
+        )}${onboarding ? '&onboarding=true' : ''}`,
         returnURL,
         t('channel_updated', 'Channel Updated')
       );
@@ -259,16 +296,21 @@ export const ContinueIntegration: FC<{
         ) {
           const errorData = await response.json().catch(() => ({}));
           setErrorMessage(
-            errorData.message || t('failed_to_save_channel', 'Failed to save channel configuration')
+            errorData.message ||
+              t(
+                'failed_to_save_channel',
+                'Failed to save channel configuration'
+              )
           );
           setError(true);
           return;
         }
 
         navigateOrShow(
-          `/launches?added=${provider}&msg=${t('channel_added', 'Channel Added')}${
-            twoStepState.onboarding ? '&onboarding=true' : ''
-          }`,
+          `/launches?added=${provider}&msg=${t(
+            'channel_added',
+            'Channel Added'
+          )}${twoStepState.onboarding ? '&onboarding=true' : ''}`,
           twoStepState.returnURL,
           t('channel_added', 'Channel Added')
         );
@@ -289,10 +331,12 @@ export const ContinueIntegration: FC<{
   const providerDisplayName = useMemo(() => {
     const names: Record<string, string> = {
       facebook: 'Facebook',
+      tumblr: 'Tumblr',
       instagram: 'Instagram',
       'linkedin-page': 'LinkedIn',
       youtube: 'YouTube',
       gmb: 'Google Business',
+      'tiktok-business': 'TikTok Business',
     };
     return names[provider] || provider;
   }, [provider]);
@@ -430,7 +474,17 @@ export const ContinueIntegration: FC<{
                 'An error occurred. Please try again.'
               )}
           </div>
-          {logged && <Redirect url={provider === 'facebook' && searchParams.state?.startsWith('fbauto_') ? '/settings?tab=credentials&facebookAutomation=error' : '/launches'} delay={3000} />}
+          {logged && (
+            <Redirect
+              url={
+                provider === 'facebook' &&
+                searchParams.state?.startsWith('fbauto_')
+                  ? '/settings?tab=credentials&facebookAutomation=error'
+                  : '/launches'
+              }
+              delay={3000}
+            />
+          )}
         </div>
       </div>
     );

@@ -17,7 +17,8 @@ export class OrganizationRepository {
     private _organization: PrismaRepository<'organization'>,
     private _userOrg: PrismaRepository<'userOrganization'>,
     private _user: PrismaRepository<'user'>,
-    private _profileMember: PrismaRepository<'profileMember'>
+    private _profileMember: PrismaRepository<'profileMember'>,
+    private _oauthAuth: PrismaRepository<'oAuthAuthorization'>
   ) {}
 
   createMaxUser(id: string, name: string, saasName: string, email: string) {
@@ -71,6 +72,7 @@ export class OrganizationRepository {
     return this._organization.model.organization.findFirst({
       where: {
         apiKey: api,
+        deletedAt: null,
       },
       include: {
         subscription: {
@@ -92,6 +94,7 @@ export class OrganizationRepository {
     return this._userOrg.model.userOrganization.findFirst({
       where: {
         id,
+        organization: { deletedAt: null },
       },
       select: {
         user: true,
@@ -121,6 +124,7 @@ export class OrganizationRepository {
   getImpersonateUser(name: string) {
     return this._userOrg.model.userOrganization.findMany({
       where: {
+        organization: { deletedAt: null },
         OR: [
           {
             organizationId: {
@@ -184,6 +188,7 @@ export class OrganizationRepository {
   async getOrgsByUserId(userId: string) {
     return this._organization.model.organization.findMany({
       where: {
+        deletedAt: null,
         users: {
           some: {
             userId,
@@ -215,6 +220,7 @@ export class OrganizationRepository {
   async getOrgById(id: string) {
     return this._organization.model.organization.findUnique({
       where: {
+        deletedAt: null,
         id,
       },
     });
@@ -248,11 +254,14 @@ export class OrganizationRepository {
       await this._organization.model.organization.findFirst({
         where: {
           id: orgId,
+          deletedAt: null,
         },
         select: {
           subscription: true,
         },
       });
+
+    if (!checkForSubscription) return false;
 
     if (
       process.env.STRIPE_PUBLISHABLE_KEY &&
@@ -352,9 +361,7 @@ export class OrganizationRepository {
       data: {
         activated: body.provider !== 'LOCAL' || !hasEmail,
         email: body.email,
-        password: body.password
-          ? AuthService.hashPassword(body.password)
-          : '',
+        password: body.password ? AuthService.hashPassword(body.password) : '',
         providerName: body.provider,
         providerId: body.providerId || '',
         timezone: 0,
@@ -438,7 +445,9 @@ export class OrganizationRepository {
                 // Perfis (e funcao no perfil) do membro NESTA org — para a tela
                 // de equipe mostrar "Fulano = Visualizador no Dell".
                 profileMembers: {
-                  where: { profile: { organizationId: orgId, deletedAt: null } },
+                  where: {
+                    profile: { organizationId: orgId, deletedAt: null },
+                  },
                   select: {
                     role: true,
                     profile: { select: { id: true, name: true } },
@@ -526,10 +535,12 @@ export class OrganizationRepository {
     return this._organization.model.organization.findUnique({
       where: {
         id: orgId,
+        deletedAt: null,
       },
       select: {
         language: true,
         users: {
+          where: { disabled: false },
           select: {
             role: true,
             user: {
@@ -567,6 +578,12 @@ export class OrganizationRepository {
         userId,
         profile: { organizationId: orgId },
       },
+    });
+    // apps OAuth que ele aprovou nesta org deixam de valer (e nao voltam se
+    // ele for reconvidado)
+    await this._oauthAuth.model.oAuthAuthorization.updateMany({
+      where: { userId, organizationId: orgId, revokedAt: null },
+      data: { revokedAt: new Date(), accessToken: null, authorizationCode: null },
     });
     return this._userOrg.model.userOrganization.delete({
       where: {

@@ -5,6 +5,12 @@ import {
   withProvider,
 } from '@gitroom/frontend/components/new-launch/providers/high.order.provider';
 import { FC } from 'react';
+import { useIntegration } from '@gitroom/frontend/components/launches/helpers/use.integration';
+import { InstagramAudioSelector } from './instagram.audio';
+import {
+  instagramAudioError,
+  isInstagramVideo,
+} from '@gitroom/nestjs-libraries/integrations/social/instagram.audio';
 import { Select } from '@gitroom/react/form/select';
 import { Checkbox } from '@gitroom/react/form/checkbox';
 import { useSettings } from '@gitroom/frontend/components/launches/helpers/use.values';
@@ -40,6 +46,14 @@ const InstagramCollaborators: FC<{
   const t = useT();
   const { watch, register, formState, control } = useSettings();
   const postCurrentType = watch('post_type');
+  const { integration, value } = useIntegration();
+  const selectedAudio = watch('audio');
+  const supportsAudio = integration?.identifier === 'instagram';
+  const audioDisabled =
+    !supportsAudio ||
+    postCurrentType === 'story' ||
+    value?.[0]?.image?.length !== 1 ||
+    !isInstagramVideo(value?.[0]?.image?.[0]?.path || '');
   const isTrialReel = watch('is_trial_reel');
   return (
     <>
@@ -72,7 +86,10 @@ const InstagramCollaborators: FC<{
             {...register('is_trial_reel', {
               value: false,
             })}
-            label={t('trial_reel', 'Trial Reel (share only to non-followers first)')}
+            label={t(
+              'trial_reel',
+              'Trial Reel (share only to non-followers first)'
+            )}
           />
 
           {isTrialReel && (
@@ -103,6 +120,9 @@ const InstagramCollaborators: FC<{
           />
         </div>
       )}
+      {(supportsAudio || selectedAudio?.id) && (
+        <InstagramAudioSelector disabled={audioDisabled} />
+      )}
     </>
   );
 };
@@ -112,7 +132,20 @@ export default withProvider<InstagramDto>({
   SettingsComponent: InstagramCollaborators,
   CustomPreviewComponent: InstagramPreview,
   dto: InstagramDto,
-  checkValidity: async ([firstPost, ...otherPosts] = [], settings) => {
+  checkValidity: async (
+    [firstPost, ...otherPosts] = [],
+    settings,
+    _text,
+    _t,
+    identifier
+  ) => {
+    const audioError = instagramAudioError(
+      settings,
+      firstPost || [],
+      identifier === 'instagram'
+    );
+    if (audioError)
+      return _t?.('instagram_audio_constraints', audioError) || audioError;
     if (!firstPost?.length) {
       return 'Should have at least one media';
     }
@@ -153,5 +186,5 @@ export default withProvider<InstagramDto>({
     return true;
   },
   maximumCharacters: 2200,
-  comments: 'no-media'
+  comments: 'no-media',
 });

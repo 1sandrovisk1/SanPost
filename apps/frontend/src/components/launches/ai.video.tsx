@@ -449,7 +449,7 @@ export const AiVideo: FC<{
               }
             : {})}
           className={clsx(
-            'cursor-pointer h-[30px] rounded-[6px] justify-center items-center flex bg-newColColor px-[8px]',
+            'cursor-pointer h-[30px] mobile:h-[40px] mobile:min-w-[40px] rounded-[6px] mobile:rounded-[8px] justify-center items-center flex bg-newColColor px-[8px]',
             !hasCredits && 'opacity-50 pointer-events-none'
           )}
           onClick={() => hasCredits && setModal(true)}

@@ -15,7 +15,7 @@ const userOrg = { id: 'org-1', users: [{ role: 'USER' }] } as any;
 const adminOrg = { id: 'org-1', users: [{ role: 'ADMIN' }] } as any;
 const profile = { id: 'prof-1' } as any;
 
-const build = (channelProfileId: string | null) => {
+const build = (channelProfileId: string | null, found = true) => {
   const provider: any = {
     revokeToken: jest.fn().mockResolvedValue(undefined),
     generateAuthUrl: jest
@@ -31,6 +31,9 @@ const build = (channelProfileId: string | null) => {
     getIntegrationsByInternalId: jest.fn().mockResolvedValue([
       { id: 'int-9', organizationId: 'org-1', profileId: channelProfileId, token: 'OLD' },
     ]),
+    getChannelProfileByInternalId: jest
+      .fn()
+      .mockResolvedValue(found ? { profileId: channelProfileId } : null),
   };
   const controller = new IntegrationsController(
     manager as any,
@@ -39,20 +42,33 @@ const build = (channelProfileId: string | null) => {
     {} as any,
     {} as any,
     {} as any,
+    {} as any,
     {} as any
   );
-  return { controller, provider };
+  return { controller, provider, integrationService };
 };
 
 // Reconectar com ?refresh=<internalId> revoga o token antigo no provider
 // (Google): so de um canal que o membro alcanca.
 describe('IntegrationsController GET /social/:integration (refresh)', () => {
-  it('USER nao revoga token de canal de outro perfil', async () => {
-    const { controller, provider } = build('prof-2');
+  it('USER nao reconecta canal de outro perfil (nem desativado)', async () => {
+    const { controller, provider, integrationService } = build('prof-2');
+    await expect(
+      controller.getIntegrationUrl('youtube', 'yt-1', '', '', userOrg, profile)
+    ).rejects.toMatchObject({ status: 403 });
+    expect(integrationService.getChannelProfileByInternalId).toHaveBeenCalledWith(
+      'org-1',
+      'yt-1'
+    );
+    expect(provider.revokeToken).not.toHaveBeenCalled();
+    expect(provider.generateAuthUrl).not.toHaveBeenCalled();
+  });
+
+  it('USER com refresh de canal inexistente segue para o consent', async () => {
+    const { controller } = build(null, false);
     await expect(
       controller.getIntegrationUrl('youtube', 'yt-1', '', '', userOrg, profile)
     ).resolves.toEqual({ url: 'https://auth.example' });
-    expect(provider.revokeToken).not.toHaveBeenCalled();
   });
 
   it('USER do mesmo perfil, canal legado sem perfil e admin revogam', async () => {
@@ -67,5 +83,7 @@ describe('IntegrationsController GET /social/:integration (refresh)', () => {
     const admin = build('prof-2');
     await admin.controller.getIntegrationUrl('youtube', 'yt-1', '', '', adminOrg, profile);
     expect(admin.provider.revokeToken).toHaveBeenCalled();
+    // admin nao passa pela checagem de perfil
+    expect(admin.integrationService.getChannelProfileByInternalId).not.toHaveBeenCalled();
   });
 });

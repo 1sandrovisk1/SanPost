@@ -140,6 +140,12 @@ export class IntegrationRepository {
     return this._plugs.model.plugs.findFirst({
       where: {
         id: plugId,
+        activated: true,
+        integration: {
+          deletedAt: null,
+          disabled: false,
+          organization: { deletedAt: null },
+        },
       },
       include: {
         integration: true,
@@ -517,6 +523,7 @@ export class IntegrationRepository {
         organizationId: org,
         id,
         deletedAt: null,
+        organization: { deletedAt: null },
         AND: [
           { OR: [{ profileId: null }, { clientProfile: { deletedAt: null } }] },
           ...(profileId ? [{ OR: [{ profileId }, { profileId: null }] }] : []),

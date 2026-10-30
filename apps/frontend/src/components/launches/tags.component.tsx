@@ -24,6 +24,7 @@ export const TagsComponent: FC<{
   name: string;
   label: string;
   initial: any[];
+  list?: boolean;
   onChange: (event: {
     target: {
       value: any[];
@@ -51,6 +52,7 @@ export const TagsComponentInner: FC<{
   label: string;
   initial: any[];
   allTags: any;
+  list?: boolean;
   mutate: () => Promise<any>;
   onChange: (event: {
     target: {
@@ -58,7 +60,7 @@ export const TagsComponentInner: FC<{
       name: string;
     };
   }) => void;
-}> = ({ initial, onChange, name, mutate, allTags: data }) => {
+}> = ({ initial, onChange, name, mutate, allTags: data, list }) => {
   const t = useT();
   const fetch = useFetch();
   const [isOpen, setIsOpen] = useState(false);
@@ -111,6 +113,25 @@ export const TagsComponentInner: FC<{
     }
   }, [tagValue, name, onChange, mutate, modals, t]);
 
+  const toggleTag = useCallback(
+    (tag: any) => () => {
+      const modify = tagValue.some((value) => value.id === tag.id)
+        ? tagValue.filter((value) => value.id !== tag.id)
+        : [...tagValue, tag];
+      setTagValue(modify);
+      onChange({
+        target: {
+          value: modify.map((value) => ({
+            label: value.name,
+            value: value.name,
+          })),
+          name,
+        },
+      });
+    },
+    [tagValue, name, onChange]
+  );
+
   const editTag = useCallback(
     async (tag: any, e: React.MouseEvent) => {
       setAllowClose(false);
@@ -137,9 +158,7 @@ export const TagsComponentInner: FC<{
         if (val) {
           const updated = newValues.tags.find((p: any) => p.id === tag.id);
           if (updated && tagValue.find((a) => a.id === tag.id)) {
-            const modify = tagValue.map((a) =>
-              a.id === tag.id ? updated : a
-            );
+            const modify = tagValue.map((a) => (a.id === tag.id ? updated : a));
             setTagValue(modify);
             onChange({
               target: {
@@ -212,6 +231,42 @@ export const TagsComponentInner: FC<{
     [tagValue, name, onChange, mutate, fetch, modals, t]
   );
 
+  if (list) {
+    return (
+      <div className="flex flex-col gap-[12px]">
+        {(data?.tags || []).map((p: any) => (
+          <div
+            onClick={toggleTag(p)}
+            key={p.name}
+            className="min-h-[40px] flex gap-[8px] items-center cursor-pointer select-none"
+          >
+            <div className="flex-1 flex">
+              <span
+                className="text-[14px] font-[600] text-[#fff] px-[12px] pt-[4px] pb-[6px] rounded-[6px] text-shadow-tags break-all"
+                style={{ backgroundColor: p.color }}
+              >
+                {p.name}
+              </span>
+            </div>
+            <Check
+              onChange={() => {}}
+              value={!!tagValue.find((a) => a.id === p.id)}
+            />
+          </div>
+        ))}
+        <div
+          onClick={addTag}
+          className="cursor-pointer gap-[8px] flex w-full h-[44px] rounded-[8px] px-[16px] justify-center items-center bg-[#D82D7E] text-white select-none"
+        >
+          <PlusIcon size={20} />
+          <div className="text-[15px] font-[600]">
+            {t('add_new_tag', 'Add New Tag')}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       ref={ref}
@@ -252,25 +307,7 @@ export const TagsComponentInner: FC<{
         <div className="z-[300] absolute start-0 bottom-[100%] w-[240px] bg-newBgColorInner p-[12px] menu-shadow -translate-y-[10px] flex flex-col">
           {(data?.tags || []).map((p: any) => (
             <div
-              onClick={() => {
-                const exists = !!tagValue.find((a) => a.id === p.id);
-                let modify = [];
-                if (exists) {
-                  modify = tagValue.filter((a) => a.id !== p.id);
-                } else {
-                  modify = [...tagValue, p];
-                }
-                setTagValue(modify);
-                onChange({
-                  target: {
-                    value: modify.map((p: any) => ({
-                      label: p.name,
-                      value: p.name,
-                    })),
-                    name,
-                  },
-                });
-              }}
+              onClick={toggleTag(p)}
               key={p.name}
               className="min-h-[40px] py-[8px] px-[20px] -mx-[12px] flex gap-[8px] items-center group"
             >
@@ -319,10 +356,10 @@ export const TagsComponentInner: FC<{
   );
 };
 
-const Check: FC<{ value: boolean; onChange: (value: boolean) => void }> = ({
-  value,
-  onChange,
-}) => {
+export const Check: FC<{
+  value: boolean;
+  onChange: (value: boolean) => void;
+}> = ({ value, onChange }) => {
   return (
     <div
       onClick={() => onChange(!value)}

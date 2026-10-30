@@ -10,6 +10,11 @@ const REDACTIONS: Array<[RegExp, string]> = [
   [new RegExp(`(^|[?&\\s;,(])(${SECRET_NAME})=([^&\\s"',;)]+)`, 'gi'), '$1$2=[redacted]'],
   // JSON: "nome": "valor"
   [new RegExp(`"(${SECRET_NAME})"\\s*:\\s*"[^"]*"`, 'gi'), '"$1":"[redacted]"'],
+  // JSON escapado dentro de outro texto/JSON: \"nome\": \"valor\"
+  [
+    new RegExp(`\\\\"(${SECRET_NAME})\\\\"\\s*:\\s*\\\\"(?:[^"\\\\]|\\\\[^"])*\\\\"`, 'gi'),
+    '\\"$1\\":\\"[redacted]\\"',
+  ],
   // objeto impresso (ex.: invocacao do Prisma): nome: "valor"
   [new RegExp(`\\b(${SECRET_NAME})\\s*:\\s*"[^"]*"`, 'gi'), '$1: "[redacted]"'],
   // Authorization: Bearer xxx
@@ -21,6 +26,10 @@ const REDACTIONS: Array<[RegExp, string]> = [
   // credenciais embutidas na URL
   [/([a-z][a-z0-9+.-]*:\/\/)[^\s/@:]+:[^\s/@]+@/gi, '$1[redacted]@'],
 ];
+
+// nome de campo que costuma guardar segredo (chave de objeto logado)
+const SECRET_KEY = new RegExp(`^(?:${SECRET_NAME})$`, 'i');
+export const isSecretKey = (key: string) => SECRET_KEY.test(key);
 
 /** Redige pares nome=valor, JSON, Bearer, chaves conhecidas e credenciais em URL. */
 export const redactSecrets = (message: string) => {

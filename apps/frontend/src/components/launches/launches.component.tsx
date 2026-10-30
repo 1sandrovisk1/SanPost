@@ -32,6 +32,7 @@ import { PlatformIconBadge } from '@gitroom/frontend/components/launches/helpers
 import useCookie from 'react-use-cookie';
 import { Onboarding } from '@gitroom/frontend/components/onboarding/onboarding';
 import { useModals } from '@gitroom/frontend/components/layout/new-modal';
+import { useOpenWeb3 } from '@gitroom/frontend/components/launches/web3/use.open.web3';
 import { Input } from '@gitroom/react/form/input';
 import { Button } from '@gitroom/react/form/button';
 
@@ -459,6 +460,7 @@ export const LaunchesComponent = () => {
   const fireEvents = useFireEvents();
   const t = useT();
   const modal = useModals();
+  const openWeb3 = useOpenWeb3();
   const [reload, setReload] = useState(false);
   const [collapseMenu, setCollapseMenu] = useCookie('collapseMenu', '0');
   const [mode] = useCookie('mode', 'dark');
@@ -570,6 +572,15 @@ export const LaunchesComponent = () => {
           return;
         }
 
+        // Farcaster/Telegram/Moltbook nao tem URL OAuth: reconectam pelo modal
+        if (
+          await openWeb3(integration.identifier, {
+            refresh: integration.internalId,
+          })
+        ) {
+          return;
+        }
+
         const { url } = await (
           await fetch(
             `/integrations/social/${integration.identifier}?refresh=${integration.internalId}`,
@@ -580,7 +591,7 @@ export const LaunchesComponent = () => {
         ).json();
         window.location.href = url;
       },
-    []
+    [openWeb3]
   );
   useEffect(() => {
     if (typeof window === 'undefined') {

@@ -1,4 +1,8 @@
 import DOMPurify from 'isomorphic-dompurify';
+import {
+  MediaPrefix,
+  rewriteInlineImages,
+} from '@gitroom/helpers/utils/inline.images';
 
 const ALLOWED_TAGS = [
   'p',
@@ -7,11 +11,13 @@ const ALLOWED_TAGS = [
   'u',
   'a',
   'ul',
+  'ol',
   'li',
   'h1',
   'h2',
   'h3',
   'span',
+  'img',
 ];
 
 const ALLOWED_ATTR = [
@@ -21,9 +27,21 @@ const ALLOWED_ATTR = [
   'class',
   'data-mention-id',
   'data-mention-label',
+  'src',
+  'alt',
 ];
 
-export const sanitizePostContent = (value: unknown): string => {
+// Imagem inline (upstream 2aae02fe). O upstream registra um hook global no
+// DOMPurify que so derruba <img> sem http(s); o hook global tambem valeria
+// para sanitizeChatContent (mesma instancia). Aqui o DOMPurify tira os
+// atributos perigosos e rewriteInlineImages deixa so a midia da instancia
+// (FRONTEND_URL/uploads ou bucket R2) com src e alt — data:, javascript:,
+// outro host e caminho relativo caem. No navegador, sem `mediaPrefixes`, toda
+// imagem cai (o ambiente do servidor nao existe ali).
+export const sanitizePostContent = (
+  value: unknown,
+  mediaPrefixes?: MediaPrefix[]
+): string => {
   if (typeof value !== 'string' || !value) {
     return '';
   }
@@ -35,9 +53,12 @@ export const sanitizePostContent = (value: unknown): string => {
     '<$1p>'
   );
 
-  return DOMPurify.sanitize(paragraphs, {
-    ALLOWED_TAGS,
-    ALLOWED_ATTR,
-    ALLOWED_URI_REGEXP: /^(?:https?:|mailto:|\/|#)/i,
-  });
+  return rewriteInlineImages(
+    DOMPurify.sanitize(paragraphs, {
+      ALLOWED_TAGS,
+      ALLOWED_ATTR,
+      ALLOWED_URI_REGEXP: /^(?:https?:|mailto:|\/|#)/i,
+    }),
+    { prefixes: mediaPrefixes }
+  );
 };

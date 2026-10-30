@@ -1,4 +1,5 @@
 'use client';
+import { fromUtc } from '@gitroom/helpers/utils/user.timezone';
 
 import 'reflect-metadata';
 import { FC, useCallback } from 'react';
@@ -57,7 +58,7 @@ export const StandaloneModal: FC = () => {
       integrations={integrations}
       reopenModal={() => {}}
       allIntegrations={integrations}
-      date={dayjs.utc(data).local()}
+      date={fromUtc(dayjs.utc(data))}
     />
   );
 };

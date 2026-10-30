@@ -11,10 +11,14 @@ export const managedMediaSchema = z
     thumbnail: z.string().url().max(4096).optional(),
   })
   .strict();
+// upstream 28701a98: o contrato do conteudo cita a imagem inline. O src so
+// sobrevive ao sanitizer se for midia da instancia (inline.images.ts).
+export const POST_CONTENT_DESCRIPTION =
+  'Conteúdo do post em HTML: cada linha dentro de <p>; tags aceitas: h1, h2, h3, u, strong, li, ul, p (sem u e strong juntos) e img (<img src="...">) só quando as regras do canal (integrationSchema) dizem que as imagens vão dentro do conteúdo — o src precisa ser o path de uma imagem da biblioteca de mídia (mediaListTool ou generateImageTool); outro src é removido.';
 export const managedMessageSchema = z
   .object({
     id: id.optional(),
-    content: z.string().max(100000),
+    content: z.string().max(100000).describe(POST_CONTENT_DESCRIPTION),
     delay: z
       .number()
       .int()

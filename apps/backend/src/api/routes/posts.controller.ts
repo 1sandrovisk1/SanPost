@@ -1,4 +1,8 @@
 import {
+  CreateReviewCommentDto,
+  ResolveCommentDto,
+} from '@gitroom/nestjs-libraries/dtos/comments/add.comment.dto';
+import {
   Body,
   Controller,
   Delete,
@@ -106,11 +110,18 @@ export class PostsController {
     @GetProfileFromRequest() profile: Profile | null,
     @Param('id') id: string,
     @Body()
-    body: { comment?: string; kind?: 'COMMENT' | 'APPROVAL' | 'CHANGE_REQUEST' }
+    body: CreateReviewCommentDto
   ) {
     return this._postsService.createReview(org.id, user.id, id, {
       kind: body.kind ?? 'COMMENT',
       content: body.comment ?? '',
+      placement: {
+        postId: body.postId,
+        parentId: body.parentId,
+        anchorStart: body.anchorStart,
+        anchorEnd: body.anchorEnd,
+        anchorQuote: body.anchorQuote,
+      },
       requireProfileId:
         getOrgRole(org) === 'USER' ? profile?.id ?? null : undefined,
     });
@@ -125,6 +136,38 @@ export class PostsController {
     return this._postsService.getReviewComments(
       org.id,
       id,
+      getOrgRole(org) === 'USER' ? profile?.id ?? null : undefined
+    );
+  }
+
+  @Put('/:id/comments/:commentId/resolve')
+  async resolveComment(
+    @GetOrgFromRequest() org: Organization,
+    @GetProfileFromRequest() profile: Profile | null,
+    @Param('id') id: string,
+    @Param('commentId') commentId: string,
+    @Body() body: ResolveCommentDto
+  ) {
+    return this._postsService.resolveComment(
+      org.id,
+      id,
+      commentId,
+      body.resolved,
+      getOrgRole(org) === 'USER' ? profile?.id ?? null : undefined
+    );
+  }
+
+  @Delete('/:id/comments/:commentId')
+  async deleteComment(
+    @GetOrgFromRequest() org: Organization,
+    @GetProfileFromRequest() profile: Profile | null,
+    @Param('id') id: string,
+    @Param('commentId') commentId: string
+  ) {
+    return this._postsService.deletePreviewComment(
+      org.id,
+      id,
+      commentId,
       getOrgRole(org) === 'USER' ? profile?.id ?? null : undefined
     );
   }
@@ -232,7 +275,13 @@ export class PostsController {
     @GetOrgFromRequest() org: Organization,
     @GetProfileFromRequest() profile: Profile | null
   ) {
-    return { date: await this._postsService.findFreeDateTime(org.id, undefined, profile?.id) };
+    return {
+      date: await this._postsService.findFreeDateTime(
+        org.id,
+        undefined,
+        profile?.id
+      ),
+    };
   }
 
   @Get('/find-slot/:id')
@@ -241,7 +290,9 @@ export class PostsController {
     @GetProfileFromRequest() profile: Profile | null,
     @Param('id') id?: string
   ) {
-    return { date: await this._postsService.findFreeDateTime(org.id, id, profile?.id) };
+    return {
+      date: await this._postsService.findFreeDateTime(org.id, id, profile?.id),
+    };
   }
 
   @Get('/list')
@@ -326,7 +377,11 @@ export class PostsController {
     @Res({ passthrough: false }) res: Response
   ) {
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    const stream = await this._agentGraphService.start(org.id, body, profile?.id);
+    const stream = await this._agentGraphService.start(
+      org.id,
+      body,
+      profile?.id
+    );
     try {
       for await (const event of stream) {
         res.write(JSON.stringify(event) + '\n');

@@ -14,11 +14,10 @@ import { useVariables } from '@gitroom/react/helpers/variable.context';
 import { useToaster } from '@gitroom/react/toaster/toaster';
 import { object, string } from 'yup';
 import { yupResolver } from '@hookform/resolvers/yup';
-import { web3List } from '@gitroom/frontend/components/launches/web3/web3.list';
+import { useOpenWeb3 } from '@gitroom/frontend/components/launches/web3/use.open.web3';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import clsx from 'clsx';
 import copy from 'copy-to-clipboard';
-import { capitalize } from 'lodash';
 import { ZernioAccountModal } from '@gitroom/frontend/components/launches/zernio/zernio-account-modal';
 import { ZernioInviteModal } from '@gitroom/frontend/components/launches/zernio/zernio-invite-modal';
 const resolver = classValidatorResolver(ApiKeyDto);
@@ -414,6 +413,7 @@ export const AddProviderComponent: FC<{
   const router = useRouter();
   const fetch = useFetch();
   const modal = useModals();
+  const openWeb3Modal = useOpenWeb3();
   const getSocialLink = useCallback(
     (
         invite: boolean,
@@ -471,34 +471,7 @@ export const AddProviderComponent: FC<{
         }
         const onboardingParam = onboarding ? 'onboarding=true' : '';
         const openWeb3 = async () => {
-          const { component: Web3Providers } = web3List.find(
-            (item) => item.identifier === identifier
-          )!;
-          const { url } = await (
-            await fetch(
-              `/integrations/social/${identifier}${
-                onboarding ? '?onboarding=true' : ''
-              }`
-            )
-          ).json();
-          modal.openModal({
-            title: `Add ${capitalize(identifier)}`,
-            withCloseButton: true,
-            classNames: {
-              modal: 'bg-transparent text-textColor',
-            },
-            children: (
-              <Web3Providers
-                onComplete={(code, newState) => {
-                  window.location.href = `/integrations/social/${identifier}?code=${code}&state=${newState}${
-                    onboarding ? '&onboarding=true' : ''
-                  }`;
-                }}
-                nonce={url}
-              />
-            ),
-          });
-          return;
+          await openWeb3Modal(identifier, { onboarding });
         };
         const gotoIntegration = async (externalUrl?: string) => {
           const params = [

@@ -58,50 +58,74 @@ describe('YoutubeProvider.handleErrors', () => {
 describe('YoutubeProvider.refreshErrorMessage', () => {
   it('traduz invalid_rapt em orientacao do Google Workspace', () => {
     const message = new YoutubeProvider().refreshErrorMessage({
-      response: { data: { error: 'invalid_grant', error_subtype: 'invalid_rapt' } },
+      response: {
+        data: { error: 'invalid_grant', error_subtype: 'invalid_rapt' },
+      },
     });
     expect(message).toMatch(/Google Workspace/);
     expect(message).toMatch(/support\.google\.com\/a\/answer\/9368756/);
   });
 
   it('outros erros seguem o motivo padrao', () => {
-    expect(new YoutubeProvider().refreshErrorMessage({ message: 'invalid_grant' })).toBeUndefined();
+    expect(
+      new YoutubeProvider().refreshErrorMessage({ message: 'invalid_grant' })
+    ).toBeUndefined();
   });
 });
 
 describe('YoutubeProvider.reConnect', () => {
   const { google } = jest.requireMock('googleapis');
   beforeEach(() => {
-    google.auth.OAuth2.mockImplementation(() => ({ setCredentials: jest.fn() }));
+    google.auth.OAuth2.mockImplementation(() => ({
+      setCredentials: jest.fn(),
+    }));
   });
 
   it('erro real do Google propaga em vez de virar "canal nao encontrado"', async () => {
     google.youtube.mockReturnValueOnce({
-      channels: { list: jest.fn().mockRejectedValue(new Error('invalid_grant: Token has been expired')) },
+      channels: {
+        list: jest
+          .fn()
+          .mockRejectedValue(
+            new Error('invalid_grant: Token has been expired')
+          ),
+      },
     });
-    await expect(new YoutubeProvider().reConnect('root', 'UC1', 'tok')).rejects.toThrow('invalid_grant');
+    await expect(
+      new YoutubeProvider().reConnect('root', 'UC1', 'tok')
+    ).rejects.toThrow('invalid_grant');
   });
 
   it('canal ausente na conta continua "Channel not found"', async () => {
     google.youtube.mockReturnValueOnce({
-      channels: { list: jest.fn().mockResolvedValue({ data: { items: [{ id: 'UC2' }] } }) },
+      channels: {
+        list: jest.fn().mockResolvedValue({ data: { items: [{ id: 'UC2' }] } }),
+      },
     });
-    await expect(new YoutubeProvider().reConnect('root', 'UC1', 'tok')).rejects.toThrow('Channel not found');
+    await expect(
+      new YoutubeProvider().reConnect('root', 'UC1', 'tok')
+    ).rejects.toThrow('Channel not found');
   });
 });
 
 describe('YoutubeProvider.postAnalytics', () => {
   const { google } = jest.requireMock('googleapis');
   beforeEach(() => {
-    google.auth.OAuth2.mockImplementation(() => ({ setCredentials: jest.fn() }));
+    google.auth.OAuth2.mockImplementation(() => ({
+      setCredentials: jest.fn(),
+    }));
   });
 
   it('401 do Google vira RefreshToken para o checkPostAnalytics renovar', async () => {
     const unauthorized = Object.assign(new Error('Unauthorized'), {
       response: { status: 401, data: { error: 'invalid_token' } },
     });
-    google.youtube.mockReturnValue({ videos: { list: jest.fn().mockRejectedValue(unauthorized) } });
-    google.youtubeAnalytics.mockReturnValue({ reports: { query: jest.fn().mockRejectedValue(unauthorized) } });
+    google.youtube.mockReturnValue({
+      videos: { list: jest.fn().mockRejectedValue(unauthorized) },
+    });
+    google.youtubeAnalytics.mockReturnValue({
+      reports: { query: jest.fn().mockRejectedValue(unauthorized) },
+    });
 
     await expect(
       new YoutubeProvider().postAnalytics('id', 'tok', 'vid-1', 7)
@@ -116,7 +140,9 @@ describe('YoutubeProvider.post (miniatura)', () => {
   const VIDEO = 'vid-123';
 
   const setup = (thumbnailsSet: jest.Mock) => {
-    google.auth.OAuth2.mockImplementation(() => ({ setCredentials: jest.fn() }));
+    google.auth.OAuth2.mockImplementation(() => ({
+      setCredentials: jest.fn(),
+    }));
     google.youtube.mockReturnValue({
       videos: { insert: jest.fn().mockResolvedValue({ data: { id: VIDEO } }) },
       thumbnails: { set: thumbnailsSet },
@@ -136,32 +162,107 @@ describe('YoutubeProvider.post (miniatura)', () => {
     },
   ];
 
+  it.each([false, true])(
+    'envia o stream JPEG selecionado a thumbnails.set (override legado=%s)',
+    async (hasLegacyOverride) => {
+      const set = jest.fn().mockResolvedValue({});
+      const { provider, axios } = setup(set);
+      const savedMedia = {
+        id: 'media-1',
+        path: 'https://media.example.com/video.mp4',
+        thumbnail: 'https://media.example.com/selected-final-frame.jpg',
+        thumbnailTimestamp: 179950,
+      };
+      const legacyThumbnail = 'https://media.example.com/legacy-override.jpg';
+      const selectedJpegStream = { source: 'selected-frame-jpeg-stream' };
+      const legacyJpegStream = { source: 'legacy-jpeg-stream' };
+      const videoStream = { source: 'video-stream' };
+      axios.mockImplementation(async ({ url }: { url: string }) => ({
+        data:
+          url === savedMedia.path
+            ? videoStream
+            : url === legacyThumbnail
+            ? legacyJpegStream
+            : selectedJpegStream,
+      }));
+
+      await provider.post(
+        'channel-1',
+        'token',
+        post(
+          hasLegacyOverride ? { thumbnail: { path: legacyThumbnail } } : {},
+          [savedMedia]
+        ) as any
+      );
+
+      expect(axios).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          url: savedMedia.path,
+          responseType: 'stream',
+        })
+      );
+      expect(axios).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          url: hasLegacyOverride ? legacyThumbnail : savedMedia.thumbnail,
+          responseType: 'stream',
+        })
+      );
+      expect(set).toHaveBeenCalledTimes(1);
+      expect(set).toHaveBeenCalledWith({
+        videoId: VIDEO,
+        media: {
+          body: hasLegacyOverride ? legacyJpegStream : selectedJpegStream,
+        },
+      });
+      expect(set.mock.calls[0][0].media.body).not.toBe(videoStream);
+    }
+  );
+
   it('miniatura do proprio YouTube vence a capa da midia', async () => {
     const set = jest.fn().mockResolvedValue({});
     const { provider, axios } = setup(set);
 
-    await provider.post('id', 'tok', post({ thumbnail: { path: 'https://x/yt.png' } }, [
-      { path: 'https://x/v.mp4', thumbnail: 'https://x/capa.png' },
-    ]) as any);
+    await provider.post(
+      'id',
+      'tok',
+      post({ thumbnail: { path: 'https://x/yt.png' } }, [
+        { path: 'https://x/v.mp4', thumbnail: 'https://x/capa.png' },
+      ]) as any
+    );
 
-    expect(axios).toHaveBeenLastCalledWith(expect.objectContaining({ url: 'https://x/yt.png' }));
-    expect(set).toHaveBeenCalledWith(expect.objectContaining({ videoId: VIDEO }));
+    expect(axios).toHaveBeenLastCalledWith(
+      expect.objectContaining({ url: 'https://x/yt.png' })
+    );
+    expect(set).toHaveBeenCalledWith(
+      expect.objectContaining({ videoId: VIDEO })
+    );
   });
 
   it('sem miniatura do YouTube usa a capa da midia; sem nenhuma nao chama thumbnails.set', async () => {
     const set = jest.fn().mockResolvedValue({});
     const { provider, axios } = setup(set);
 
-    await provider.post('id', 'tok', post({}, [
-      { path: 'https://x/v.mp4', thumbnail: 'https://x/capa.png' },
-    ]) as any);
-    expect(axios).toHaveBeenLastCalledWith(expect.objectContaining({ url: 'https://x/capa.png' }));
+    await provider.post(
+      'id',
+      'tok',
+      post({}, [
+        { path: 'https://x/v.mp4', thumbnail: 'https://x/capa.png' },
+      ]) as any
+    );
+    expect(axios).toHaveBeenLastCalledWith(
+      expect.objectContaining({ url: 'https://x/capa.png' })
+    );
 
     set.mockClear();
     await expect(
       provider.post('id', 'tok', post({}, [{ path: 'https://x/v.mp4' }]) as any)
     ).resolves.toEqual([
-      expect.objectContaining({ postId: VIDEO, releaseURL: `https://www.youtube.com/watch?v=${VIDEO}` }),
+      expect.objectContaining({
+        postId: VIDEO,
+        releaseURL: `https://www.youtube.com/watch?v=${VIDEO}`,
+      }),
     ]);
     expect(set).not.toHaveBeenCalled();
   });
@@ -169,12 +270,20 @@ describe('YoutubeProvider.post (miniatura)', () => {
   it('miniatura recusada depois do upload mantem id e URL do video (PublishedWithError)', async () => {
     const set = jest
       .fn()
-      .mockRejectedValue({ errors: [{ domain: 'youtube.thumbnail', reason: 'forbidden' }] });
+      .mockRejectedValue({
+        errors: [{ domain: 'youtube.thumbnail', reason: 'forbidden' }],
+      });
     const { provider } = setup(set);
     jest.spyOn(console, 'error').mockImplementation(() => undefined);
 
     const err = await provider
-      .post('id', 'tok', post({}, [{ path: 'https://x/v.mp4', thumbnail: 'https://x/capa.png' }]) as any)
+      .post(
+        'id',
+        'tok',
+        post({}, [
+          { path: 'https://x/v.mp4', thumbnail: 'https://x/capa.png' },
+        ]) as any
+      )
       .catch((e) => e);
 
     expect(err).toBeInstanceOf(PublishedWithError);
@@ -190,11 +299,16 @@ describe('YoutubeProvider.post (miniatura)', () => {
     jest.spyOn(console, 'error').mockImplementation(() => undefined);
 
     const err = await provider
-      .post('id', 'tok', post({}, [{ path: 'https://x/v.mp4', thumbnail: 'https://x/capa.png' }]) as any)
+      .post(
+        'id',
+        'tok',
+        post({}, [
+          { path: 'https://x/v.mp4', thumbnail: 'https://x/capa.png' },
+        ]) as any
+      )
       .catch((e) => e);
 
     expect(err).toBeInstanceOf(PublishedWithError);
     expect(err.message).toMatch(/Set it manually in YouTube Studio/);
   });
 });
-

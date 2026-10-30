@@ -131,7 +131,7 @@ export const MediaSettingsSection: FC = () => {
                     <MediaSettingsIcon className="cursor-pointer relative z-[200]" />
                   </div>
                   {media.path.indexOf('mp4') > -1 ? (
-                    <VideoFrame url={mediaDirectory.set(media.path)} />
+                    <VideoFrame url={mediaDirectory.set(media.path)} thumbnail={media.thumbnail ? mediaDirectory.set(media.thumbnail) : undefined} />
                   ) : (
                     <img
                       className="w-full h-full object-cover rounded-[4px]"

@@ -14,15 +14,23 @@ jest.mock('@gitroom/nestjs-libraries/short-linking/short.link.service', () => ({
 }));
 jest.mock('@gitroom/nestjs-libraries/upload/upload.factory', () => {
   const storage = { uploadFile: jest.fn() };
-  return { UploadFactory: { createStorage: () => storage }, __storage: storage };
+  return {
+    UploadFactory: { createStorage: () => storage },
+    __storage: storage,
+  };
 });
 jest.mock('sharp', () => () => ({
   jpeg: () => ({ toBuffer: async () => Buffer.from('jpeg') }),
 }));
-jest.mock('@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher', () => ({
-  ...jest.requireActual('@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher'),
-  getSsrfSafeAxios: jest.fn(),
-}));
+jest.mock(
+  '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher',
+  () => ({
+    ...jest.requireActual(
+      '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher'
+    ),
+    getSsrfSafeAxios: jest.fn(),
+  })
+);
 
 import { getSsrfSafeAxios } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
 import { PostsService } from './posts.service';
@@ -40,7 +48,9 @@ const ENV = {
 };
 
 const buildService = () => {
-  const postRepository = { updateImages: jest.fn().mockResolvedValue(undefined) };
+  const postRepository = {
+    updateImages: jest.fn().mockResolvedValue(undefined),
+  };
   const mediaService = { getMediaById: jest.fn() };
   const service = new PostsService(
     postRepository as any,
@@ -89,6 +99,46 @@ describe('PostsService.updateMedia - confinamento do path de midia', () => {
     }
   });
 
+  it('preserva a capa e o timestamp escolhidos no post sem trocar pela capa antiga da biblioteca', async () => {
+    const { service, mediaService } = buildService();
+    const selected = {
+      id: 'video-1',
+      path: 'https://media.example.com/video.mp4',
+      thumbnail: 'https://media.example.com/selected-final-frame.jpg',
+      thumbnailTimestamp: 179950,
+      alt: 'Capa escolhida',
+    };
+    mediaService.getMediaById.mockResolvedValue({
+      ...selected,
+      thumbnail: 'https://media.example.com/old.jpg',
+    });
+
+    await expect(service.updateMedia('post-1', [selected])).resolves.toEqual([
+      expect.objectContaining(selected),
+    ]);
+    expect(mediaService.getMediaById).not.toHaveBeenCalled();
+    expect(axiosFn).not.toHaveBeenCalled();
+  });
+
+  it.each([0, 179950])(
+    'resolucao por id preserva thumbnail e timestamp %s do registro salvo',
+    async (thumbnailTimestamp) => {
+      const { service, mediaService } = buildService();
+      const saved = {
+        id: 'video-1',
+        path: 'https://media.example.com/video.mp4',
+        thumbnail: 'https://media.example.com/selected-frame.jpg',
+        thumbnailTimestamp,
+      };
+      mediaService.getMediaById.mockResolvedValue(saved);
+
+      await expect(
+        service.updateMedia('post-1', [{ id: saved.id }])
+      ).resolves.toEqual([expect.objectContaining(saved)]);
+      expect(mediaService.getMediaById).toHaveBeenCalledWith(saved.id);
+    }
+  );
+
   it('descarta path traversal antes de qualquer IO e resolve os itens por id', async () => {
     const { service, mediaService, postRepository } = buildService();
     mediaService.getMediaById.mockResolvedValue({
@@ -111,9 +161,9 @@ describe('PostsService.updateMedia - confinamento do path de midia', () => {
       url: 'https://app.exemplo.com/uploads/2026/10/23/a.png',
     });
     expect(readSpy).not.toHaveBeenCalled();
-    expect(JSON.stringify(postRepository.updateImages.mock.calls)).not.toContain(
-      'passwd'
-    );
+    expect(
+      JSON.stringify(postRepository.updateImages.mock.calls)
+    ).not.toContain('passwd');
   });
 
   it('quando algo falha dentro do try devolve so caminhos confinados e ja prefixados', async () => {

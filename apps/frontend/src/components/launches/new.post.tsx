@@ -1,3 +1,4 @@
+import { fromUtc } from '@gitroom/helpers/utils/user.timezone';
 import React, { useCallback } from 'react';
 import { useModals } from '@gitroom/frontend/components/layout/new-modal';
 import dayjs from 'dayjs';
@@ -67,7 +68,7 @@ export const NewPost = () => {
           reopenModal={createAPost}
           mutate={reloadCalendarView}
           integrations={integrations}
-          date={dayjs.utc(date).local()}
+          date={fromUtc(dayjs.utc(date))}
         />
       ),
       size: '80%',

@@ -39,6 +39,14 @@ export class UsersRepository {
     });
   }
 
+  setTimezone(userId: string, timezoneName: string | null) {
+    return this._user.model.user.update({
+      where: { id: userId },
+      data: { timezoneName },
+      select: { timezoneName: true },
+    });
+  }
+
   getUserById(id: string) {
     return this._user.model.user.findFirst({
       where: {

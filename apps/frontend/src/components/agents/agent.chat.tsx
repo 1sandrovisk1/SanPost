@@ -13,8 +13,9 @@ import {
   ErrorMessageProps,
   InputProps,
   UserMessageProps,
-} from '@copilotkit/react-ui/dist/components/chat/props';
+} from '@copilotkit/react-ui';
 import { Input } from '@gitroom/frontend/components/agents/agent.input';
+import { getAgentMessageText } from './agent.message';
 import { useToaster } from '@gitroom/react/toaster/toaster';
 import { useModals } from '@gitroom/frontend/components/layout/new-modal';
 import {
@@ -33,6 +34,7 @@ import { sanitizeChatContent } from '@gitroom/helpers/utils/sanitize.chat.conten
 import { TextMessage } from '@copilotkit/runtime-client-gql';
 import { AddEditModal } from '@gitroom/frontend/components/new-launch/add.edit.modal';
 import dayjs from 'dayjs';
+import { fromUtc } from '@gitroom/helpers/utils/user.timezone';
 import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import { ExistingDataContextProvider } from '@gitroom/frontend/components/launches/helpers/use.existing.data';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
@@ -69,7 +71,11 @@ const classifyAiError = (raw?: string): AiErrorKind => {
   ) {
     return 'credits';
   }
-  if (/unauthor|api key|invalid.{0,12}key|authentication|forbidden|401|403/.test(lower)) {
+  if (
+    /unauthor|api key|invalid.{0,12}key|authentication|forbidden|401|403/.test(
+      lower
+    )
+  ) {
     return 'auth';
   }
   if (/rate.?limit|too many|429/.test(lower)) {
@@ -145,6 +151,7 @@ export const AgentChat: FC = () => {
       credentials="include"
       runtimeUrl={backendUrl + '/copilot/agent'}
       showDevConsole={false}
+      enableInspector={false}
       agent="postiz"
       properties={{
         integrations: properties,
@@ -167,7 +174,9 @@ export const AgentChat: FC = () => {
             labels={{
               title: t('your_assistant', 'Your Assistant'),
               placeholder: t('agent_input_placeholder', 'Type a message...'),
-              initial: t('agent_welcome_message', `Hello, I am your Postiz agent 🙌🏻.
+              initial: t(
+                'agent_welcome_message',
+                `Hello, I am your Postiz agent 🙌🏻.
               
 I can schedule a post or multiple posts to multiple channels and generate pictures and videos.
 
@@ -176,7 +185,8 @@ You can select the channels you want to use from the left menu.
 You can see your previous conversations from the right menu.
 
 You can also use me as an MCP Server, check Settings >> Public API
-`),
+`
+              ),
             }}
             UserMessage={Message}
             Input={NewInput}
@@ -226,7 +236,7 @@ const LoadMessages: FC<{ id: string }> = ({ id }) => {
 
 const Message: FC<UserMessageProps> = (props) => {
   const convertContentToImagesAndVideo = useMemo(() => {
-    const html = (props.message?.content || '')
+    const html = getAgentMessageText(props.message?.content)
       .replace(/Video: (http.*mp4\n)/g, (match, p1) => {
         return `<video controls class="h-[150px] w-[150px] rounded-[8px] mb-[10px]"><source src="${p1.trim()}" type="video/mp4">Your browser does not support the video tag.</video>`;
       })
@@ -440,7 +450,7 @@ const OpenModal: FC<{
               }}
             >
               <AddEditModal
-                date={dayjs.utc(integration.date)}
+                date={fromUtc(integration.date)}
                 allIntegrations={properties}
                 integrations={[foundIntegration]}
                 onlyValues={integration.posts.map((p) => ({

@@ -10,6 +10,7 @@ import { useVariables } from '@gitroom/react/helpers/variable.context';
 import { useCurrentProfile } from '@gitroom/frontend/hooks/use-current-profile.hook';
 import ShareProviderCredentialsComponent from '@gitroom/frontend/components/settings/share-provider-credentials.component';
 import clsx from 'clsx';
+import { useT } from '@gitroom/react/translation/get.transation.service.client';
 
 interface CallbackPathEntry {
   label?: string;
@@ -20,12 +21,21 @@ interface ProviderConfig {
   provider: string;
   label: string;
   iconUrl: string;
-  fields: { key: string; label: string; placeholder: string }[];
+  // placeholderKey: chave i18n do placeholder (o texto fixo vira o fallback)
+  fields: {
+    key: string;
+    label: string;
+    placeholder: string;
+    placeholderKey?: string;
+  }[];
   docsUrl: string;
   callbackPaths?: CallbackPathEntry[];
+  // orientacao curta exibida acima do formulario (chave i18n + fallback)
+  hint?: { key: string; fallback: string };
 }
 
 const PROVIDERS: ProviderConfig[] = [
+  {provider:'tumblr',label:'Tumblr',iconUrl:'/icons/platforms/tumblr.png',fields:[{key:'clientId',label:'OAuth Consumer Key',placeholder:'Tumblr OAuth Consumer Key',placeholderKey:'credentials_tumblr_id'},{key:'clientSecret',label:'OAuth Consumer Secret',placeholder:'Tumblr OAuth Consumer Secret',placeholderKey:'credentials_tumblr_secret'}],docsUrl:'https://www.tumblr.com/oauth/apps',callbackPaths:[{path:'/integrations/social/tumblr'}],hint:{key:'credentials_tumblr_hint',fallback:'Create an OAuth app in Tumblr and register this callback URL. Credentials apply to the active profile.'}},
   {
     provider: 'tiktok',
     label: 'TikTok',
@@ -44,6 +54,35 @@ const PROVIDERS: ProviderConfig[] = [
     ],
     docsUrl: 'https://developers.tiktok.com',
     callbackPaths: [{ path: '/integrations/social/tiktok' }],
+  },
+  {
+    // canal tiktok-business: app proprio da TikTok API for Business, separado
+    // do app do TikTok (Login Kit / Content Posting API) acima
+    provider: 'tiktok-business',
+    label: 'TikTok Business',
+    iconUrl: '/icons/platforms/tiktok-business.png',
+    fields: [
+      {
+        key: 'clientId',
+        label: 'Client ID (App ID)',
+        placeholder: 'Paste the TikTok for Business app Client ID',
+        placeholderKey: 'credentials_tiktok_business_app_id_placeholder',
+      },
+      {
+        key: 'clientSecret',
+        label: 'Client Secret',
+        placeholder: 'Paste the TikTok for Business app Client Secret',
+        placeholderKey: 'credentials_tiktok_business_secret_placeholder',
+      },
+    ],
+    docsUrl: 'https://business-api.tiktok.com/portal',
+    // o portal do TikTok for Business so aceita o redirect com a barra final
+    callbackPaths: [{ path: '/integrations/social/tiktok-business/' }],
+    hint: {
+      key: 'credentials_tiktok_business_hint',
+      fallback:
+        'Use the app created in the TikTok API for Business portal (not the TikTok for Developers app). Register the callback URL exactly as shown below, including the trailing slash.',
+    },
   },
   {
     provider: 'pinterest',
@@ -200,6 +239,18 @@ const ProviderCard: React.FC<{
 }> = ({ config, configured, onMutate }) => {
   const [expanded, setExpanded] = useState(false);
   const { frontEndUrl } = useVariables();
+  const t = useT();
+
+  const fields = useMemo(
+    () =>
+      config.fields.map(({ placeholderKey, ...field }) => ({
+        ...field,
+        placeholder: placeholderKey
+          ? t(placeholderKey, field.placeholder)
+          : field.placeholder,
+      })),
+    [config.fields, t]
+  );
 
   const callbacks = useMemo(() => {
     if (!config.callbackPaths || config.callbackPaths.length === 0)
@@ -265,9 +316,14 @@ const ProviderCard: React.FC<{
       </div>
       {expanded && (
         <div className="border-t border-fifth p-[16px]">
+          {config.hint && (
+            <div className="text-[13px] text-customColor18 mb-[12px]">
+              {t(config.hint.key, config.hint.fallback)}
+            </div>
+          )}
           <ProviderCredentialForm
             provider={config.provider}
-            fields={config.fields}
+            fields={fields}
             label={config.label}
             docsUrl={config.docsUrl}
             callbacks={callbacks}

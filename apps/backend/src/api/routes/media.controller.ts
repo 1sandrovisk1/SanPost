@@ -63,10 +63,10 @@ export class MediaController {
   @Post('/generate-video')
   generateVideo(
     @GetOrgFromRequest() org: Organization,
+    @GetProfileFromRequest() profile: Profile | null,
     @Body() body: VideoDto
   ) {
-    console.log('hello');
-    return this._mediaService.generateVideo(org, body);
+    return this._mediaService.generateVideo(org, body, profile?.id);
   }
 
   @Post('/generate-image')

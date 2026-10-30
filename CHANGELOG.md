@@ -7,11 +7,54 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 
 ## [Unreleased]
 
+### Adicionado — X Articles
+
+- Canal nativo do X permite criar artigos com título, capa, formatação e imagens da biblioteca, escolhendo rascunho no X ou publicação. Compositor, contador, API e MCP distinguem artigos de tweets e preservam os limites das respostas; rascunho de artigo com respostas e seleção incompatível em Zernio são recusados antes do envio.
+- Falhas capturadas após criar o rascunho preservam seu ID/URL e encerram sem repetição automática. Imagens têm confinamento ao diretório de uploads, proteção SSRF e limites de bytes/pixels. Workflows existentes e credenciais por perfil preservados.
+
+### Adicionado — áudio de Reels, fundos do Facebook e Tumblr
+
+- Instagram com Facebook Login: busca de músicas/áudios originais, escolha persistida no compositor e controle independente do volume do áudio e do vídeo. Disponível para um único Reel MP4; stories, carrosséis, Instagram Login e Zernio recusam essa opção antes do agendamento.
+- Facebook nativo: seleção de fundos coloridos e preview para texto de até 130 caracteres, sem mídia ou links. O catálogo é comunitário e o preview aproximado; recusa explícita do parâmetro permite publicar o texto sem fundo. Resposta incerta não dispara nova tentativa automática.
+- Tumblr nativo: OAuth por perfil/workspace, seleção de blog autorizado, reconexão, título, tags, link, fonte e publicação NPF de texto, imagens e vídeo. Uploads têm proteção SSRF, confinamento ao diretório local e limites de tamanho; sucesso exige ID confirmado e falha ambígua não repete o envio.
+
+### Melhorado — Mastra, CopilotKit e MCP
+
+- Atualizados Mastra, memória PostgreSQL, AG-UI e CopilotKit para as versões portadas do Postiz. O chat usa o transporte HTTP Node e aceita o payload novo de canais, mantendo compatibilidade anterior, credenciais por perfil, persona e erro 412 de configuração. Preservado Chat Completions para os provedores OpenAI compatíveis, incluindo o caminho de ferramentas do editor.
+- O cache intermediário do CopilotKit recebe isolamento por organização/perfil para execução, histórico e reconexão; limpeza global e novas mutações ficam bloqueadas. Inspector técnico desativado na interface.
+- MCP aceita clientes dos protocolos 2025 e 2026 e encerra streams de assinatura ociosos após 10 segundos, mantendo autenticação e contexto por requisição.
+- Espelhadas as 45 tabelas e os índices do armazenamento Mastra. A sincronização no boot preserva tabelas vetoriais `kb_*`, valida e aplica somente SQL aditivo em transação e interrompe diante de tabelas desconhecidas ou operações destrutivas, sem aceitar perda automática de dados.
+
+### Adicionado — compositor e fuso horário
+
+- Novo compositor responsivo do Postiz: edição e preview no celular, seleção de canais, configurações, tags, recorrência e data em painéis inferiores, com toolbar acima do teclado. Preservados os lotes, as datas por canal, a confirmação de republicação e o tratamento de salvamento parcial do Robô MultiPost.
+- Fuso horário IANA salvo por usuário nas configurações, aplicado a calendário, editor e datas, com transições de horário de verão. Agendamentos continuam persistidos em UTC; alterar a preferência não os reagenda.
+
+### Corrigido — integração dos portes
+
+- Validação de X Articles com retornos explícitos compatíveis com a tipagem estrita da suíte CI. Testes do CI separados em processos sequenciais, preservando todas as suítes, cobertura e diagnósticos, para liberar memória entre os lotes.
+
+- Instagram envia texto alternativo nas imagens de feed/carrossel; vídeos e stories não recebem `alt_text`. Textos acima de 1.000 caracteres são recusados antes do envio.
+- Calendário compartilha o backend de arraste entre montagens, preservando o arraste de texto/imagens dentro do editor. Discord distingue token do bot recusado de reconexão do canal.
+- Preview com comentários mantém imagens próprias e remove imagens externas. V112 recusa também canais desativados antes de decifrar credenciais ou publicar.
+
+### Melhorado — paleta das etapas de automação (30/10/2026)
+
+- Os construtores V1/V2 acompanham a troca do tema da página sem remontar o canvas, corrigindo texto escuro sobre fundo escuro no V1.
+- Grupos usam ardósia, azul, âmbar, esmeralda, violeta e ciano, com fundo suave constante e campos sobre superfície interna. Nós, paleta e minimapa do construtor compartilham as cores equivalentes, inclusive o badge de seguidores; seleção e foco usam a própria identidade. Tema escuro tem fundos e textos auxiliares adaptados para leitura.
+
 ### Melhorado — publicação V112 e atualização automática
 
 - Novos agendamentos de todos os canais, inclusive Zernio, usam V112 e consultam a credencial atual do canal na publicação, sem configurar IDs ou variáveis de ativação na stack.
 - A atualização migra automaticamente workflows antigos que comprovadamente ainda aguardam uma publicação futura, preservando datas e conteúdo. Publicados, passados, rascunhos e execuções que já iniciaram o envio não são recriados. A migração é retomável e registra os casos adiados.
 - Publicações via Zernio aguardam confirmação real da plataforma. Resultados parciais ou incertos preservam a referência aceita e exigem confirmação explícita antes de um novo envio.
+
+### Adicionado
+- **Comentários no preview:** visitantes podem comentar com reCAPTCHA e limites por IP, responder conversas e citar trechos. A equipe pode resolver, reabrir e excluir conversas no perfil autorizado; revisão/aprovação por link preservada. A resposta pública oculta identidade da equipe e dados privados dos convidados.
+- **Exclusão de organização pelo administrador da plataforma:** confirmação pelo nome, bloqueio de cobrança vigente e exclusão lógica transacional com revogação de chaves, OAuth e links. Canais, posts e automações são desativados, preservando contas dos usuários e histórico.
+
+### Corrigido
+- **Thumbnail de vídeo no editor e no YouTube:** miniaturas pequenas e a prévia do YouTube passam a mostrar a imagem salva. Captura aguarda o quadro decodificado após mover a posição do vídeo, inclusive no final; salvamento recusado mantém o modal aberto com erro. Timestamp zero e limpeza da capa preservados. Prioridade da capa antiga específica do YouTube mantida e testada.
 
 
 ### Corrigido — testes do RC 0.7.0-rc.2 em produção (28/10/2026)
@@ -20,6 +63,48 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 - **Workflows do Temporal no boot:** a reconciliação dos reposts e o cron de renovação de tokens em lote rodavam antes do cliente do Temporal ficar pronto (`Temporal Service is not initialized` / `0/N repost workflow(s) reconciliados`). Passam a rodar depois da inicialização de todos os módulos.
 - **Erro classificado do provider preservado** (porte do Postiz `0c9d3940`, paridade preventiva): um erro que o provider já classificou dentro do envio em lote (`runInConcurrent`) mantém o tipo e a mensagem em vez de virar "Unknown Error". O log do worker passa a resumir o erro do provider em vez de imprimir o corpo da resposta (que podia ter tokens).
 - **Prévia de vídeo:** fechar o player antes do vídeo começar não registra mais um erro no log do backend.
+
+### Corrigido
+- **Revisão do épico Temporal:** envio de e-mail só repete recusas explícitas transitórias, limita tentativas e propaga a falha sanitizada; novas activities não repetem resultados incertos e não registram o destinatário. Webhook filtra o canal também na busca pelo ID interno. Detector de posts ausentes inicia após o cliente Temporal e reconcilia o singleton. Replay cobre históricos com e sem marcador; documentado o encerramento manual do singleton de e-mail após drenagem.
+
+
+### Corrigido — workflows Temporal: webhooks, mídia travada, e-mails e históricos longos (28/10/2026)
+
+- **Webhooks de publicação com o post de volta:** o payload enviado aos webhooks após publicar chegava sempre vazio, porque o workflow passa o ID do post na rede social. Agora o post é encontrado pelo ID da publicação no próprio canal e o webhook recebe conteúdo, data, link e canal (porte do Postiz #2087).
+- **Mídia que trava no meio do download não prende mais a fila do canal:** leitura de imagem remota que recebe os cabeçalhos e para de enviar dados é abortada após 2 minutos, tentada mais uma vez e, se travar de novo, o post termina em erro com a mensagem "Não foi possível ler a mídia deste post, por isso ele não foi publicado", em vez de ficar publicando indefinidamente (Postiz #2193).
+- **E-mails independentes e com limite de envio:** cada e-mail vira um workflow próprio em filas dedicadas (`email` para notificações, convites, ativação e senha; `email-bulk` para resumos e streak), com limite por segundo aplicado pelo Temporal para todos os workers. Um envio lento ou com falha não segura mais os outros, e erros de limite do Resend (429) passam a ser repetidos em vez de descartados em silêncio (Postiz `1f5f24e5`). Ativação e redefinição de senha continuam saindo pelo Temporal, sem travar o cadastro quando o SMTP está inacessível.
+- **RSS/autopost e detector de posts perdidos não crescem mais para sempre:** os dois workflows de loop horário reciclam o histórico a cada 24 ciclos, evitando que o Temporal os encerre à força por histórico grande. Execuções já em andamento continuam compatíveis e reciclam no primeiro ciclo após o deploy (Postiz `185044d5`).
+- **Operação:** `pnpm temporal:replay-post` também valida históricos de `autoPostWorkflow`, `missingPostWorkflow`, `sendEmailWorkflow` e `sendSingleEmailWorkflow`; `EXCLUDE_QUEUE` aceita as filas de e-mail (ao menos um container precisa consumi-las).
+
+### Adicionado — canal TikTok Business (28/10/2026)
+
+- Novo canal **TikTok Business**, pela API do TikTok for Business (porte do Postiz): publica vídeo ou até 35 fotos, direto no perfil ou como rascunho na caixa de entrada do app, com estatísticas da conta e do post e link do post publicado no calendário.
+- O app do TikTok for Business é cadastrado por workspace/perfil em **Configurações > Credenciais > TikTok Business** (as variáveis `TIKTOK_BUSINESS_CLIENT_ID`/`TIKTOK_BUSINESS_CLIENT_SECRET` ficam como alternativa). A URL de callback termina com barra (`/integrations/social/tiktok-business/`), como o portal do TikTok exige.
+- No compositor, o canal ganha **música** da biblioteca comercial do TikTok (com prévia e volumes em vídeo), **música aleatória** para fotos e **localização**; valem só na publicação direta. Também disponíveis para o agente (MCP) e na API pública.
+- Antes de publicar, o post é recusado com motivo claro quando a legenda passa do limite do TikTok, uma foto passa de 1080px no lado menor ou a mídia não é aceita. Autorização cancelada no TikTok para antes da troca de código e registra a causa real no log, e o token recusado como "The access token is invalid" é renovado automaticamente.
+
+### Corrigido
+- **Farcaster:** troca do código de login é reservada atomicamente entre as rotas antes de cadastro/convite/sessão; segundo consumo é recusado. O fallback local do Redis respeita NX, expiração EX e o resultado real de DEL.
+
+
+### Alterado — Farcaster com managed signers da Neynar (28/10/2026)
+
+- **Conexão do Farcaster por QR code** (porte do Postiz #2078/#2080): Adicionar canal, Reconectar canal e o login com Farcaster abrem um modal com QR code e "Copiar link do Farcaster"; o usuário aprova o acesso no app do Farcaster pelo celular e o modal conclui sozinho. Substitui o "Sign In With Neynar", que abria uma janela em branco.
+- **Novas variáveis** `NEYNAR_APP_FID`, `NEYNAR_APP_MNEMONIC` e `NEYNAR_SPONSOR_SIGNERS` (além de `NEYNAR_SECRET_KEY`); `NEYNAR_CLIENT_ID` agora só liga o botão de login e `NEYNAR_LOGIN_URL` deixou de existir. Sem a configuração, o modal avisa que o Farcaster não está configurado. Guia em `docs/operations/farcaster-neynar.md`.
+- **Canais já conectados continuam publicando** enquanto a chave da Neynar for a mesma (publicar só exige `NEYNAR_SECRET_KEY`). Se a autorização do canal for revogada (ou a chave trocar de app), o post falha com o motivo, o canal fica como "precisa reconectar" com notificação e a reconexão é feita pelo novo modal. Chave recusada, conta sem créditos, 403 genérico ou Neynar fora do ar aparecem como erro do post, sem desconectar os canais; o modal mostra o motivo e para de consultar quando a falha é permanente.
+- **Reconectar canal** de Farcaster, Telegram e Moltbook passa a abrir o modal de conexão (antes o botão abria uma URL quebrada), uma vez só por clique.
+- **Segurança:** cada aprovação fica registrada no servidor e só vale para quem a iniciou — no login, o mesmo navegador (cookie httpOnly); no canal, a mesma organização, usuário e fluxo — e uma vez só. O navegador recebe apenas um identificador opaco, que não passa pela URL. A conexão lê a conta e o perfil na Neynar em vez de confiar no navegador; login sem acesso aprovado deixa de gerar identidade vazia. Rotas do login com Farcaster (inclusive a troca do código) só existem com o botão ligado e têm limite por cliente e teto global; o patrocínio da Neynar vale só para conexão de canal.
+
+### Corrigido
+- **Revisão de imagem inline:** análise da colagem usa parser sem carregar recursos externos, preserva entidades no HTML, rejeita separadores codificados e evita conflito entre o arraste do editor e o calendário. Encurtamento preserva os URLs das imagens.
+
+
+### Adicionado — imagem dentro do conteúdo no WordPress e no ListMonk (2026-10-28)
+
+- Ao personalizar um canal **WordPress** ou **ListMonk**, as imagens vão para dentro do texto, no ponto do cursor: enviar arquivo, colar imagem, arrastar para o editor ou escolher na biblioteca de mídia (inclusive imagem gerada por IA ou criada no editor de design) insere a imagem no conteúdo, que pode ser arrastada para outra posição. O artigo do WordPress e o e-mail do ListMonk saem com as imagens no lugar em que aparecem; nos outros canais nada muda e o texto segue sem imagem. Vídeo não entra no conteúdo (aviso na tela).
+- Só imagens da biblioteca de mídia da própria instância entram no conteúdo: imagem de outro site colada no editor é descartada com aviso, e o servidor remove ao salvar qualquer `<img>` de outra origem, `data:`, caminho relativo e atributos como `onerror` — o preview público e os links de revisão não carregam pixel de terceiros nem abrem brecha de script.
+- API pública e agente MCP: o conteúdo aceita `<img src="...">` com mídia da biblioteca nos canais que levam imagem no corpo; as regras do WordPress e do ListMonk orientam o agente a usar `mediaListTool`/`generateImageTool`.
+- Arrastar texto e imagens dentro do editor de posts volta a funcionar (o arrastar do calendário não cancela mais o do editor).
 
 ### Melhorado — ferramentas de texto das automações (28/10/2026)
 
@@ -213,6 +298,10 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 - **Renovação de token sem vazar segredo nem atravessar organizações.** O motivo de falha da renovação (log, aviso de reconexão e histórico de Status) passa a ser redigido e limitado a 300 caracteres, como os demais logs de provider; o log do cron de renovação usa o mesmo resumo. Reconectar o LinkedIn copiava o token novo para as contas irmãs (mesma conta LinkedIn) de **qualquer** organização e apagava o refresh token delas quando o login não trazia um — agora a cópia fica na organização que reconectou e preserva o refresh token salvo. A troca de página por um login novo lê a linha nova só dentro da organização da requisição.
 - **App OAuth respeita o papel de quem aprova.** Qualquer membro da organização podia aprovar um app OAuth, e o token `pos_` agia como SUPERADMIN da organização inteira (API pública e MCP) — inclusive para quem só tinha acesso a um perfil. Agora o membro com papel USER aprova só para o perfil ativo dele: o token se comporta como uma chave de perfil (canais, posts e mídia daquele perfil). ADMIN/SUPERADMIN continuam aprovando para a organização inteira. O token também deixa de valer quando quem aprovou sai da organização, é desativado ou perde o acesso (ou fica só como leitor) no perfil. **Tokens já aprovados por membros USER antes desta versão param de funcionar e precisam ser aprovados de novo.** Nova coluna opcional `OAuthAuthorization.profileId` (migração `20261028_oauth_authorization_profile`, aditiva).
 - **Sentry com menos dados pessoais** (upstream #2280, #2284, #2100, #2082 e filtros de erro de extensão/Uppy): `sendDefaultPii` desligado, replay com texto mascarado e mídia bloqueada, entradas e saídas de IA fora dos spans, amostragem rebalanceada, sem traces de `GET` nas rotas MCP nem spans do Prisma, e inicialização única no cliente. Os helpers do upstream que anexam e-mail/id do usuário ao Sentry não foram portados.
+- **Autopost por RSS sem injeção de prompt.** O conteúdo do item do feed (texto de terceiros) ia cru para o prompt da IA que escreve o post e a imagem; um feed podia mandar instruções ao modelo. Agora vai envolto em `<source>`, como dado não confiável, sem conseguir fechar a tag, limitado em tamanho e com a regra explícita de não seguir instruções dele (o mesmo padrão da busca web).
+- **App OAuth mais robusto.** `POST /oauth/token` ganha limite de tentativas próprio, contado por app cliente (atrás do proxy todos os pedidos chegam com o mesmo IP), compara o segredo do cliente em tempo constante, só aceita cada código de autorização uma vez (duas trocas simultâneas não geram dois tokens) e deixa de devolver o id de cliente Stripe da organização (`cus`). Remover um membro da organização, ou de um perfil, revoga os apps OAuth que ele aprovou ali — eles não voltam a valer num reconvite.
+- **Escopo de perfil em mais rotas.** Vídeo gerado pela API pública com chave de perfil (e pelo dashboard) entra na biblioteca do perfil, não na da organização inteira; `find-slot/:id` (dashboard e API) só mostra horários de canal do perfil; reconectar um canal pela API pública com chave de perfil exige que o canal seja do perfil; a escolha da página no 2º passo da conexão (`POST /integrations/provider/:id/connect`) confere o perfil do canal. O teste manual de feed do autopost (`POST /autopost/send`) ganha limite de tentativas.
+- **Entrada e logs.** O corpo da escolha da página na conexão (inclusive a rota pública, sem login) passa a aceitar só os campos esperados, como texto e com tamanho limitado. Os logs, eventos de erro, breadcrumbs e spans que vão para o Sentry (inclusive objetos logados, cabeçalhos e URLs com `access_token`) saem com tokens, segredos e credenciais redigidos; o log dos parâmetros do gerador de vídeo foi removido.
 - **Troca de grupo e mudança de data sem atravessar perfil nem expor erro cru.** Salvar um post enviando o `group` de outro perfil da mesma organização apagava aquele grupo; agora a troca só alcança linhas do próprio perfil (ou posts antigos sem perfil). Mudar a data de um post pelo calendário (`PUT /posts/:id/date`) devolvia a linha inteira, inclusive a falha crua do provider (que pode trazer tokens); agora devolve só id, data e estado.
 - **Excluir post por grupo respeita o perfil também na resposta.** `DELETE /posts/:group` (dashboard) e `DELETE /public/v1/posts/group/:group` com chave de perfil já só apagavam os posts do perfil, mas a busca do post devolvido — e usado para encerrar o workflow agendado — não filtrava por perfil: com o grupo de outro perfil, o workflow daquele post era encerrado e o id aparecia na resposta. Agora a busca usa o mesmo escopo e o grupo de outro perfil responde `{ "error": true }`.
 - **Guard SSRF não bloqueava host em IP literal.** O lookup pinado (`ssrfSafeLookup`) só roda quando o Node resolve um nome: para `http://127.0.0.1/`, `http://[::1]/`, `http://169.254.169.254/` ou um redirect para um IP, o `net.connect` pula o `lookup` e a conexão abria — confirmado com um servidor local: `ssrfSafeFetch` e o axios SSRF-safe respondiam 200 enquanto `http://localhost/` era bloqueado. A conferência (`isBlockedLiteralHost`) passa a acontecer também na abertura de cada conexão — `connect` do dispatcher undici e `createConnection` dos agentes http/https do axios —, o que cobre redirects. Destinos públicos e o opt-out `DISABLE_SSRF_PROTECTION` não mudam; uma instalação que apontava um provider self-hosted para um IP privado literal (já recusado na validação da URL) passa a ver `Blocked IP`/`fetch failed` também na conexão — o caminho continua sendo `DISABLE_SSRF_PROTECTION=true`. Endurecimentos na mesma passada: `ssrfSafeFetch` só aceita o próprio dispatcher pinado (um dispatcher alheio trocaria o guard inteiro), o axios SSRF-safe recusa `httpVersion: 2`, `transport`, `socketPath`, `proxy` e agentes por chamada (passariam por fora dos agentes guardados; nenhum caller usava), e o validador bloqueia também IPv4 embutido em SIIT (`::ffff:0:a.b.c.d`) e o Azure WireServer (`168.63.129.16`).

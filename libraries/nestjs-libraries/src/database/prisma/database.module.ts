@@ -1,5 +1,8 @@
 import { PostWorkflowMigrationRepository } from './posts/post-workflow-migration.repository';
 import { PostWorkflowMigrationService } from './posts/post-workflow-migration.service';
+
+import { OrganizationDeletionRepository } from './organizations/organization.deletion.repository';
+import { OrganizationDeletionService } from './organizations/organization.deletion.service';
 import { AutomationHistoryRepository } from './automation-history/automation-history.repository';
 import { AutomationHistoryService } from './automation-history/automation-history.service';
 import { PostManagementService } from './posts/post-management.service';
@@ -94,6 +97,8 @@ import { AiModule } from '@gitroom/nestjs-libraries/ai/ai.module';
     PrismaTransaction,
     UsersService,
     UsersRepository,
+    OrganizationDeletionRepository,
+    OrganizationDeletionService,
     OrganizationService,
     OrganizationRepository,
     SubscriptionService,

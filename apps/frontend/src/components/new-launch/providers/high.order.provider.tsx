@@ -8,7 +8,12 @@ import React, {
   useImperativeHandle,
   useMemo,
 } from 'react';
-import { useForm, FormProvider, DefaultValues } from 'react-hook-form';
+import {
+  useForm,
+  useWatch,
+  FormProvider,
+  DefaultValues,
+} from 'react-hook-form';
 import { IsOptional } from 'class-validator';
 import { classValidatorResolver } from '@hookform/resolvers/class-validator';
 import { useLaunchStore } from '@gitroom/frontend/components/new-launch/store';
@@ -69,9 +74,13 @@ export const withProvider = function <T extends object>(params: {
     t?: (key: string, defaultValue: string) => string,
     // identificador do canal (ex.: 'tiktok' vs 'zernio-tiktok'): componentes
     // compartilhados com os canais Zernio usam para limitar checagens nativas
-    identifier?: string
+    identifier?: string,
+    contents?: string[]
   ) => Promise<string | true>;
-  maximumCharacters?: number | ((settings: any) => number);
+  maximumCharacters?:
+    | number
+    | ((additionalSettings: any, values?: any) => number);
+  inlineImages?: boolean | ((values: any, identifier?: string) => boolean);
 }) {
   const {
     postComment,
@@ -83,7 +92,7 @@ export const withProvider = function <T extends object>(params: {
     maximumCharacters,
   } = params;
 
-  return forwardRef((props: { id: string }, ref) => {
+  const Wrapped = forwardRef((props: { id: string }, ref) => {
     const t = useT();
     const fetch = useFetch();
     const {
@@ -100,6 +109,7 @@ export const withProvider = function <T extends object>(params: {
       allIntegrations,
       setPostComment,
       setEditor,
+      setInlineImages,
       dummy,
       setChars,
       setComments,
@@ -123,53 +133,13 @@ export const withProvider = function <T extends object>(params: {
         setTotalChars: state.setTotalChars,
         setPostComment: state.setPostComment,
         setEditor: state.setEditor,
+        setInlineImages: state.setInlineImages,
         setChars: state.setChars,
         selectedIntegration: state.selectedIntegrations.find(
           (p) => p.integration.id === props.id
         ),
       }))
     );
-
-    useEffect(() => {
-      if (!setTotalChars) {
-        return;
-      }
-
-      setChars(
-        props.id,
-        typeof maximumCharacters === 'number'
-          ? maximumCharacters
-          : maximumCharacters(
-              JSON.parse(
-                selectedIntegration.integration.additionalSettings || '[]'
-              )
-            )
-      );
-
-      if (isGlobal) {
-        setComments(true);
-        setPostComment(PostComment.ALL);
-        setTotalChars(0);
-        setEditor('normal');
-      }
-
-      if (current) {
-        setComments(
-          typeof params.comments === 'undefined' ? true : params.comments
-        );
-        setEditor(selectedIntegration?.integration.editor);
-        setPostComment(postComment);
-        setTotalChars(
-          typeof maximumCharacters === 'number'
-            ? maximumCharacters
-            : maximumCharacters(
-                JSON.parse(
-                  selectedIntegration.integration.additionalSettings || '[]'
-                )
-              )
-        );
-      }
-    }, [justCurrent, current, isGlobal, setTotalChars]);
 
     // com midia, o painel de miniaturas mantem as configuracoes visiveis
     // mesmo sem configuracao do canal (upstream #2285)
@@ -215,6 +185,60 @@ export const withProvider = function <T extends object>(params: {
       reValidateMode: 'onChange',
     });
 
+    // Settings control inline pictures and reactive character limits (X Articles).
+    const values = useWatch({
+      control: form.control,
+      disabled:
+        typeof params.inlineImages !== 'function' &&
+        typeof maximumCharacters !== 'function',
+    });
+    const characterLimit =
+      typeof maximumCharacters === 'number'
+        ? maximumCharacters
+        : maximumCharacters?.(
+            JSON.parse(
+              selectedIntegration.integration.additionalSettings || '[]'
+            ),
+            values
+          ) || 1000000;
+    useEffect(() => {
+      if (!setTotalChars) {
+        return;
+      }
+
+      setChars(props.id, characterLimit);
+
+      if (isGlobal) {
+        setComments(true);
+        setPostComment(PostComment.ALL);
+        setTotalChars(0);
+        setEditor('normal');
+        setInlineImages(false);
+      }
+
+      if (current) {
+        setComments(
+          typeof params.comments === 'undefined' ? true : params.comments
+        );
+        setEditor(selectedIntegration?.integration.editor);
+        setPostComment(postComment);
+        setTotalChars(characterLimit);
+      }
+    }, [justCurrent, current, isGlobal, setTotalChars, characterLimit]);
+
+    const inlineImages =
+      typeof params.inlineImages === 'function'
+        ? params.inlineImages(
+            values,
+            selectedIntegration.integration.identifier
+          )
+        : !!params.inlineImages;
+    useEffect(() => {
+      if (current) {
+        setInlineImages(inlineImages);
+      }
+    }, [current, inlineImages]);
+
     useImperativeHandle(
       ref,
       () => ({
@@ -234,19 +258,13 @@ export const withProvider = function <T extends object>(params: {
                     selectedIntegration.integration.additionalSettings || '[]'
                   ),
                   t,
-                  selectedIntegration.integration.identifier
+                  selectedIntegration.integration.identifier,
+                  value.map((p) => p.content)
                 )
               : true,
             settings,
             values: value,
-            maximumCharacters:
-              typeof maximumCharacters === 'number'
-                ? maximumCharacters
-                : maximumCharacters(
-                    JSON.parse(
-                      selectedIntegration.integration.additionalSettings || '[]'
-                    )
-                  ),
+            maximumCharacters: characterLimit,
             fix: () => {
               setCurrent(props.id);
               setHide(true);
@@ -269,7 +287,7 @@ export const withProvider = function <T extends object>(params: {
           return form.trigger();
         },
       }),
-      [value]
+      [value, characterLimit]
     );
 
     return (
@@ -308,35 +326,20 @@ export const withProvider = function <T extends object>(params: {
                 (!SettingsComponent && !data?.internalPlugs?.length)) &&
               !!value?.[0]?.content?.length &&
               (CustomPreviewComponent ? (
-                <CustomPreviewComponent
-                  maximumCharacters={
-                    typeof maximumCharacters === 'number'
-                      ? maximumCharacters
-                      : maximumCharacters(
-                          JSON.parse(
-                            selectedIntegration.integration
-                              .additionalSettings || '[]'
-                          )
-                        )
-                  }
-                />
+                <CustomPreviewComponent maximumCharacters={characterLimit} />
               ) : (
-                <GeneralPreviewComponent
-                  maximumCharacters={
-                    typeof maximumCharacters === 'number'
-                      ? maximumCharacters
-                      : maximumCharacters(
-                          JSON.parse(
-                            selectedIntegration.integration
-                              .additionalSettings || '[]'
-                          )
-                        )
-                  }
-                />
+                <GeneralPreviewComponent maximumCharacters={characterLimit} />
               ))}
             {(SettingsComponent || !!data?.internalPlugs?.length) &&
               createPortal(
-                <div data-id={props.id} className={isGlobal ? 'bg-newSettings pb-[12px] px-[12px]' : 'hidden bg-newSettings px-[12px] pb-[12px]'}>
+                <div
+                  data-id={props.id}
+                  className={
+                    isGlobal
+                      ? 'bg-newSettings pb-[12px] px-[12px]'
+                      : 'hidden bg-newSettings px-[12px] pb-[12px]'
+                  }
+                >
                   {isGlobal && (
                     <style>{`#wrapper-settings {display: flex !important} #social-empty {display: block !important;}`}</style>
                   )}
@@ -355,10 +358,14 @@ export const withProvider = function <T extends object>(params: {
                           width={16}
                           height={16}
                           className="rounded-[16px] min-w-[16px] min-h-[16px] w-[16px] h-[16px] absolute bottom-0 end-0"
-                          src={getPlatformIconPath(selectedIntegration?.integration.identifier || '')}
+                          src={getPlatformIconPath(
+                            selectedIntegration?.integration.identifier || ''
+                          )}
                         />
                       </div>
-                      <div className="text-[20px]">{selectedIntegration?.integration.name}</div>
+                      <div className="text-[20px]">
+                        {selectedIntegration?.integration.name}
+                      </div>
                     </div>
                   )}
                   <SettingsComponent />
@@ -382,4 +389,11 @@ export const withProvider = function <T extends object>(params: {
       </IntegrationContext.Provider>
     );
   });
+  (Wrapped as any).__settings = { SettingsComponent };
+  return Wrapped;
 };
+
+export const getProviderSettingsMeta = (component: unknown) =>
+  (component as any)?.__settings as
+    | { SettingsComponent: FC<{ values?: any }> | null }
+    | undefined;

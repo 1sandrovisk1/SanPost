@@ -1,3 +1,5 @@
+import { ApplicationFailure } from '@temporalio/common';
+import { EmailDeliveryError } from '@gitroom/nestjs-libraries/emails/email.delivery.error';
 import { Injectable } from '@nestjs/common';
 import { Activity, ActivityMethod } from 'nestjs-temporal-core';
 import { EmailService } from '@gitroom/nestjs-libraries/services/email.service';
@@ -23,7 +25,23 @@ export class EmailActivity {
     replyTo?: string,
     lang?: string
   ) {
-    return this._emailService.sendEmailSync(to, subject, html, replyTo, lang);
+    try {
+      return await this._emailService.sendEmailSync(
+        to,
+        subject,
+        html,
+        replyTo,
+        lang
+      );
+    } catch (error) {
+      if (error instanceof EmailDeliveryError) {
+        throw ApplicationFailure.nonRetryable(
+          'Email delivery failed',
+          'EmailDeliveryError'
+        );
+      }
+      throw error;
+    }
   }
 
   @ActivityMethod()

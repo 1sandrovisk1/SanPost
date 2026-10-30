@@ -309,8 +309,10 @@ Os 21 CVEs de 2026 anteriores do nginx já estão resolvidos no Debian
 - `#2013` workflow v1.1.2: já existe no fork (V112 opt-in).
 - `#2200` ocultar aba Equipe para `USER`: a aba do fork já é adaptável por
   papel; conferir apenas o caso org-USER sem perfil.
-- `#2079` comentários anônimos no preview + reCAPTCHA: nova superfície pública
-  de escrita; o fork tem revisão/aprovação própria — reavaliar como produto.
+- `#2079` foi adiado nesta triagem inicial por introduzir escrita pública.
+  **Atualização de 29/10:** adoção autorizada e implementada, integrada à revisão
+  do fork com reCAPTCHA, limites por IP, respostas e moderação por perfil;
+  contrato em `docs/api/preview-comments.md`.
 - `#2091`, DCR, ChatGPT app, conector self-hosted, HubSpot, Canva: superfícies
   de Postiz Cloud; o DCR é exatamente a amostragem anônima do CVE-2026-94456.
 - `b958c5d5` cookies `invite`/`showorg` com vida maior: UX, não segurança —
@@ -383,7 +385,8 @@ Os 21 CVEs de 2026 anteriores do nginx já estão resolvidos no Debian
    ampliador de impacto): avaliar `USER` não privilegiado no `Dockerfile.dev`
    quando migrar a base (trilha B).
 3. `libraries/helpers/src/utils/read.or.fetch.ts` é um `readFileSync` sem
-   importadores — remover.
+   importadores — remover. **Resolvido (28/10, épico Temporal):** removido
+   junto com o porte do #2193.
 4. Sentry no frontend: não há `instrumentation-client.ts`/replay; confirmar
    se o Sentry client está desligado de propósito antes de portar `#2280`.
 5. **Linhas legadas de `customInstanceDetails`** (Skool): antes desta branch o
@@ -619,9 +622,9 @@ lockfile), #2289 + `2ded21d1` (sanitizer: tags de bloco viram `<p>`, regex
 linear). Já cobertos pelos lotes de providers: #1915, #2108, #2116, #2117,
 #2118, #2140, #2141, #2164, #2262. Cobertos de outra forma: #2101 (Sentry já em
 10.76.2), #2225 (log do "Authentication failed" via `summarizeError`). Não
-aplicável agora: #2290 (classe `preview` na página de preview com comentários,
-que o fork ainda não tem — entra com o épico de comentários anônimos no
-preview). `6b102afb` (`destructiveHint`) vai para o lote MCP.
+aplicável na triagem inicial: #2290. **Atualização de 29/10:** a classe
+`preview` está presente no `PreviewText`, entregue junto dos comentários
+anônimos, preservando quebras de linha. `6b102afb` (`destructiveHint`) vai para o lote MCP.
 
 ### Lote MCP (27/10/2026)
 
@@ -807,6 +810,359 @@ canais escondido em post existente, corrigido; seletor de cliente escondido
 em post existente; textos de exclusão). Sem backfill: posts antigos abrem
 sozinhos. Observação aceita: o canal aberto movido para o passado segue o
 comportamento antigo (pergunta só atualizar/republicar).
+
+### Épico Temporal (28/10/2026)
+
+Branch `feat/temporal-workflows-2026-10`. Nenhum dos commits toca os workflows
+de post (`post.workflow.v1.0.1/v1.0.2/v1.1.2`), então o versionamento V102/V112
+não muda; o que é código de workflow em execução usa `patched()` e tem replay.
+
+- **#2087 `9bb641ef` (webhook vazio):** portado igual.
+  `PostsRepository.getPostByForWebhookId(postId, integrationId)` cai no
+  `releaseId` + canal (mais recente, `take: 1`) quando o id não é o do banco —
+  os três workflows de post passam `postsResults[0].postId`, o id na
+  plataforma, que o `updatePost` já gravou. Mudança só na activity e no
+  repositório (sem impacto de determinismo).
+- **#2193 `11d24f3f` (mídia travada):** o fork não tem `mediaChunk`/`mediaSize`
+  (leitura por faixas do upstream), só o `readOrFetch` do `SocialAbstract` —
+  que já passava pelo axios SSRF-safe e pelo `localMediaPath`. Portado lá:
+  `AbortSignal.timeout(MEDIA_READ_TIMEOUT = 120s)`, uma nova leitura e
+  `BadBody` não-retentável. Divergências: mensagem em pt-BR (como a do
+  `localMediaPath` ao lado) e caminho no `json` via `heartbeatEndpoint` (o fork
+  não tem `stripQuery`). LinkedIn/X já usavam `this.readOrFetch`. O helper
+  `libraries/helpers/src/utils/read.or.fetch.ts` (axios sem SSRF, sem
+  importadores) foi removido — fecha o follow-up 3 da seção 6.
+- **`1f5f24e5` (e-mail):** portado `email.queues.ts`, workers só de activity
+  com `maxTaskQueueActivitiesPerSecond` dentro de `buildTemporalWorkers`
+  (respeitam `EXCLUDE_QUEUE`; o limite não é dividido pelo
+  `WORKER_CONCURRENCY_DIVIDER` porque é da fila inteira),
+  `sendSingleEmailWorkflow` (um workflow por e-mail, `send_email_<uuid>`) e o
+  `ResendProvider` lançando o erro da API. Preservado do fork: `lang` no
+  payload e na activity. `sendEmailWorkflow` fica registrado e intacto para o
+  `send_email` aberto drenar. **Divergência:** `auth.service.ts` não foi
+  portado — ativação/reenvio/senha continuam por `EmailService.sendEmail`
+  (Temporal, fila `email`) em vez de `sendEmailSync` na requisição HTTP, que
+  travaria o cadastro por minutos com SMTP bloqueado (timeouts padrão do
+  nodemailer). Extra do fork: logs de falha do `sendEmailSync` com
+  `summarizeError`.
+- **`185044d5` (continueAsNew):** portado igual (`patched('autopost-continue-as-new')`,
+  `patched('missing-post-continue-as-new')`, 24 ciclos ou histórico > 1000,
+  `continueAsNew` fora do `try/catch`). `pnpm temporal:replay-post` passou a
+  aceitar `autoPostWorkflow`, `missingPostWorkflow`, `sendEmailWorkflow` e
+  `sendSingleEmailWorkflow`; `long-running-workflows-replay.spec.ts` faz replay
+  real (bundle + core) de históricos sintéticos de 30 ciclos anteriores ao
+  patch e falha se o `patched()` for removido (verificado). A reconciliação no
+  boot da branch `fix/rc3-tags-temporal-2026-10` não é necessária aqui.
+- **#2258 `a7666b5e` (YouTube):** nada a portar — é o merge de `23beddcd`, já
+  portado (`PublishedWithError`, `keepReleaseOnPublishedError`,
+  `updatePublishedRelease`, `guardAgainstRepublish`). O resto do diff é o fluxo
+  pendente/resumable do YouTube upstream (`postPending`/`finalizePost`), que o
+  fork não tem.
+
+Follow-ups:
+- `missingPostWorkflow` ainda morre se `searchForMissingThreeHoursPosts`
+  falhar 3 vezes (falta `try/catch` com backoff, pitfall 9) e só volta no
+  próximo boot com `RUN_CRON`; `autopost-*` não tem reconciliação no boot.
+- `dribbble`, `bluesky`, `reddit`, `pinterest`, `vk` e `youtube` ainda leem
+  mídia com `getSsrfSafeAxios()` direto, sem prazo (pitfall 18 do
+  orchestrator).
+- Remover `sendEmailWorkflow` quando não houver `send_email` aberto em
+  produção.
+
+Teste manual em produção: antes do deploy, exportar e rodar
+`pnpm temporal:replay-post` no histórico atual de `missing-post-workflow` e de
+um `autopost-*` ativo; depois, confirmar no Temporal UI execuções
+`send_email_<uuid>` concluídas (ativação de conta, convite, digest), pollers
+nas filas `email`/`email-bulk` e um webhook de publicação com payload
+preenchido.
+
+### TikTok for Business (28/10/2026)
+
+Branch `feat/tiktok-business-2026-10`. Novo canal `tiktok-business`, porte do
+`tiktok.business.provider.ts` de `upstream/main` (base da versão de 28/10)
+com o histórico `4ace3a7a`, `cae2565e` (só a parte do provider), `885f9a5c`,
+`306b6e94`, `25b47887`/`4e959fa4`, `4c835138` (CVE-2026-94456), parte Business
+do #2186 (`bcbc1195`/`56f42d09`), `96b78476`, `6f79545d`, `6eed47e0`,
+`541c7a45`, #2240 (`1004ca92`/`a15f6ea3`), `15c4ce19` (falha cedo sem
+`auth_code`) e `97ee8b9f` ("The access token is invalid" → refresh-token).
+Portado também: DTO com música/localização, seletores do compositor
+(`tiktok.music.tsx`, `tiktok.location.tsx`), mapeamento `auth_code` → `code`
+no `continue.integration.tsx`, analytics da plataforma, ícone, `.env.example`
+e `docker-compose.yaml`.
+
+Reaproveitado do fork em vez do código do upstream: limites de legenda de
+`tiktok.caption.ts` (`TIKTOK_IDENTIFIERS` ganha `tiktok-business`, então
+`PostsService.createPost` devolve 400 também para esse canal);
+`PostsService.resolveRelease` + `GET /posts/:id/release-url` (o provider só
+implementa `resolveReleaseId`/`releaseUrl`); lane V112 (`postPending` +
+`checkPostStatus`, que já existe no fork atrás de `POST_WORKFLOW_V112_*`).
+
+Divergências do upstream:
+- Credenciais por workspace/perfil: `generateAuthUrl`, `authenticate` e
+  `refreshToken` recebem `ClientInformation`, resolvida pela chave
+  `tiktok-business` (sem alias para o `tiktok` nativo — é outro app);
+  `TIKTOK_BUSINESS_CLIENT_ID/SECRET` só como fallback (`ENV_MAPPING`). Card
+  próprio em Configurações > Credenciais, com placeholders e orientação via
+  `useT()` e a URL de callback com a barra final. O "Testar" usa o caminho
+  padrão (campos preenchidos): a Business API não tem `client_credentials`.
+- Sem `Disconnect`/`MIGRATE_PROVIDERS`/`HIDDEN_PROVIDERS` (`cae2565e`): o
+  fork não tem a classe nem a migração de canal, e o provider Business nunca
+  classifica erro como disconnect (cota diária segue bad-body, como no
+  upstream). Por isso o nome é "TikTok Business" — os dois canais aparecem em
+  "Adicionar canal".
+- Sem `checkValidity` do servidor no fork: as regras de mídia (nenhuma mídia,
+  vídeo misturado com fotos, mais de 35 fotos), a legenda e a pré-checagem de
+  1080px do #2240 rodam em `postPending` antes do publish (cobre API pública,
+  MCP e CLI). A pré-checagem lê uma imagem por vez com sharp (URL pelo axios
+  SSRF-safe com prazo de 20 s, arquivo local por `readOrFetch`) e deixa
+  passar imagem que não dá para medir. O compositor faz a mesma conta no
+  navegador (`identifier === 'tiktok' || 'tiktok-business'`) e o limite de 35.
+- Música/localização num `TikTokBusinessDto` próprio (o upstream pôs no
+  `TikTokDto`), para o nativo e o `zernio-tiktok` não anunciarem campos que
+  ignoram (pitfall 15).
+- `analytics`, `postAnalytics` e `resolveReleaseId` via `analyticsFetch`
+  (pitfall 13); `missing` e a publicação seguem no `this.fetch`.
+  `resolveReleaseId` não resolve sem `integration.profile` (evita `/@null`
+  persistido) e trata corpo não-JSON como pendente; `releaseUrl` só aceita id
+  numérico; handles codificados na URL.
+- `post()` (caminho V102, padrão do fork) mantém o limite de 8 min do upstream
+  abaixo do timeout de 10 min da activity, agora contado desde antes da
+  pré-checagem. Depois do publish nada vira erro retentável: tempo esgotado ou
+  token expirado na consulta viram `PublishedWithError` (o share_id e o link do
+  perfil ficam salvos e o `resolveReleaseId` acha o post depois) em vez do
+  `BadBody` "refused" do upstream — um `RefreshToken` ali fazia o V102 renovar
+  e publicar de novo. Sem `integration.profile`, o status guarda o share_id com
+  a home do TikTok em vez de montar `/@/...`; FAILED sem motivo mapeado mostra
+  o `reason` do TikTok.
+- Pré-checagem de imagem com teto de 25 MB por imagem e orçamento total de
+  60 s; credencial do perfil sempre em par (nunca mistura `client_id` salvo com
+  o segredo do env); campos de exibição de música/localização com tamanho
+  máximo e capa só em URL https (vão para `<img src>` no compositor).
+- State de OAuth com `makeSecureId(32)` (upstream usa 16); logs com
+  `summarizeError`.
+
+Specs (mock de fetch, sem chamada real): `handleErrors` (as duas mensagens
+novas, precedência dos `spam_risk*`, cota diária), `auth_code` ausente →
+`BadBody` sem chamar o TikTok, URL de auth com `makeSecureId` e credencial do
+perfil/env, troca e refresh com `ClientInformation`, regras de mídia, legenda,
+pré-checagem de imagem (mock e sharp real em `UPLOAD_DIRECTORY`), payloads de
+vídeo/foto em DIRECT_POST e UPLOAD (música, volumes, localização, música
+aleatória e fallback `auto_add_music`), `checkPostStatus` (int64, `/photo/`,
+caixa de entrada, FAILED, envelope com erro de token), `post()` publicando uma
+vez, `resolveReleaseId`/`releaseUrl`, `musicSearch`/`locationSearch` e
+analytics; DTO (validação aninhada e schema do MCP com campos herdados);
+`IntegrationManager` (registro, credencial, `isDashboardCallable` das duas
+`@Tool`); `PostsService.createPost` com 400 para `tiktok-business`.
+
+Só dá para validar com a API aprovada: conexão de verdade (redirect com
+barra final e `auth_code`, `checkScopes` com o formato de `scope` da Business
+API, campos de `/business/get/`), publicação PULL_FROM_URL com o domínio de
+mídia verificado no app, música (`song_clip_id`, volumes) e localização,
+música aleatória, status/`post_ids` (inclusive atraso de até 3 min), rascunho
+UPLOAD e "Conectar post", estatísticas da conta e do post e o refresh com o
+app do perfil.
+
+Revisões: `code-reviewer` (0 MUST FIX; SHOULD FIX aplicados — `/@/` sem
+perfil, republicação após `RefreshToken` no V102, FAILED com mensagem vazia,
+lacunas de spec em `post()`/`missing`/`postAnalytics`; NITs aplicados: volume
+`null`, lista de músicas fora do ar, `maxConcurrentJob` sem efeito removido,
+par de credenciais, `validacao-dev.md`); `security-auditor` (0 CRITICAL/HIGH;
+MEDIUM introduzidos e resolvidos: download sem teto/orçamento, mistura de
+credenciais, campos de exibição sem limite).
+
+Follow-ups: teste de credencial dedicado no `CredentialService` quando houver
+um endpoint barato; o seletor "Quem pode ver" continua visível em vídeo
+Business, embora a API só aplique privacidade em foto; `tiktok-business` não
+é destino de repost (`repost.matrix.ts` — decidir se entra junto do
+`tiktok`); pré-existentes apontados pelo `security-auditor`: redirect via
+`redirectmeto.com` quando `FRONTEND_URL` não é https (mesmo padrão do TikTok
+nativo — leva `auth_code`/`state` a terceiro) e saída das `@Tool` de provider
+(`musicSearch`/`locationSearch`, como as demais) entregue ao agente MCP sem o
+invólucro `<source>` de dado não confiável.
+
+### Farcaster — Neynar managed signers (28/10/2026)
+
+Branch `feat/farcaster-neynar-2026-10`. Portados #2078 (`6dbaadb1`) e #2080
+(`9b06ea22`): o SIWN (janela da Neynar + `postMessage`) dá lugar a managed
+signers — o backend cria o signer, assina o `SignedKeyRequest` (EIP-712) com
+`NEYNAR_APP_MNEMONIC` e registra; o modal mostra QR + "Copiar link" e consulta o
+status até a aprovação. Saíram `nayner.auth.button.tsx`, o CSS do
+`@neynar/react` e `NEYNAR_LOGIN_URL`; entraram `NEYNAR_APP_FID`,
+`NEYNAR_APP_MNEMONIC`, `NEYNAR_SPONSOR_SIGNERS` e
+`docs/operations/farcaster-neynar.md`. O commit posterior no provider
+(`4c835138`, `makeSecureId`) já estava no fork.
+
+Divergências:
+- Chamadas à Neynar sem o `@neynar/nodejs-sdk`, no host fixo: escritas
+  (signer, cast, busca) por `this.fetch`, leituras de status por
+  `ssrfSafeFetch` com o status traduzido em motivo estável (400/403/404 →
+  `invalid_signer`, 401 → `key_refused`, 402 → `no_credits`, 429 →
+  `rate_limited`; nunca `RefreshToken`/500); timeout de 30 s em todas.
+  `handleErrors`: só mensagem com "signer"/"revoked" → `refresh-token` (canal
+  "precisa reconectar" com motivo curado, via `refreshToken` que lança
+  `FARCASTER_RECONNECT_MESSAGE`); 401/402/403 genérico → `bad-body`
+  (chave/créditos/plano da instância não desconectam todos os canais);
+  502/503/504 → `retry`; busca de canais engole falha em `[]`. Falhas de
+  escrita voltam ao Temporal sem `signer_uuid`/assinatura no corpo.
+- **Registro server-side dos signers** (`farcaster.signer.registry.ts`, Redis
+  `farcaster:signer:<requestId>`, 15 min): o navegador recebe só um
+  `requestId` opaco (`makeSecureId(32)`), consultado por POST com corpo. Login:
+  nonce aleatório em cookie httpOnly (`farcaster_login`, flags do cookie
+  `auth`) com hash no Redis, exigido no status e na troca do code
+  (`/auth/oauth/FARCASTER/exists`, `/auth/login`, `/auth/register`). Canal:
+  org + usuário + perfil + `state` do `/social/wrapcast` (o POST confere que o
+  state é da org/perfil de quem chama; o status exige a mesma org/usuário; o
+  `social-connect` exige o mesmo state, repassado ao `authenticate`). Uso
+  único (`DEL` = 1) ao concluir; code fora do registro é recusado antes da
+  Neynar. O code aprovado vai pela aba (`sessionStorage`), nunca pela URL.
+  Substitui o "fix login state" do upstream, que depende do cookie
+  `oauth_state` (`14c3a2f8`) que o fork não tem.
+- Rotas: canal por rotas **autenticadas** `/integrations/farcaster/signer`
+  (+ `/status`), limitadas por org + usuário (`ThrottlerOrgUserGuard`) — o
+  upstream usa as públicas também no canal. Login pelas públicas
+  `/auth/farcaster/signer` (+ `/status`), com `ThrottlerRealIpGuard` (porte do
+  upstream + IP validado com `net.isIP` + teto global 10× por rota sem
+  sobrescrever os `X-RateLimit-*`). Gate do login (`NEYNAR_CLIENT_ID`, 404) e
+  limite também na troca do code (`ThrottlerFarcasterLoginGuard`, só para
+  provider `FARCASTER`). Tudo via `FarcasterSignerService`.
+- Patrocínio (`NEYNAR_SPONSOR_SIGNERS`) só na rota autenticada do canal; o
+  login nunca patrocina.
+- `authenticate` relê signer e perfil na Neynar (perfil ausente falha claro);
+  `getUser` do login devolve `false` para signer não aprovado (antes
+  `{ id: '' }` deixava o registro seguir com `providerId` vazio) — tipo de
+  `AuthProviderAbstract.getUser` ampliado.
+- Credenciais da instância (env), não por workspace: o signer só vale com a
+  chave que o criou e o post não tem credencial por workspace; registrado no
+  `CLAUDE.md` de social (pitfall 22). `generateAuthUrl` não lê mais
+  `NEYNAR_CLIENT_ID` (`farcaster||<state>`).
+- `qrcode`/`@types/qrcode` entraram à mão no `package.json`/lockfile (o
+  `pnpm add` re-resolvia `@opentelemetry/api` 1.9 → 1.10; `qrcode@1.5.4` já
+  estava no lockfile como transitiva). `@neynar/react` fica no `package.json`
+  sem uso e `@neynar/nodejs-sdk` sem import — remoção no PR de dependências.
+- "Reconectar canal" de providers web3 (Farcaster, Telegram, Moltbook) abria
+  `window.location.href = nonce`; agora usa o hook `useOpenWeb3` (o mesmo do
+  Adicionar canal), com id estável de modal e trava contra o clique duplo do
+  "!" (que criava dois signers).
+
+Canais conectados pelo SIWN: nada é migrado; seguem publicando com o
+`signer_uuid` salvo (só `NEYNAR_SECRET_KEY` é necessária) enquanto a chave for
+do mesmo app da Neynar. Signer revogado ou chave de outro app → post falha com
+o motivo, canal marcado para reconexão com notificação e evento em Status.
+
+Revisões: `code-reviewer` e `security-auditor` (rodados pelo coordenador).
+Auditoria: 3 HIGH (signer sem vínculo ao navegador/org — relay e CSRF de login
+por link; troca do code sem gate/limite e 404 da Neynar virando 500;
+patrocínio na rota pública) e 4 MEDIUM (`signer_uuid` nos details do Temporal,
+texto do mnemonic, tracker do limite e signer do login com escrita) corrigidos
+no segundo commit. Code review: modal sem id no reconectar (dois signers por
+clique), 403 genérico desconectando canais, falhas permanentes em polling
+mudo, `X-RateLimit-*` sobrescritos, perfil vazio salvo — corrigidos.
+
+Riscos que ficam (documentados em `docs/operations/farcaster-neynar.md`):
+quem cria o pedido e manda o QR para outra pessoa aprovar entra/conecta a conta
+de quem aprovou (inerente ao fluxo por QR; o vínculo impede roubo/reuso do
+code, não o phishing de consentimento); a Neynar não revoga managed signers
+pela API, então o signer do login segue aprovado até o usuário revogar no app
+(a instância não o guarda e o code é de uso único); o limite por IP depende do
+proxy sobrescrever o `x-forwarded-for` (Traefik em produção faz).
+
+Follow-ups: remover `@neynar/react` e `@neynar/nodejs-sdk` no PR de
+dependências; CSRF do login Google (`state: 'login'` constante, fora deste
+PR); limite de 2 embeds por cast da Neynar não é validado no compositor (a
+Neynar recusa com `bad-body`); corpo exato do erro de signer revogado na Neynar
+não está documentado — conferir no teste de revogação em produção.
+
+### Imagem inline no editor (28/10/2026)
+
+Portados `2aae02fe` (imagem inline) e `28701a98` (descrição para o agente)
+na branch `feat/editor-inline-image-2026-10`. Editor: nó `image` arrastável,
+`Dropcursor`/`TrailingNode`, upload/colar/soltar/biblioteca inserem no
+cursor quando o canal personalizado declara `inlineImages` (WordPress e
+ListMonk) e o editor é `html`; só imagem (vídeo recusado com aviso);
+`ThirdPartyMedia` e vídeo por IA escondidos nesse modo. `dnd.provider` não
+cancela mais o arrastar nativo dentro do editor. Backend:
+`SocialProvider.inlineImages?(settings)`, `PostActivity` passa o sinal ao
+`stripHtmlValidation` nos dois mapeamentos (V102 e V112),
+`isAllowedUploadPath` extraído do `ValidUrlPath`, CSS de imagem no e-mail do
+ListMonk e `@Rules` do WordPress/ListMonk.
+
+Divergências (mais estritas que o upstream):
+- **Só mídia da instância.** O upstream aceita qualquer `src` http(s); o fork
+  aceita `FRONTEND_URL/uploads/...` e `CLOUDFLARE_BUCKET_URL/...`
+  (`helpers/utils/inline.images.ts`): sem credenciais na URL, sem `..` fora de
+  `/uploads/`, path só com os caracteres que o storage gera, query/fragmento
+  descartados, `RESTRICT_UPLOAD_DOMAINS` quando configurado. Outro site vira
+  pixel de rastreio no preview público/revisão e hotlink no artigo/e-mail.
+- **Sem hook global no DOMPurify.** O upstream registra
+  `uponSanitizeElement` na instância compartilhada, o que também alcançaria o
+  `sanitizeChatContent`. Aqui o DOMPurify roda como antes (agora com `img`,
+  `src`, `alt`) e `rewriteInlineImages` filtra depois, na árvore do parse5.
+- **`convertImages` na árvore, não por regex.** O regex do upstream deixava
+  o alt `&amp;quot;` virar `"` depois da decodificação de entidades do modo
+  `html` (atributo quebrado no HTML enviado), e um `<img` dentro do valor de
+  outro atributo deslocava aspas. O fork reconstrói só `src` normalizado e
+  `alt` sem `"`/`&`/`<`/`>`.
+- **Editor também filtra.** O nó `image` e o HTML colado só aceitam mídia da
+  instância (prefixos de `useVariables()`); imagem de fora é descartada com
+  aviso (`inline_image_not_from_media_library`).
+- **X fora no porte inicial.** Atualizado em 30/10: X Articles foi incorporado depois; ver `docs/operations/x-articles.md`. Na etapa inicial o fork não tinha X Articles (`173f92ed`, opcional na triagem de
+  agosto); a parte do X (`inlineMediaIds`, upload das figuras do artigo,
+  `inlineImages` do composer do X e a frase do `@Rules`) não se aplica. Tweet
+  segue texto puro.
+- **MCP.** O fork não tem `uploadFromUrlTool`; a descrição do conteúdo (no
+  `schedulePostTool` e no `managedMessageSchema`, que alimenta o
+  `updatePostTool` e o OpenAPI) e os `@Rules` apontam para
+  `mediaListTool`/`generateImageTool`, mantendo o escopo por perfil
+  (`CHANNEL_PROFILE_MISMATCH`).
+- Preview público (`/p/[id]`) com `max-width` nas imagens do conteúdo.
+
+Testes: `inline.images.spec.ts`, `sanitize.post.content.spec.ts` (casos de
+XSS), `strip.html.validation.inline.images.spec.ts`, `valid.url.path.spec.ts`,
+`inline.images.conversion.spec.ts` (X/WordPress/ListMonk/Telegram/Hashnode),
+`listmonk.provider.spec.ts`, `wordpress.provider.spec.ts`, spec do
+`schedulePostTool`, `post.activity.spec.ts` e o vitest
+`new-launch/inline.images.spec.ts` (DOMPurify real: `onerror`, `javascript:`,
+`data:` SVG, `svg/image`, `picture/source`, mXSS de `math`/`noscript`).
+
+Follow-ups: o preview do composer (`general.preview`) não mostra a imagem
+inline (como no upstream); conteúdo só com imagem e sem texto/anexo continua
+recusado pelo `ValidContent` (como no upstream). Pré-existente, registrado: o
+modo `html` do `stripHtmlValidation` decodifica `&lt;`/`&gt;` depois do
+`striptags`, então texto digitado como `<script>` chega como HTML ao
+WordPress/ListMonk — vale para o autor do post no próprio site/lista, não é
+superfície nova deste porte.
+
+### PR de segurança 5 — follow-ups pós-RC 2 (28/10/2026)
+
+Branch `fix/security-followups-5-2026-10`. Resolvidos:
+- **autopost (HIGH pré-existente):** o item do feed vai ao LLM e ao prompt do
+  DALL-E como dado, envolto em `<source>` (`ai/untrusted.source.ts`:
+  normalização NFKC, sem caracteres de controle, teto de 8000 caracteres,
+  `</source>` do feed neutralizado) com a regra de conteúdo não confiável;
+- **app OAuth:** código de uso único sob troca concorrente (`updateMany`
+  condicionado ao código, só P2025 vira `invalid_grant`), segredo comparado com
+  `timingSafeEqual`, resposta sem `cus`, limite de tentativas no
+  `/oauth/token` por `client_id` (atrás do nginx o IP é o mesmo para todos) e
+  revogação dos tokens aprovados ao remover o membro da org ou do perfil;
+- **escopo de perfil:** `GET /posts/find-slot/:id` confere o canal, vídeo
+  gerado entra na biblioteca do perfil (painel e API pública) e reconectar
+  (`?refresh=`) canal de outro perfil, mesmo desativado, responde 403 no
+  painel (membro USER) e na API pública (chave de perfil);
+- **conectar página (`/provider/:id/connect`):** `ProviderPageDto` com
+  whitelist e ids sem caminho (`page`/`pageId` só `[A-Za-z0-9_-]`), e membro
+  USER só no próprio canal;
+- **Sentry:** logs, eventos, breadcrumbs e spans passam por redação recursiva
+  (chaves e cabeçalhos secretos, URLs com `access_token`, JSON escapado);
+- **throttle:** `POST /autopost/send` com orçamento próprio.
+
+Revisões: `code-reviewer` e `security-auditor` (2 HIGH introduzidos e
+corrigidos: o balde do `/oauth/token` por IP virava um balde global atrás do
+proxy, e a redação do Sentry não alcançava objetos logados). Continuam
+abertos: autopost lê `OPENAI_API_KEY` direto do `process.env` (fora do
+`AiProviderResolverService`); créditos de vídeo legados contados por org;
+`getOrgByOAuthToken` ignora soft-delete de usuário/org; login Google com
+`state` constante e `redirect_uri` do cliente; Sentry do frontend sem redação;
+e o restante da lista do PR de segurança 4 que não entrou aqui.
 
 ## Apêndice — classificação 1 por 1 (171 PRs + 74 commits diretos)
 
@@ -1021,7 +1377,7 @@ desde `e3b3b82f`. Merges `origin/main` do first-parent foram omitidos
 | direto | — | `3d3e9eee` | 2026-09-22 | feat: update chatgpt submission | 1 | 0 | **SKIP** | DCR/ChatGPT app: nova superfície OAuth não autenticada; fork não tem DCR |
 | direto | — | `5ff9e0b2` | 2026-09-23 | feat: update readme | 1 | 1 | **SKIP** | docs/README/CLAUDE.md do upstream (#2191 vira regra no nosso CLAUDE.md) |
 | direto | — | `c33f2188` | 2026-09-23 | feat: update readme | 1 | 1 | **SKIP** | docs/README/CLAUDE.md do upstream (#2191 vira regra no nosso CLAUDE.md) |
-| PR | #2079 | `33e126a9` | 2026-09-24 | feat(preview): inline comments, replies, resolve and anonymous commenting | 33 | 13 | **SKIP** | comentários anônimos no preview = nova superfície pública de escrita; fork tem revisão/aprovação própria (reavaliar como produto) |
+| PR | #2079 | `33e126a9` | 2026-09-24 | feat(preview): inline comments, replies, resolve and anonymous commenting | 33 | 13 | **ADOPT** | autorizado em 29/10: porte integrado à revisão do fork, com CAPTCHA, limites por IP, escopo por perfil, respostas e resolução; ver docs/api/preview-comments.md |
 | direto | — | `bb5099a8` | 2026-09-24 | feat: connected clients | 2 | 0 | **SKIP** | conector self-hosted/Canva/clientes conectados (Postiz Cloud) |
 | PR | #2151 | `fbd089f6` | 2026-09-25 | fix(billing): show a message when Stripe.js fails to load instead of crashing | 17 | 3 | **SKIP** | billing/Stripe (DISABLE_BILLING=true no fork) |
 | PR | #2159 | `73a0dea9` | 2026-09-28 | fix(frontend): keep the 402 response readable and stay on Add Channel after cancel | 2 | 2 | **SKIP** | billing/Stripe (DISABLE_BILLING=true no fork) |

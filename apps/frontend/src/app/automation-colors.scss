@@ -1,0 +1,92 @@
+// Shared identities for quick-editor stages and both React Flow editors.
+:root {
+  --automation-trigger: #64748b;
+  --automation-trigger-bg: #f8fafc;
+  --automation-trigger-ink: #475569;
+  --automation-media: #2563eb;
+  --automation-media-bg: #eff6ff;
+  --automation-media-ink: #1d4ed8;
+  --automation-condition: #d97706;
+  --automation-condition-bg: #fffbeb;
+  --automation-condition-ink: #92400e;
+  --automation-comment: #059669;
+  --automation-comment-bg: #ecfdf5;
+  --automation-comment-ink: #047857;
+  --automation-dm: #7c3aed;
+  --automation-dm-bg: #f5f3ff;
+  --automation-dm-ink: #6d28d9;
+  --automation-follow: #0891b2;
+  --automation-follow-bg: #ecfeff;
+  --automation-follow-ink: #0e7490;
+  --automation-extras: #0d9488;
+  --automation-extras-bg: #f0fdfa;
+  --automation-extras-ink: #0f766e;
+  --automation-delay: #ea580c;
+  --automation-delay-bg: #fff7ed;
+  --automation-delay-ink: #9a3412;
+}
+
+.dark {
+  --automation-trigger-bg: #202832;
+  --automation-trigger-ink: #cbd5e1;
+  --automation-media-bg: #182642;
+  --automation-media-ink: #93c5fd;
+  --automation-condition-bg: #30291c;
+  --automation-condition-ink: #fcd34d;
+  --automation-comment-bg: #16312a;
+  --automation-comment-ink: #6ee7b7;
+  --automation-dm-bg: #29203d;
+  --automation-dm-ink: #c4b5fd;
+  --automation-follow-bg: #16303a;
+  --automation-follow-ink: #67e8f9;
+  --automation-extras-bg: #16312f;
+  --automation-extras-ink: #5eead4;
+  --automation-delay-bg: #33261c;
+  --automation-delay-ink: #fdba74;
+}
+
+@each $name in trigger, media, condition, comment, dm, follow, extras, delay {
+  .automation-color-#{$name} {
+    --automation-accent: var(--automation-#{$name});
+    --automation-soft: var(--automation-#{$name}-bg);
+    --automation-ink: var(--automation-#{$name}-ink);
+  }
+}
+
+.automation-stage,
+.automation-node,
+.automation-badge {
+  background-color: var(--automation-soft);
+  border-color: color-mix(in srgb, var(--automation-accent) 25%, transparent);
+}
+
+.automation-stage {
+  border-left-color: var(--automation-accent);
+}
+
+.automation-accent {
+  color: var(--automation-accent);
+}
+
+.automation-ink,
+.automation-badge {
+  color: var(--automation-ink);
+}
+
+.automation-node[data-selected='true'] {
+  border-color: var(--automation-accent);
+  box-shadow: 0 0 0 2px
+    color-mix(in srgb, var(--automation-accent) 25%, transparent);
+}
+
+.automation-node .automation-node-handle {
+  background-color: var(--automation-accent);
+}
+
+.automation-stage > h2 > button:focus-visible {
+  box-shadow: 0 0 0 2px var(--automation-ink);
+}
+
+.dark .automation-accent {
+  color: var(--automation-ink);
+}

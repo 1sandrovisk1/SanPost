@@ -51,10 +51,12 @@ import { SubscriptionService } from '@gitroom/nestjs-libraries/database/prisma/s
 import { FlowsService } from '@gitroom/nestjs-libraries/database/prisma/flows/flows.service';
 import { EncryptionService } from '@gitroom/nestjs-libraries/crypto/encryption.service';
 import { PostActivity } from './post.activity';
+import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validation';
 import {
   BadBody,
   PublishedWithError,
 } from '@gitroom/nestjs-libraries/integrations/social.abstract';
+import { ssrfSafeFetch } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
 
 const integration = {
   id: 'integration-1',
@@ -124,6 +126,7 @@ const buildActivity = () => {
     activity,
     postService,
     integrationService,
+    webhooksService,
     provider,
     encryption,
     start,
@@ -438,4 +441,214 @@ describe('PostActivity Zernio aceito', () => {
     expect(postService.updatePublishedRelease).toHaveBeenCalledTimes(2);
     expect(provider.postPending).not.toHaveBeenCalled();
   });
+});
+
+// Porte do upstream #2087: os workflows passam o id do post na plataforma; o
+// canal vai junto para o fallback do releaseId montar o payload.
+describe('PostActivity.sendWebhooks', () => {
+  beforeEach(() => {
+    (ssrfSafeFetch as jest.Mock).mockReset().mockResolvedValue({ status: 200 });
+  });
+
+  it('busca o post pelo id da plataforma e pelo canal e envia o payload', async () => {
+    const { activity, postService, webhooksService } = buildActivity();
+    const payload = [{ id: 'post-1', releaseURL: 'https://x.com/1' }];
+    webhooksService.getWebhooks.mockResolvedValue([
+      { url: 'https://hooks.example/all', integrations: [] },
+      {
+        url: 'https://hooks.example/canal',
+        integrations: [{ integration: { id: 'integration-1' } }],
+      },
+      {
+        url: 'https://hooks.example/outro',
+        integrations: [{ integration: { id: 'integration-2' } }],
+      },
+    ] as any);
+    postService.getPostByForWebhookId.mockResolvedValue(payload as any);
+
+    await activity.sendWebhooks('1789', 'org-1', 'integration-1');
+
+    expect(postService.getPostByForWebhookId).toHaveBeenCalledWith(
+      '1789',
+      'integration-1'
+    );
+    expect((ssrfSafeFetch as jest.Mock).mock.calls.map(([url]) => url)).toEqual(
+      ['https://hooks.example/all', 'https://hooks.example/canal']
+    );
+    expect((ssrfSafeFetch as jest.Mock).mock.calls[0][1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify(payload),
+      })
+    );
+  });
+
+  it('falha de um webhook nao impede os demais', async () => {
+    const { activity, postService, webhooksService } = buildActivity();
+    webhooksService.getWebhooks.mockResolvedValue([
+      { url: 'https://hooks.example/a', integrations: [] },
+      { url: 'https://hooks.example/b', integrations: [] },
+    ] as any);
+    postService.getPostByForWebhookId.mockResolvedValue([] as any);
+    (ssrfSafeFetch as jest.Mock)
+      .mockRejectedValueOnce(new Error('rede'))
+      .mockResolvedValueOnce({ status: 200 });
+
+    await expect(
+      activity.sendWebhooks('1789', 'org-1', 'integration-1')
+    ).resolves.toBeDefined();
+    expect(ssrfSafeFetch).toHaveBeenCalledTimes(2);
+  });
+});
+
+// imagem inline (upstream 2aae02fe): a conversao do conteudo so mantem <img>
+// para o provider que declara inlineImages (WordPress, ListMonk), com as
+// settings do post.
+describe('PostActivity imagem inline', () => {
+  const strip = stripHtmlValidation as jest.Mock;
+
+  beforeEach(() => strip.mockClear());
+
+  const inlineArg = () => strip.mock.calls[0][6];
+
+  it('V112 passa inlineImages com as settings do post', async () => {
+    const { activity, provider, postService } = buildActivity();
+    const inlineImages = jest.fn().mockReturnValue(true);
+    Object.assign(provider, { editor: 'html', inlineImages });
+    const withSettings = { ...post, settings: '{"title":"t"}' };
+    postService.updateTags.mockResolvedValue([withSettings] as any);
+    provider.postPending.mockResolvedValue([
+      { id: 'post-1', postId: 'r', releaseURL: '', status: 'completed' },
+    ]);
+
+    await activity.postSocialPending('org-1', 'integration-1', [
+      withSettings as any,
+    ]);
+
+    expect(inlineImages).toHaveBeenCalledWith({ title: 't' });
+    expect(inlineArg()).toBe(true);
+  });
+
+  it('V102 tambem passa inlineImages', async () => {
+    const { activity, provider } = buildActivity();
+    Object.assign(provider, { inlineImages: () => true });
+    provider.post.mockResolvedValue([
+      { id: 'post-1', postId: 'r', releaseURL: '', status: 'success' },
+    ]);
+
+    await activity.postSocial({ ...integration } as any, [post as any]);
+
+    expect(inlineArg()).toBe(true);
+  });
+
+  it('provider sem inlineImages recebe false (texto sem <img>)', async () => {
+    const { activity, provider } = buildActivity();
+    provider.postPending.mockResolvedValue([
+      { id: 'post-1', postId: 'r', releaseURL: '', status: 'completed' },
+    ]);
+
+    await activity.postSocialPending('org-1', 'integration-1', [post as any]);
+
+    expect(inlineArg()).toBe(false);
+  });
+});
+
+describe('PostActivity V102 - snapshots de organizacao excluida', () => {
+  it.each([
+    ['ausente', null],
+    ['desativado', { ...integration, disabled: true }],
+    [
+      'excluido',
+      { ...integration, deletedAt: new Date('2026-10-29T12:00:00Z') },
+    ],
+  ])(
+    'postSocial recusa canal %s antes de provider ou decifragem',
+    async (_label, live) => {
+      const {
+        activity,
+        integrationService,
+        provider,
+        encryption,
+        postService,
+      } = buildActivity();
+      integrationService.getIntegrationById.mockResolvedValue(live as any);
+      await expect(
+        activity.postSocial({ ...integration } as any, [post as any])
+      ).rejects.toMatchObject({
+        nonRetryable: true,
+        type: 'ChannelUnavailable',
+      });
+      expect(integrationService.getIntegrationById).toHaveBeenCalledWith(
+        'org-1',
+        'integration-1'
+      );
+      expect(provider.post).not.toHaveBeenCalled();
+      expect(encryption.decrypt).not.toHaveBeenCalled();
+      expect(postService.updateTags).not.toHaveBeenCalled();
+    }
+  );
+  it.each([
+    ['ausente', null],
+    ['desativado', { ...integration, disabled: true }],
+    [
+      'excluido',
+      { ...integration, deletedAt: new Date('2026-10-29T12:00:00Z') },
+    ],
+  ])(
+    'postComment recusa canal %s mesmo com credencial no historico',
+    async (_label, live) => {
+      const {
+        activity,
+        integrationService,
+        provider,
+        encryption,
+        postService,
+      } = buildActivity();
+      const comment = jest.fn();
+      (provider as any).comment = comment;
+      integrationService.getIntegrationById.mockResolvedValue(live as any);
+      await expect(
+        activity.postComment(
+          'released-post',
+          undefined,
+          { ...integration } as any,
+          [post as any]
+        )
+      ).rejects.toMatchObject({
+        nonRetryable: true,
+        type: 'ChannelUnavailable',
+      });
+      expect(integrationService.getIntegrationById).toHaveBeenCalledWith(
+        'org-1',
+        'integration-1'
+      );
+      expect(comment).not.toHaveBeenCalled();
+      expect(encryption.decrypt).not.toHaveBeenCalled();
+      expect(postService.updateTags).not.toHaveBeenCalled();
+    }
+  );
+});
+
+describe('PostActivity V112 canal indisponivel', () => {
+  it.each([
+    null,
+    { ...integration, disabled: true },
+    { ...integration, deletedAt: new Date() },
+  ])(
+    'recusa canal antes de publicar com credencial armazenada',
+    async (live) => {
+      const { activity, integrationService, provider, encryption } =
+        buildActivity();
+      integrationService.getIntegrationById.mockResolvedValue(live as any);
+      await expect(
+        activity.postSocialPending('org-1', 'integration-1', [post as any])
+      ).rejects.toMatchObject({
+        type: 'ChannelUnavailable',
+        nonRetryable: true,
+      });
+      expect(provider.postPending).not.toHaveBeenCalled();
+      expect(provider.post).not.toHaveBeenCalled();
+      expect(encryption.decrypt).not.toHaveBeenCalled();
+    }
+  );
 });

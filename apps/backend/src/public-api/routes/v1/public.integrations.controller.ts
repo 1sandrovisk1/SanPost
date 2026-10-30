@@ -515,6 +515,25 @@ export class PublicIntegrationsController {
       );
     }
 
+    // chave de perfil so reconecta canal do proprio perfil (ou sem perfil)
+    if (refresh && publicApiProfileId) {
+      // inclusive canal desativado
+      const existing =
+        await this._integrationService.getChannelProfileByInternalId(
+          org.id,
+          refresh
+        );
+      if (
+        existing?.profileId &&
+        existing.profileId !== publicApiProfileId
+      ) {
+        throw new HttpException(
+          { msg: 'Integration does not belong to this profile' },
+          403
+        );
+      }
+    }
+
     try {
       const { codeVerifier, state, url } =
         await integrationProvider.generateAuthUrl();
@@ -596,10 +615,12 @@ export class PublicIntegrationsController {
   @ApiResponse({ status: 400, description: 'Parâmetros inválidos.' })
   generateVideo(
     @GetOrgFromRequest() org: Organization,
+    @GetPublicApiProfileId() publicApiProfileId: string | undefined,
     @Body() body: VideoDto
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    return this._mediaService.generateVideo(org, body);
+    // chave de perfil: o video vai para a biblioteca do perfil
+    return this._mediaService.generateVideo(org, body, publicApiProfileId);
   }
 
   @Post('/video/function')
@@ -693,6 +714,7 @@ export class PublicIntegrationsController {
       output: {
         rules: rules[integration.identifier],
         maxLength,
+        ...(integration.identifier === 'x' ? { articleMaxLength: integration.maxLength(verified, {post_type: 'article'}) } : {}),
         settings: !schemas ? 'No additional settings required' : schemas,
         tools: tools[integration.identifier],
       },

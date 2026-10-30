@@ -1,3 +1,5 @@
+import { facebookBackgroundPreset } from './facebook.background';
+import { socialMutationOnce } from './mutation.once';
 import { DashboardFunction } from '@gitroom/nestjs-libraries/integrations/dashboard.function.decorator';
 import {
   AnalyticsData,
@@ -578,6 +580,62 @@ export class FacebookProvider extends SocialAbstract implements SocialProvider {
     postDetails: PostDetails<FacebookDto>[]
   ): Promise<PostResponse[]> {
     const [firstPost] = postDetails;
+
+    const preset = facebookBackgroundPreset(firstPost);
+    if (preset) {
+      const url = `${META_FACEBOOK_GRAPH_URL}/${id}/feed?fields=id,permalink_url`;
+      const payload = {
+        message: firstPost.message,
+        published: true,
+        text_format_preset_id: preset,
+      };
+      const send = (body: any) =>
+        socialMutationOnce(this.identifier, url, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        });
+      let result = await send(payload);
+      if (
+        !result.ok &&
+        result.status === 400 &&
+        result.body?.error?.code === 100 &&
+        /text_format_preset_id/i.test(result.body.error.message || '')
+      ) {
+        const { text_format_preset_id, ...plain } = payload;
+        result = await send(plain);
+      }
+      if (!result.ok || result.body?.error || !result.body?.id) {
+        if (result.body?.error?.code === 190)
+          throw new RefreshToken(
+            this.identifier,
+            '{}',
+            '{}',
+            'Reconecte o canal do Facebook.'
+          );
+        throw new BadBody(
+          this.identifier,
+          '{}',
+          '{}',
+          'Facebook não confirmou a publicação com fundo.'
+        );
+      }
+      return [
+        {
+          id: firstPost.id,
+          postId: String(result.body.id),
+          releaseURL:
+            result.body.permalink_url ||
+            `https://www.facebook.com/${encodeURIComponent(
+              String(result.body.id)
+            )}`,
+          status: 'success',
+        },
+      ];
+    }
 
     // Facebook Page Stories: publica via /photo_stories e /video_stories.
     // Story nao tem carrossel — cada midia vira um story separado, igual ao IG.

@@ -13,6 +13,8 @@ export interface IAuthenticator {
       code: string;
       codeVerifier: string;
       refresh?: string;
+      // state do fluxo de conexao (Farcaster amarra o code a ele)
+      state?: string;
     },
     clientInformation?: ClientInformation
   ): Promise<AuthTokenDetails | string>;
@@ -201,11 +203,12 @@ export interface SocialProvider
   // acontece via MetaSystemUserService (System User token) ou no post-time.
   noNativeRefresh?: boolean;
   dto?: any;
-  maxLength: (additionalSettings?: any) => number;
+  maxLength: (additionalSettings?: any, settings?: any) => number;
   isWeb3?: boolean;
   isChromeExtension?: boolean;
   extensionCookies?: { name: string; domain: string }[];
   editor: 'none' | 'normal' | 'markdown' | 'html';
+  inlineImages?: (settings?: any) => boolean;
   customFields?: () => Promise<
     {
       key: string;

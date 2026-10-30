@@ -26,6 +26,11 @@ const mockUserOrgModel = {
 const mockPersonaModel = { model: { profilePersona: {} } };
 const mockTransaction = { model: { $transaction: jest.fn() } };
 
+const mockOAuthUpdateMany = jest.fn();
+const mockOAuthAuthModel = {
+  model: { oAuthAuthorization: { updateMany: mockOAuthUpdateMany } },
+};
+
 describe('ProfileRepository', () => {
   let repository: ProfileRepository;
 
@@ -36,7 +41,8 @@ describe('ProfileRepository', () => {
       mockProfileMemberModel as any,
       mockPersonaModel as any,
       mockUserOrgModel as any,
-      mockTransaction as any
+      mockTransaction as any,
+      mockOAuthAuthModel as any
     );
   });
 
@@ -188,7 +194,14 @@ describe('ProfileRepository', () => {
         id: 'prof-1',
         apiKey: 'key-abc',
         deletedAt: null as Date | null,
-        organization: { id: 'org-1', subscription: { subscriptionTier: 'PRO', totalChannels: 10, isLifetime: false } },
+        organization: {
+          id: 'org-1',
+          subscription: {
+            subscriptionTier: 'PRO',
+            totalChannels: 10,
+            isLifetime: false,
+          },
+        },
       };
       mockFindFirst.mockResolvedValue(fakeProfile);
 
@@ -196,12 +209,20 @@ describe('ProfileRepository', () => {
 
       expect(result).toEqual(fakeProfile);
       expect(mockFindFirst).toHaveBeenCalledWith({
-        where: { apiKey: 'key-abc', deletedAt: null },
+        where: {
+          apiKey: 'key-abc',
+          deletedAt: null,
+          organization: { deletedAt: null },
+        },
         include: {
           organization: {
             include: {
               subscription: {
-                select: { subscriptionTier: true, totalChannels: true, isLifetime: true },
+                select: {
+                  subscriptionTier: true,
+                  totalChannels: true,
+                  isLifetime: true,
+                },
               },
             },
           },
@@ -286,6 +307,26 @@ describe('ProfileRepository', () => {
       const callArgs = mockUpdate.mock.calls[0][0];
       expect(typeof callArgs.data.apiKey).toBe('string');
       expect(callArgs.data.apiKey.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('removeMember (tokens OAuth do perfil)', () => {
+    it('revoga os tokens que o membro aprovou para este perfil antes de remover', async () => {
+      mockOAuthUpdateMany.mockResolvedValue({ count: 1 });
+      (mockProfileMemberModel.model.profileMember as any).delete = jest
+        .fn()
+        .mockResolvedValue({ id: 'm-1' });
+
+      await repository.removeMember('prof-1', 'u-1');
+
+      expect(mockOAuthUpdateMany).toHaveBeenCalledWith({
+        where: { userId: 'u-1', profileId: 'prof-1', revokedAt: null },
+        data: {
+          revokedAt: expect.any(Date),
+          accessToken: null,
+          authorizationCode: null,
+        },
+      });
     });
   });
 });

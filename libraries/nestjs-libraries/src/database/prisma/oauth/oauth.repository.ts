@@ -27,6 +27,7 @@ export class OAuthRepository {
       where: {
         clientId,
         deletedAt: null,
+        organization: { deletedAt: null },
       },
       include: {
         picture: true,
@@ -163,20 +164,23 @@ export class OAuthRepository {
       where: {
         authorizationCode: encryptedCode,
         revokedAt: null,
+        organization: { deletedAt: null },
+        oauthApp: { deletedAt: null, organization: { deletedAt: null } },
       },
     });
   }
 
-  exchangeCodeForToken(id: string, encryptedToken: string) {
+  // o codigo e de uso unico: so troca se ainda for o mesmo (duas trocas
+  // concorrentes nao geram dois tokens); sem match, o Prisma lanca P2025
+  exchangeCodeForToken(
+    id: string,
+    encryptedToken: string,
+    encryptedCode: string
+  ) {
     return this._oauthAuth.model.oAuthAuthorization.update({
-      where: { id },
+      where: { id, authorizationCode: encryptedCode, revokedAt: null },
       select: {
         organizationId: true,
-        organization: {
-          select: {
-            paymentId: true,
-          }
-        }
       },
       data: {
         accessToken: encryptedToken,
@@ -191,6 +195,8 @@ export class OAuthRepository {
       where: {
         accessToken: encryptedToken,
         revokedAt: null,
+        organization: { deletedAt: null },
+        oauthApp: { deletedAt: null, organization: { deletedAt: null } },
       },
       include: {
         organization: {

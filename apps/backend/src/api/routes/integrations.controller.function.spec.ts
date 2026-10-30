@@ -52,6 +52,7 @@ const build = () => {
     refreshService as any,
     {} as any,
     {} as any,
+    {} as any,
     {} as any
   );
   return { controller, provider, manager, integrationService, refreshService };
