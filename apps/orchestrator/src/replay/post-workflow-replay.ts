@@ -3,10 +3,21 @@ import { extname, isAbsolute, relative, resolve } from 'node:path';
 
 import { Worker } from '@temporalio/worker';
 
-const POST_WORKFLOW_TYPES = new Set([
+// Workflows de publicacao versionados e os workflows de longa duracao cujo
+// codigo mudou com patched() — exporte um historico em execucao de producao e
+// rode o replay antes do deploy.
+export const REPLAYABLE_WORKFLOW_TYPES = new Set([
   'postWorkflowV101',
   'postWorkflowV102',
   'postWorkflowV112',
+  // patched('autopost-continue-as-new') — upstream 185044d5
+  'autoPostWorkflow',
+  // patched('missing-post-continue-as-new') — upstream 185044d5
+  'missingPostWorkflow',
+  // singleton `send_email` obsoleto, que continua drenando, e o novo envio
+  // por e-mail — upstream 1f5f24e5
+  'sendEmailWorkflow',
+  'sendSingleEmailWorkflow',
 ]);
 
 type ReadFile = (path: string, encoding: BufferEncoding) => Promise<string>;
@@ -64,7 +75,7 @@ export function resolveReplayHistoryPath(
   return historyPath;
 }
 
-function getPostWorkflowType(history: unknown): string {
+function getReplayableWorkflowType(history: unknown): string {
   if (!history || typeof history !== 'object') {
     throw new Error('Historico Temporal invalido: objeto JSON ausente.');
   }
@@ -84,10 +95,12 @@ function getPostWorkflowType(history: unknown): string {
 
   if (
     typeof workflowType !== 'string' ||
-    !POST_WORKFLOW_TYPES.has(workflowType)
+    !REPLAYABLE_WORKFLOW_TYPES.has(workflowType)
   ) {
     throw new Error(
-      'O JSON nao pertence a um workflow de publicacao suportado (V101, V102 ou V112).'
+      `O JSON nao pertence a um workflow suportado pelo replay (${[
+        ...REPLAYABLE_WORKFLOW_TYPES,
+      ].join(', ')}).`
     );
   }
 
@@ -114,7 +127,7 @@ export async function replayPostWorkflowHistory(
     throw new Error('Historico Temporal invalido: JSON malformado.');
   }
 
-  const workflowType = getPostWorkflowType(history);
+  const workflowType = getReplayableWorkflowType(history);
   await (dependencies.runReplayHistory ?? runReplayHistory)(
     {
       workflowsPath:

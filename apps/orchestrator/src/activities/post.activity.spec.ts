@@ -55,6 +55,7 @@ import {
   BadBody,
   PublishedWithError,
 } from '@gitroom/nestjs-libraries/integrations/social.abstract';
+import { ssrfSafeFetch } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
 
 const integration = {
   id: 'integration-1',
@@ -124,6 +125,7 @@ const buildActivity = () => {
     activity,
     postService,
     integrationService,
+    webhooksService,
     provider,
     encryption,
     start,
@@ -439,3 +441,62 @@ describe('PostActivity Zernio aceito', () => {
     expect(provider.postPending).not.toHaveBeenCalled();
   });
 });
+
+// Porte do upstream #2087: os workflows passam o id do post na plataforma; o
+// canal vai junto para o fallback do releaseId montar o payload.
+describe('PostActivity.sendWebhooks', () => {
+  beforeEach(() => {
+    (ssrfSafeFetch as jest.Mock).mockReset().mockResolvedValue({ status: 200 });
+  });
+
+  it('busca o post pelo id da plataforma e pelo canal e envia o payload', async () => {
+    const { activity, postService, webhooksService } = buildActivity();
+    const payload = [{ id: 'post-1', releaseURL: 'https://x.com/1' }];
+    webhooksService.getWebhooks.mockResolvedValue([
+      { url: 'https://hooks.example/all', integrations: [] },
+      {
+        url: 'https://hooks.example/canal',
+        integrations: [{ integration: { id: 'integration-1' } }],
+      },
+      {
+        url: 'https://hooks.example/outro',
+        integrations: [{ integration: { id: 'integration-2' } }],
+      },
+    ] as any);
+    postService.getPostByForWebhookId.mockResolvedValue(payload as any);
+
+    await activity.sendWebhooks('1789', 'org-1', 'integration-1');
+
+    expect(postService.getPostByForWebhookId).toHaveBeenCalledWith(
+      '1789',
+      'integration-1'
+    );
+    expect(
+      (ssrfSafeFetch as jest.Mock).mock.calls.map(([url]) => url)
+    ).toEqual(['https://hooks.example/all', 'https://hooks.example/canal']);
+    expect((ssrfSafeFetch as jest.Mock).mock.calls[0][1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify(payload),
+      })
+    );
+  });
+
+  it('falha de um webhook nao impede os demais', async () => {
+    const { activity, postService, webhooksService } = buildActivity();
+    webhooksService.getWebhooks.mockResolvedValue([
+      { url: 'https://hooks.example/a', integrations: [] },
+      { url: 'https://hooks.example/b', integrations: [] },
+    ] as any);
+    postService.getPostByForWebhookId.mockResolvedValue([] as any);
+    (ssrfSafeFetch as jest.Mock)
+      .mockRejectedValueOnce(new Error('rede'))
+      .mockResolvedValueOnce({ status: 200 });
+
+    await expect(
+      activity.sendWebhooks('1789', 'org-1', 'integration-1')
+    ).resolves.toBeDefined();
+    expect(ssrfSafeFetch).toHaveBeenCalledTimes(2);
+  });
+});
+

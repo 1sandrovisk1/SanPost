@@ -383,7 +383,8 @@ Os 21 CVEs de 2026 anteriores do nginx já estão resolvidos no Debian
    ampliador de impacto): avaliar `USER` não privilegiado no `Dockerfile.dev`
    quando migrar a base (trilha B).
 3. `libraries/helpers/src/utils/read.or.fetch.ts` é um `readFileSync` sem
-   importadores — remover.
+   importadores — remover. **Resolvido (28/10, épico Temporal):** removido
+   junto com o porte do #2193.
 4. Sentry no frontend: não há `instrumentation-client.ts`/replay; confirmar
    se o Sentry client está desligado de propósito antes de portar `#2280`.
 5. **Linhas legadas de `customInstanceDetails`** (Skool): antes desta branch o
@@ -807,6 +808,71 @@ canais escondido em post existente, corrigido; seletor de cliente escondido
 em post existente; textos de exclusão). Sem backfill: posts antigos abrem
 sozinhos. Observação aceita: o canal aberto movido para o passado segue o
 comportamento antigo (pergunta só atualizar/republicar).
+
+### Épico Temporal (28/10/2026)
+
+Branch `feat/temporal-workflows-2026-10`. Nenhum dos commits toca os workflows
+de post (`post.workflow.v1.0.1/v1.0.2/v1.1.2`), então o versionamento V102/V112
+não muda; o que é código de workflow em execução usa `patched()` e tem replay.
+
+- **#2087 `9bb641ef` (webhook vazio):** portado igual.
+  `PostsRepository.getPostByForWebhookId(postId, integrationId)` cai no
+  `releaseId` + canal (mais recente, `take: 1`) quando o id não é o do banco —
+  os três workflows de post passam `postsResults[0].postId`, o id na
+  plataforma, que o `updatePost` já gravou. Mudança só na activity e no
+  repositório (sem impacto de determinismo).
+- **#2193 `11d24f3f` (mídia travada):** o fork não tem `mediaChunk`/`mediaSize`
+  (leitura por faixas do upstream), só o `readOrFetch` do `SocialAbstract` —
+  que já passava pelo axios SSRF-safe e pelo `localMediaPath`. Portado lá:
+  `AbortSignal.timeout(MEDIA_READ_TIMEOUT = 120s)`, uma nova leitura e
+  `BadBody` não-retentável. Divergências: mensagem em pt-BR (como a do
+  `localMediaPath` ao lado) e caminho no `json` via `heartbeatEndpoint` (o fork
+  não tem `stripQuery`). LinkedIn/X já usavam `this.readOrFetch`. O helper
+  `libraries/helpers/src/utils/read.or.fetch.ts` (axios sem SSRF, sem
+  importadores) foi removido — fecha o follow-up 3 da seção 6.
+- **`1f5f24e5` (e-mail):** portado `email.queues.ts`, workers só de activity
+  com `maxTaskQueueActivitiesPerSecond` dentro de `buildTemporalWorkers`
+  (respeitam `EXCLUDE_QUEUE`; o limite não é dividido pelo
+  `WORKER_CONCURRENCY_DIVIDER` porque é da fila inteira),
+  `sendSingleEmailWorkflow` (um workflow por e-mail, `send_email_<uuid>`) e o
+  `ResendProvider` lançando o erro da API. Preservado do fork: `lang` no
+  payload e na activity. `sendEmailWorkflow` fica registrado e intacto para o
+  `send_email` aberto drenar. **Divergência:** `auth.service.ts` não foi
+  portado — ativação/reenvio/senha continuam por `EmailService.sendEmail`
+  (Temporal, fila `email`) em vez de `sendEmailSync` na requisição HTTP, que
+  travaria o cadastro por minutos com SMTP bloqueado (timeouts padrão do
+  nodemailer). Extra do fork: logs de falha do `sendEmailSync` com
+  `summarizeError`.
+- **`185044d5` (continueAsNew):** portado igual (`patched('autopost-continue-as-new')`,
+  `patched('missing-post-continue-as-new')`, 24 ciclos ou histórico > 1000,
+  `continueAsNew` fora do `try/catch`). `pnpm temporal:replay-post` passou a
+  aceitar `autoPostWorkflow`, `missingPostWorkflow`, `sendEmailWorkflow` e
+  `sendSingleEmailWorkflow`; `long-running-workflows-replay.spec.ts` faz replay
+  real (bundle + core) de históricos sintéticos de 30 ciclos anteriores ao
+  patch e falha se o `patched()` for removido (verificado). A reconciliação no
+  boot da branch `fix/rc3-tags-temporal-2026-10` não é necessária aqui.
+- **#2258 `a7666b5e` (YouTube):** nada a portar — é o merge de `23beddcd`, já
+  portado (`PublishedWithError`, `keepReleaseOnPublishedError`,
+  `updatePublishedRelease`, `guardAgainstRepublish`). O resto do diff é o fluxo
+  pendente/resumable do YouTube upstream (`postPending`/`finalizePost`), que o
+  fork não tem.
+
+Follow-ups:
+- `missingPostWorkflow` ainda morre se `searchForMissingThreeHoursPosts`
+  falhar 3 vezes (falta `try/catch` com backoff, pitfall 9) e só volta no
+  próximo boot com `RUN_CRON`; `autopost-*` não tem reconciliação no boot.
+- `dribbble`, `bluesky`, `reddit`, `pinterest`, `vk` e `youtube` ainda leem
+  mídia com `getSsrfSafeAxios()` direto, sem prazo (pitfall 18 do
+  orchestrator).
+- Remover `sendEmailWorkflow` quando não houver `send_email` aberto em
+  produção.
+
+Teste manual em produção: antes do deploy, exportar e rodar
+`pnpm temporal:replay-post` no histórico atual de `missing-post-workflow` e de
+um `autopost-*` ativo; depois, confirmar no Temporal UI execuções
+`send_email_<uuid>` concluídas (ativação de conta, convite, digest), pollers
+nas filas `email`/`email-bulk` e um webhook de publicação com payload
+preenchido.
 
 ## Apêndice — classificação 1 por 1 (171 PRs + 74 commits diretos)
 

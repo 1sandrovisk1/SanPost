@@ -1,11 +1,16 @@
-import { Global, Injectable, Module, OnModuleInit } from '@nestjs/common';
+import {
+  Global,
+  Injectable,
+  Module,
+  OnApplicationBootstrap,
+} from '@nestjs/common';
 import { TemporalService } from 'nestjs-temporal-core';
 
 @Injectable()
-export class InfiniteWorkflowRegister implements OnModuleInit {
+export class InfiniteWorkflowRegister implements OnApplicationBootstrap {
   constructor(private _temporalService: TemporalService) {}
 
-  async onModuleInit(): Promise<void> {
+  async onApplicationBootstrap(): Promise<void> {
     if (!!process.env.RUN_CRON) {
       try {
         await this._temporalService.client
@@ -13,6 +18,7 @@ export class InfiniteWorkflowRegister implements OnModuleInit {
           ?.workflow?.start('missingPostWorkflow', {
             workflowId: 'missing-post-workflow',
             taskQueue: 'main',
+            workflowIdConflictPolicy: 'USE_EXISTING',
           });
       } catch (err) {}
     }

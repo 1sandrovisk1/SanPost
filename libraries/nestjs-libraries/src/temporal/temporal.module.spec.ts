@@ -35,6 +35,8 @@ describe('buildTemporalWorkers', () => {
       'main',
       'facebook',
       'reddit',
+      'email',
+      'email-bulk',
     ]);
     expect(workers[0]).toEqual(
       expect.objectContaining({
@@ -91,7 +93,46 @@ describe('buildTemporalWorkers', () => {
   it('exclui filas de provider por nome exato', () => {
     const workers = build({ excludeQueue: ' facebook, reddit ' });
 
-    expect(workers.map((worker) => worker.taskQueue)).toEqual(['main']);
+    expect(workers.map((worker) => worker.taskQueue)).toEqual([
+      'main',
+      'email',
+      'email-bulk',
+    ]);
+  });
+
+  // upstream 1f5f24e5: e-mail sai por filas proprias com limite no servidor
+  it('cria workers so de activity para as filas de e-mail com limite por segundo', () => {
+    const workers = build({ concurrencyDivider: '4' });
+    const email = workers.filter((worker) =>
+      worker.taskQueue.startsWith('email')
+    );
+
+    expect(email).toHaveLength(2);
+    for (const worker of email) {
+      expect(worker).not.toHaveProperty('workflowsPath');
+      expect(worker.activityClasses).toBe(activities);
+      expect(worker.autoStart).toBe(true);
+    }
+    // limite da fila inteira (servidor), nao dividido entre containers
+    expect(email[0].workerOptions).toEqual({
+      maxConcurrentActivityTaskExecutions: 10,
+      maxTaskQueueActivitiesPerSecond: 3,
+    });
+    expect(email[1].workerOptions).toEqual({
+      maxConcurrentActivityTaskExecutions: 10,
+      maxTaskQueueActivitiesPerSecond: 2,
+    });
+  });
+
+  it('EXCLUDE_QUEUE tambem tira as filas de e-mail de um container', () => {
+    const workers = build({ excludeQueue: 'email-bulk' });
+
+    expect(workers.map((worker) => worker.taskQueue)).toEqual([
+      'main',
+      'facebook',
+      'reddit',
+      'email',
+    ]);
   });
 
   it('falha no boot se a configuracao tentar excluir a fila main', () => {

@@ -21,6 +21,18 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 - **Erro classificado do provider preservado** (porte do Postiz `0c9d3940`, paridade preventiva): um erro que o provider já classificou dentro do envio em lote (`runInConcurrent`) mantém o tipo e a mensagem em vez de virar "Unknown Error". O log do worker passa a resumir o erro do provider em vez de imprimir o corpo da resposta (que podia ter tokens).
 - **Prévia de vídeo:** fechar o player antes do vídeo começar não registra mais um erro no log do backend.
 
+### Corrigido
+- **Revisão do épico Temporal:** envio de e-mail só repete recusas explícitas transitórias, limita tentativas e propaga a falha sanitizada; novas activities não repetem resultados incertos e não registram o destinatário. Webhook filtra o canal também na busca pelo ID interno. Detector de posts ausentes inicia após o cliente Temporal e reconcilia o singleton. Replay cobre históricos com e sem marcador; documentado o encerramento manual do singleton de e-mail após drenagem.
+
+
+### Corrigido — workflows Temporal: webhooks, mídia travada, e-mails e históricos longos (28/10/2026)
+
+- **Webhooks de publicação com o post de volta:** o payload enviado aos webhooks após publicar chegava sempre vazio, porque o workflow passa o ID do post na rede social. Agora o post é encontrado pelo ID da publicação no próprio canal e o webhook recebe conteúdo, data, link e canal (porte do Postiz #2087).
+- **Mídia que trava no meio do download não prende mais a fila do canal:** leitura de imagem remota que recebe os cabeçalhos e para de enviar dados é abortada após 2 minutos, tentada mais uma vez e, se travar de novo, o post termina em erro com a mensagem "Não foi possível ler a mídia deste post, por isso ele não foi publicado", em vez de ficar publicando indefinidamente (Postiz #2193).
+- **E-mails independentes e com limite de envio:** cada e-mail vira um workflow próprio em filas dedicadas (`email` para notificações, convites, ativação e senha; `email-bulk` para resumos e streak), com limite por segundo aplicado pelo Temporal para todos os workers. Um envio lento ou com falha não segura mais os outros, e erros de limite do Resend (429) passam a ser repetidos em vez de descartados em silêncio (Postiz `1f5f24e5`). Ativação e redefinição de senha continuam saindo pelo Temporal, sem travar o cadastro quando o SMTP está inacessível.
+- **RSS/autopost e detector de posts perdidos não crescem mais para sempre:** os dois workflows de loop horário reciclam o histórico a cada 24 ciclos, evitando que o Temporal os encerre à força por histórico grande. Execuções já em andamento continuam compatíveis e reciclam no primeiro ciclo após o deploy (Postiz `185044d5`).
+- **Operação:** `pnpm temporal:replay-post` também valida históricos de `autoPostWorkflow`, `missingPostWorkflow`, `sendEmailWorkflow` e `sendSingleEmailWorkflow`; `EXCLUDE_QUEUE` aceita as filas de e-mail (ao menos um container precisa consumi-las).
+
 ### Melhorado — ferramentas de texto das automações (28/10/2026)
 
 - Resposta pública usa diretamente a etapa verde; pedido para seguir vira switch com apenas suas subetapas expansíveis. Alternativas privadas ganham boxes próprios para texto e botão/link.
