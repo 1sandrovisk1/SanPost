@@ -24,7 +24,7 @@ import { RefreshIntegrationService } from '@gitroom/nestjs-libraries/integration
 import { timer } from '@gitroom/helpers/utils/timer';
 import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.service';
 import { WebhooksService } from '@gitroom/nestjs-libraries/database/prisma/webhooks/webhooks.service';
-import { TypedSearchAttributes } from '@temporalio/common';
+import { ApplicationFailure, TypedSearchAttributes } from '@temporalio/common';
 import {
   organizationId,
   postId as postIdSearchParam,
@@ -86,7 +86,9 @@ export class PostActivity {
           signalArgs: [],
           args: [
             {
-              taskQueue: post.integration.providerIdentifier.startsWith('zernio-')
+              taskQueue: post.integration.providerIdentifier.startsWith(
+                'zernio-'
+              )
                 ? 'main'
                 : post.integration.providerIdentifier
                     .split('-')[0]
@@ -118,10 +120,20 @@ export class PostActivity {
     try {
       if (!postId) return result;
       const post = await this._postService.getPostById(id);
-      if (post && process.env.SHARED_AUTOMATIONS_ENABLED === 'true' && this.sharedFlows && ['facebook', 'instagram', 'instagram-standalone'].includes(post.integration?.providerIdentifier)) {
+      if (
+        post &&
+        process.env.SHARED_AUTOMATIONS_ENABLED === 'true' &&
+        this.sharedFlows &&
+        ['facebook', 'instagram', 'instagram-standalone'].includes(
+          post.integration?.providerIdentifier
+        )
+      ) {
         let sharedSettings: { post_type?: string } = {};
-        try { sharedSettings = JSON.parse(post.settings || '{}'); } catch {}
-        if (sharedSettings.post_type !== 'story') await this.sharedFlows.bindNext(post.integrationId, postId, post.id);
+        try {
+          sharedSettings = JSON.parse(post.settings || '{}');
+        } catch {}
+        if (sharedSettings.post_type !== 'story')
+          await this.sharedFlows.bindNext(post.integrationId, postId, post.id);
       }
       if (!post || post.integration?.providerIdentifier !== 'instagram') {
         return result;
@@ -149,7 +161,9 @@ export class PostActivity {
   @ActivityMethod()
   async getPostV112(orgId: string, postId: string) {
     if (process.env.STRIPE_SECRET_KEY) {
-      const subscription = await this._subscriptionService.getSubscription(orgId);
+      const subscription = await this._subscriptionService.getSubscription(
+        orgId
+      );
       if (!subscription) {
         return false;
       }
@@ -167,7 +181,9 @@ export class PostActivity {
   @ActivityMethod()
   async getPostsList(orgId: string, postId: string) {
     if (process.env.STRIPE_SECRET_KEY) {
-      const subscription = await this._subscriptionService.getSubscription(orgId);
+      const subscription = await this._subscriptionService.getSubscription(
+        orgId
+      );
       if (!subscription) {
         return [];
       }
@@ -232,6 +248,7 @@ export class PostActivity {
     integration: Integration,
     posts: Post[]
   ) {
+    await this.assertChannelActive(integration);
     return withHeartbeat(async () => {
       const runtimeIntegration = this.withDecryptedToken(integration);
       const getIntegration = this._integrationManager.getSocialIntegration(
@@ -422,6 +439,7 @@ export class PostActivity {
 
   @ActivityMethod()
   async postSocial(integration: Integration, posts: Post[]) {
+    await this.assertChannelActive(integration);
     integration.token = decryptIntegrationToken(
       this._encryption,
       integration.token
@@ -507,7 +525,9 @@ export class PostActivity {
       } catch (e) {
         // sem o link o usuario pode publicar de novo: precisa aparecer no log
         this._logger.error(
-          `nao foi possivel guardar o link do post ${err.postDbId} publicado com erro: ${summarizeError(e)}`
+          `nao foi possivel guardar o link do post ${
+            err.postDbId
+          } publicado com erro: ${summarizeError(e)}`
         );
       }
       throw new BadBody(
@@ -524,6 +544,18 @@ export class PostActivity {
       ...integration,
       token: decryptIntegrationToken(this._encryption, integration.token),
     };
+  }
+
+  private async assertChannelActive(integration: Integration) {
+    const live = await this._integrationService.getIntegrationById(
+      integration.organizationId,
+      integration.id
+    );
+    if (!live || live.deletedAt || live.disabled)
+      throw ApplicationFailure.nonRetryable(
+        'Channel unavailable',
+        'ChannelUnavailable'
+      );
   }
 
   private async loadRuntimeIntegration(
@@ -544,7 +576,10 @@ export class PostActivity {
       integrationId
     );
     if (!integration) {
-      throw new Error('Integration not found');
+      throw ApplicationFailure.nonRetryable(
+        'Channel unavailable',
+        'ChannelUnavailable'
+      );
     }
     return integration;
   }

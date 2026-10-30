@@ -23,6 +23,9 @@ services:
       # V112 e padrao; agendamentos legados futuros sao migrados automaticamente.
       IS_GENERAL: 'true'
       DISABLE_REGISTRATION: 'false'
+      # Anonymous preview comments (reCAPTCHA v2 checkbox; empty = disabled)
+      RECAPTCHA_SITE_KEY: '${RECAPTCHA_SITE_KEY:-}'
+      RECAPTCHA_SECRET_KEY: '${RECAPTCHA_SECRET_KEY:-}'
 
       # === Storage Settings
       STORAGE_PROVIDER: 'local'

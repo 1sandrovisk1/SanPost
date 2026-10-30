@@ -13,6 +13,10 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 - A atualização migra automaticamente workflows antigos que comprovadamente ainda aguardam uma publicação futura, preservando datas e conteúdo. Publicados, passados, rascunhos e execuções que já iniciaram o envio não são recriados. A migração é retomável e registra os casos adiados.
 - Publicações via Zernio aguardam confirmação real da plataforma. Resultados parciais ou incertos preservam a referência aceita e exigem confirmação explícita antes de um novo envio.
 
+### Adicionado
+- **Comentários no preview:** visitantes podem comentar com reCAPTCHA e limites por IP, responder conversas e citar trechos. A equipe pode resolver, reabrir e excluir conversas no perfil autorizado; revisão/aprovação por link preservada. A resposta pública oculta identidade da equipe e dados privados dos convidados.
+- **Exclusão de organização pelo administrador da plataforma:** confirmação pelo nome, bloqueio de cobrança vigente e exclusão lógica transacional com revogação de chaves, OAuth e links. Canais, posts e automações são desativados, preservando contas dos usuários e histórico.
+
 
 ### Corrigido — testes do RC 0.7.0-rc.2 em produção (28/10/2026)
 

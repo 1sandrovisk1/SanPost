@@ -87,7 +87,12 @@ export class ProfileRepository {
 
   createProfile(
     orgId: string,
-    data: { name: string; slug: string; description?: string; avatarUrl?: string }
+    data: {
+      name: string;
+      slug: string;
+      description?: string;
+      avatarUrl?: string;
+    }
   ) {
     return this._profile.model.profile.create({
       data: {
@@ -103,7 +108,12 @@ export class ProfileRepository {
   updateProfile(
     orgId: string,
     profileId: string,
-    data: { name?: string; slug?: string; description?: string; avatarUrl?: string }
+    data: {
+      name?: string;
+      slug?: string;
+      description?: string;
+      avatarUrl?: string;
+    }
   ) {
     return this._profile.model.profile.update({
       where: { id: profileId, organizationId: orgId },
@@ -111,7 +121,10 @@ export class ProfileRepository {
     });
   }
 
-  deleteProfile(orgId: string, profileId: string): Promise<ProfileDeletionResult> {
+  deleteProfile(
+    orgId: string,
+    profileId: string
+  ): Promise<ProfileDeletionResult> {
     return this._tx.model.$transaction(async (tx) => {
       const deletedAt = new Date();
       const scope: {
@@ -381,7 +394,7 @@ export class ProfileRepository {
 
   getProfileByApiKey(apiKey: string) {
     return this._profile.model.profile.findFirst({
-      where: { apiKey, deletedAt: null },
+      where: { apiKey, deletedAt: null, organization: { deletedAt: null } },
       include: {
         organization: {
           include: {

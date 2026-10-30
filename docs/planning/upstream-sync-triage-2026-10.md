@@ -309,8 +309,10 @@ Os 21 CVEs de 2026 anteriores do nginx já estão resolvidos no Debian
 - `#2013` workflow v1.1.2: já existe no fork (V112 opt-in).
 - `#2200` ocultar aba Equipe para `USER`: a aba do fork já é adaptável por
   papel; conferir apenas o caso org-USER sem perfil.
-- `#2079` comentários anônimos no preview + reCAPTCHA: nova superfície pública
-  de escrita; o fork tem revisão/aprovação própria — reavaliar como produto.
+- `#2079` foi adiado nesta triagem inicial por introduzir escrita pública.
+  **Atualização de 29/10:** adoção autorizada e implementada, integrada à revisão
+  do fork com reCAPTCHA, limites por IP, respostas e moderação por perfil;
+  contrato em `docs/api/preview-comments.md`.
 - `#2091`, DCR, ChatGPT app, conector self-hosted, HubSpot, Canva: superfícies
   de Postiz Cloud; o DCR é exatamente a amostragem anônima do CVE-2026-94456.
 - `b958c5d5` cookies `invite`/`showorg` com vida maior: UX, não segurança —
@@ -620,9 +622,9 @@ lockfile), #2289 + `2ded21d1` (sanitizer: tags de bloco viram `<p>`, regex
 linear). Já cobertos pelos lotes de providers: #1915, #2108, #2116, #2117,
 #2118, #2140, #2141, #2164, #2262. Cobertos de outra forma: #2101 (Sentry já em
 10.76.2), #2225 (log do "Authentication failed" via `summarizeError`). Não
-aplicável agora: #2290 (classe `preview` na página de preview com comentários,
-que o fork ainda não tem — entra com o épico de comentários anônimos no
-preview). `6b102afb` (`destructiveHint`) vai para o lote MCP.
+aplicável na triagem inicial: #2290. **Atualização de 29/10:** a classe
+`preview` está presente no `PreviewText`, entregue junto dos comentários
+anônimos, preservando quebras de linha. `6b102afb` (`destructiveHint`) vai para o lote MCP.
 
 ### Lote MCP (27/10/2026)
 
@@ -1343,7 +1345,7 @@ desde `e3b3b82f`. Merges `origin/main` do first-parent foram omitidos
 | direto | — | `3d3e9eee` | 2026-09-22 | feat: update chatgpt submission | 1 | 0 | **SKIP** | DCR/ChatGPT app: nova superfície OAuth não autenticada; fork não tem DCR |
 | direto | — | `5ff9e0b2` | 2026-09-23 | feat: update readme | 1 | 1 | **SKIP** | docs/README/CLAUDE.md do upstream (#2191 vira regra no nosso CLAUDE.md) |
 | direto | — | `c33f2188` | 2026-09-23 | feat: update readme | 1 | 1 | **SKIP** | docs/README/CLAUDE.md do upstream (#2191 vira regra no nosso CLAUDE.md) |
-| PR | #2079 | `33e126a9` | 2026-09-24 | feat(preview): inline comments, replies, resolve and anonymous commenting | 33 | 13 | **SKIP** | comentários anônimos no preview = nova superfície pública de escrita; fork tem revisão/aprovação própria (reavaliar como produto) |
+| PR | #2079 | `33e126a9` | 2026-09-24 | feat(preview): inline comments, replies, resolve and anonymous commenting | 33 | 13 | **ADOPT** | autorizado em 29/10: porte integrado à revisão do fork, com CAPTCHA, limites por IP, escopo por perfil, respostas e resolução; ver docs/api/preview-comments.md |
 | direto | — | `bb5099a8` | 2026-09-24 | feat: connected clients | 2 | 0 | **SKIP** | conector self-hosted/Canva/clientes conectados (Postiz Cloud) |
 | PR | #2151 | `fbd089f6` | 2026-09-25 | fix(billing): show a message when Stripe.js fails to load instead of crashing | 17 | 3 | **SKIP** | billing/Stripe (DISABLE_BILLING=true no fork) |
 | PR | #2159 | `73a0dea9` | 2026-09-28 | fix(frontend): keep the 402 response readable and stay on Add Channel after cancel | 2 | 2 | **SKIP** | billing/Stripe (DISABLE_BILLING=true no fork) |

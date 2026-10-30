@@ -1,4 +1,9 @@
 import {
+  CreateAnonymousCommentDto,
+  GuestReviewCommentDto,
+} from '@gitroom/nestjs-libraries/dtos/comments/add.comment.dto';
+import { isAnonymousPreviewCommentEnabled } from '@gitroom/nestjs-libraries/database/prisma/posts/preview.comments';
+import {
   Body,
   Controller,
   Get,
@@ -63,9 +68,7 @@ export class PublicController {
   @Get('/agent-skill')
   async agentSkill(@Res() res: Response) {
     const apiUrl =
-      process.env.NEXT_PUBLIC_BACKEND_URL ||
-      process.env.FRONTEND_URL ||
-      '';
+      process.env.NEXT_PUBLIC_BACKEND_URL || process.env.FRONTEND_URL || '';
     res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
     res.setHeader('Cache-Control', 'public, max-age=300');
     res.send(buildAgentSkillMarkdown(apiUrl));
@@ -114,7 +117,28 @@ export class PublicController {
 
   @Get(`/posts/:id/comments`)
   async getComments(@Param('id') postId: string) {
-    return { comments: await this._postsService.getComments(postId) };
+    return {
+      comments: await this._postsService.getComments(postId),
+      anonymousEnabled: isAnonymousPreviewCommentEnabled(),
+      recaptchaSiteKey: isAnonymousPreviewCommentEnabled()
+        ? process.env.RECAPTCHA_SITE_KEY
+        : null,
+    };
+  }
+
+  @Post('/posts/:id/comments')
+  async createAnonymousComment(
+    @Param('id') id: string,
+    @Body() body: CreateAnonymousCommentDto,
+    @RealIP() ip: string,
+    @UserAgent() userAgent: string
+  ) {
+    return this._postsService.createAnonymousComment(
+      id,
+      body,
+      ip || null,
+      userAgent || null
+    );
   }
 
   @Get(`/posts/:id/review`)
@@ -140,13 +164,7 @@ export class PublicController {
     @Param('id') postId: string,
     @RealIP() ip: string,
     @UserAgent() userAgent: string,
-    @Body()
-    body: {
-      token?: string;
-      guestName?: string;
-      guestEmail?: string;
-      content?: string;
-    }
+    @Body() body: GuestReviewCommentDto
   ) {
     return this._reviewLinksService.submitGuestAction({
       postId,
@@ -157,6 +175,7 @@ export class PublicController {
       guestEmail: body?.guestEmail,
       content: body?.content,
       kind: CommentKind.COMMENT,
+      placement: body,
     });
   }
 

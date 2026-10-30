@@ -1,4 +1,19 @@
-import { Body, Controller, Delete, Get, HttpException, Param, Post, Put, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { OrganizationDeletionService } from '@gitroom/nestjs-libraries/database/prisma/organizations/organization.deletion.service';
+import { DeleteOrganizationDto } from '@gitroom/nestjs-libraries/dtos/settings/delete.organization.dto';
+import { GetUserFromRequest } from '@gitroom/nestjs-libraries/user/user.from.request';
+import { User } from '@prisma/client';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpException,
+  Param,
+  Post,
+  Put,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { GetOrgFromRequest } from '@gitroom/nestjs-libraries/user/org.from.request';
 import { GetProfileFromRequest } from '@gitroom/nestjs-libraries/user/profile.from.request';
@@ -12,7 +27,10 @@ import { LanguageDto } from '@gitroom/nestjs-libraries/dtos/settings/language.dt
 import { UpdateAiCreditsDto } from '@gitroom/nestjs-libraries/dtos/settings/update.ai-credits.dto';
 import { UpdateProfilePersonaDto } from '@gitroom/nestjs-libraries/dtos/settings/update.profile-persona.dto';
 import { ApiTags } from '@nestjs/swagger';
-import { AuthorizationActions, Sections } from '@gitroom/backend/services/auth/permissions/permission.exception.class';
+import {
+  AuthorizationActions,
+  Sections,
+} from '@gitroom/backend/services/auth/permissions/permission.exception.class';
 import { SubscriptionService } from '@gitroom/nestjs-libraries/database/prisma/subscriptions/subscription.service';
 import { KnowledgeService } from '@gitroom/nestjs-libraries/database/prisma/knowledge/knowledge.service';
 import { ProfileManage } from '@gitroom/nestjs-libraries/services/auth/profile-access/profile-access.decorators';
@@ -24,8 +42,30 @@ export class SettingsController {
     private _organizationService: OrganizationService,
     private _profileService: ProfileService,
     private _subscriptionService: SubscriptionService,
-    private _knowledgeService: KnowledgeService
+    private _knowledgeService: KnowledgeService,
+    private _organizationDeletionService: OrganizationDeletionService
   ) {}
+
+  @Get('/organization/deletion')
+  deletionInfo(
+    @GetOrgFromRequest() org: Organization,
+    @GetUserFromRequest() user: User
+  ) {
+    return this._organizationDeletionService.info(org.id, user.id);
+  }
+
+  @Delete('/organization')
+  deleteOrganization(
+    @GetOrgFromRequest() org: Organization,
+    @GetUserFromRequest() user: User,
+    @Body() body: DeleteOrganizationDto
+  ) {
+    return this._organizationDeletionService.delete(
+      org.id,
+      user.id,
+      body.confirmationName
+    );
+  }
 
   @Get('/team')
   @CheckPolicies(
@@ -79,7 +119,10 @@ export class SettingsController {
     @Body() body: ShortlinkPreferenceDto
   ) {
     if (profile?.id) {
-      return this._profileService.updateShortlinkPreference(profile.id, body.shortlink);
+      return this._profileService.updateShortlinkPreference(
+        profile.id,
+        body.shortlink
+      );
     }
     return this._organizationService.updateShortlinkPreference(
       org.id,
@@ -138,9 +181,7 @@ export class SettingsController {
   }
 
   @Get('/share-zernio-with-profiles')
-  async getShareZernioWithProfiles(
-    @GetOrgFromRequest() org: Organization
-  ) {
+  async getShareZernioWithProfiles(@GetOrgFromRequest() org: Organization) {
     return this._organizationService.getShareZernioWithProfiles(org.id);
   }
 
@@ -150,7 +191,10 @@ export class SettingsController {
     @GetOrgFromRequest() org: Organization,
     @Body('enabled') enabled: boolean
   ) {
-    return this._organizationService.updateShareZernioWithProfiles(org.id, enabled);
+    return this._organizationService.updateShareZernioWithProfiles(
+      org.id,
+      enabled
+    );
   }
 
   @Get('/share-provider-credentials')
@@ -182,10 +226,14 @@ export class SettingsController {
     }
 
     const usedImages = await this._subscriptionService.getUsedCredits(
-      org.id, 'ai_images', profileId
+      org.id,
+      'ai_images',
+      profileId
     );
     const usedVideos = await this._subscriptionService.getUsedCredits(
-      org.id, 'ai_videos', profileId
+      org.id,
+      'ai_videos',
+      profileId
     );
 
     return {
@@ -204,7 +252,11 @@ export class SettingsController {
     @Param('profileId') profileId: string,
     @Body() body: UpdateAiCreditsDto
   ) {
-    const updated = await this._profileService.updateAiCredits(org.id, profileId, body);
+    const updated = await this._profileService.updateAiCredits(
+      org.id,
+      profileId,
+      body
+    );
     return {
       aiImageCredits: updated.aiImageCredits,
       aiVideoCredits: updated.aiVideoCredits,
@@ -213,17 +265,21 @@ export class SettingsController {
 
   @Get('/ai-credits/summary')
   @CheckPolicies([AuthorizationActions.Create, Sections.ADMIN])
-  async getAiCreditsSummary(
-    @GetOrgFromRequest() org: Organization
-  ) {
-    const profiles = await this._profileService.getAllProfilesWithCredits(org.id);
+  async getAiCreditsSummary(@GetOrgFromRequest() org: Organization) {
+    const profiles = await this._profileService.getAllProfilesWithCredits(
+      org.id
+    );
     const profilesWithUsage = await Promise.all(
       profiles.map(async (p) => {
         const usedImages = await this._subscriptionService.getUsedCredits(
-          org.id, 'ai_images', p.id
+          org.id,
+          'ai_images',
+          p.id
         );
         const usedVideos = await this._subscriptionService.getUsedCredits(
-          org.id, 'ai_videos', p.id
+          org.id,
+          'ai_videos',
+          p.id
         );
         return {
           id: p.id,
@@ -262,7 +318,11 @@ export class SettingsController {
     @Param('profileId') profileId: string,
     @Body() body: UpdateProfilePersonaDto
   ) {
-    const persona = await this._profileService.upsertPersona(org.id, profileId, body);
+    const persona = await this._profileService.upsertPersona(
+      org.id,
+      profileId,
+      body
+    );
     return { persona };
   }
 
