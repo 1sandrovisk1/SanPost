@@ -46,3 +46,7 @@ O primeiro CI completo detectou retornos implícitos no validador de X Articles 
 O mesmo CI atingiu heap de 6 GB no processo conjunto. Bibliotecas passaram a executar em duas partes sequenciais e backend em outro processo, com cobertura/relatórios separados e sem desabilitar diagnósticos; a união das partes preserva a seleção original de 280 suítes.
 
 A primeira parte do CI passou por 1.482 testes sem esgotar memória e apontou um mock antigo do construtor de organização. Atualizados os mocks de organização/perfil para a dependência OAuth adicionada no merge; 34 testes em quatro suítes passaram com a configuração normal. Uma varredura TypeScript de todos os specs confirmou que os diagnósticos restantes em arquivos fora desse caminho já existem sem alteração em `origin/main` (`nowpayments`, `mastodon.custom`, `track`); não foram confundidos com regressões deste porte.
+
+## Gate final aprovado
+
+[CI 41134253535](https://github.com/maiconramos/robo-multipost/actions/runs/41134253535), commit de código `56386112`: 3.154 testes de bibliotecas/backend e 80 do orchestrator aprovados, 41 testes anteriormente desativados preservados. Os três builds de produção passaram em Node 22.23.4. PR #341 integrado preservando o histórico; a alteração posterior de versão não modifica o código validado.
