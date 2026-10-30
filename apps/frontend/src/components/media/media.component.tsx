@@ -361,6 +361,7 @@ export const MediaBox: FC<{
             {media.path.indexOf('mp4') > -1 ? (
               <VideoFrame
                 autoplay={true}
+                thumbnail={media.thumbnail ? mediaDirectory.set(media.thumbnail) : undefined}
                 url={mediaDirectory.set(media.path)}
               />
             ) : (
@@ -771,7 +772,7 @@ export const MediaBox: FC<{
                         </div>
                       </div>
                       {media.path.indexOf('mp4') > -1 ? (
-                        <VideoFrame url={mediaDirectory.set(media.path)} />
+                        <VideoFrame url={mediaDirectory.set(media.path)} thumbnail={media.thumbnail ? mediaDirectory.set(media.thumbnail) : undefined} />
                       ) : (
                         <img
                           width="100%"
@@ -1010,7 +1011,7 @@ export const MultiMediaComponent: FC<{
                         <MediaSettingsIcon className="cursor-pointer relative z-[200]" />
                       </div>
                       {media?.path?.indexOf('mp4') > -1 ? (
-                        <VideoFrame url={mediaDirectory.set(media?.path)} />
+                        <VideoFrame url={mediaDirectory.set(media?.path)} thumbnail={(media as any)?.thumbnail ? mediaDirectory.set((media as any).thumbnail) : undefined} />
                       ) : (
                         <img
                           className="w-full h-full object-cover rounded-[4px]"

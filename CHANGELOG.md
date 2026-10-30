@@ -17,6 +17,9 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 - **Comentários no preview:** visitantes podem comentar com reCAPTCHA e limites por IP, responder conversas e citar trechos. A equipe pode resolver, reabrir e excluir conversas no perfil autorizado; revisão/aprovação por link preservada. A resposta pública oculta identidade da equipe e dados privados dos convidados.
 - **Exclusão de organização pelo administrador da plataforma:** confirmação pelo nome, bloqueio de cobrança vigente e exclusão lógica transacional com revogação de chaves, OAuth e links. Canais, posts e automações são desativados, preservando contas dos usuários e histórico.
 
+### Corrigido
+- **Thumbnail de vídeo no editor e no YouTube:** miniaturas pequenas e a prévia do YouTube passam a mostrar a imagem salva. Captura aguarda o quadro decodificado após mover a posição do vídeo, inclusive no final; salvamento recusado mantém o modal aberto com erro. Timestamp zero e limpeza da capa preservados. Prioridade da capa antiga específica do YouTube mantida e testada.
+
 
 ### Corrigido — testes do RC 0.7.0-rc.2 em produção (28/10/2026)
 

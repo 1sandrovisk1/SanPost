@@ -1,5 +1,7 @@
 'use client';
 
+import { captureVideoFrame } from './capture.video.frame';
+import { persistMediaSettings } from './persist.media.settings';
 import { EventEmitter } from 'events';
 import React, { FC, useCallback, useEffect, useRef, useState } from 'react';
 import { TopTitle } from '@gitroom/frontend/components/launches/helpers/top.title.component';
@@ -123,86 +125,33 @@ export const CreateThumbnail: FC<{
   const handleSeek = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const time = parseFloat(e.target.value);
     if (videoRef.current) {
-      videoRef.current.currentTime = time;
-      setCurrentTime(time);
+      const target = Math.min(
+        time,
+        Math.max(0, videoRef.current.duration - 0.001)
+      );
+      videoRef.current.currentTime = target;
+      setCurrentTime(target);
     }
   }, []);
 
+  const [isSeeking, setIsSeeking] = useState(false);
+  const [captureError, setCaptureError] = useState(false);
   const captureFrame = useCallback(async () => {
+    if (!videoRef.current || !canvasRef.current || isCapturing) return;
     setIsCapturing(true);
-
+    setCaptureError(false);
     try {
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      const ctx = canvas.getContext('2d');
-
-      if (!ctx) {
-        setIsCapturing(false);
-        return;
-      }
-
-      // Set canvas dimensions to match video
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-
-      // Draw current frame to canvas
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-      // Get timestamp in milliseconds
-      const timestampMs = Math.round(currentTime * 1000);
-
-      // Convert canvas to blob
-      canvas.toBlob(
-        (blob: Blob | null) => {
-          if (blob) {
-            onSelect(blob, timestampMs);
-          }
-          setIsCapturing(false);
-        },
-        'image/jpeg',
-        0.8
+      const { blob, timestampMs } = await captureVideoFrame(
+        videoRef.current,
+        canvasRef.current
       );
-    } catch (error) {
-      console.error('Error capturing frame:', error);
+      onSelect(blob, timestampMs);
+    } catch {
+      setCaptureError(true);
+    } finally {
       setIsCapturing(false);
-
-      // Fallback: try to capture using a different approach
-      try {
-        const video = videoRef.current;
-        if (video) {
-          // Create a temporary canvas element
-          const tempCanvas = document.createElement('canvas');
-          const tempCtx = tempCanvas.getContext('2d');
-
-          if (tempCtx) {
-            tempCanvas.width = video.videoWidth;
-            tempCanvas.height = video.videoHeight;
-            tempCtx.drawImage(video, 0, 0);
-
-            // Get timestamp in milliseconds
-            const timestampMs = Math.round(currentTime * 1000);
-
-            tempCanvas.toBlob(
-              (blob: Blob | null) => {
-                if (blob) {
-                  onSelect(blob, timestampMs);
-                }
-                setIsCapturing(false);
-              },
-              'image/jpeg',
-              0.8
-            );
-          }
-        }
-      } catch (fallbackError) {
-        console.error('Fallback capture also failed:', fallbackError);
-        alert(
-          t('unable_to_capture_frame', 'Unable to capture frame. This might be due to CORS restrictions on the video source.')
-        );
-        setIsCapturing(false);
-      }
     }
-  }, [onSelect, currentTime]);
+  }, [onSelect, isCapturing]);
 
   const formatTime = useCallback((seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -223,6 +172,8 @@ export const CreateThumbnail: FC<{
           className="w-full h-[200px] object-contain"
           onLoadedMetadata={handleLoadedMetadata}
           onTimeUpdate={handleTimeUpdate}
+          onSeeking={() => setIsSeeking(true)}
+          onSeeked={() => setIsSeeking(false)}
           muted
           preload="metadata"
           crossOrigin="anonymous"
@@ -240,6 +191,7 @@ export const CreateThumbnail: FC<{
               step="0.1"
               value={currentTime}
               onChange={handleSeek}
+              disabled={isCapturing}
               className="w-full h-2 bg-fifth rounded-lg appearance-none cursor-pointer slider"
               style={{
                 background: `linear-gradient(to right, #4f46e5 0%, #4f46e5 ${
@@ -256,15 +208,25 @@ export const CreateThumbnail: FC<{
           <div className="flex justify-center">
             <button
               onClick={captureFrame}
-              disabled={isCapturing}
+              disabled={isCapturing || isSeeking}
               className="bg-forth text-white px-6 py-2 rounded-lg hover:bg-opacity-80 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isCapturing ? t('capturing', 'Capturing...') : t('select_this_frame', 'Select This Frame')}
+              {isCapturing
+                ? t('capturing', 'Capturing...')
+                : t('select_this_frame', 'Select This Frame')}
             </button>
           </div>
         </>
       )}
 
+      {captureError && (
+        <p role="alert">
+          {t(
+            'unable_to_capture_frame',
+            'Unable to capture frame. This might be due to CORS restrictions on the video source.'
+          )}
+        </p>
+      )}
       <style jsx>{`
         .slider::-webkit-slider-thumb {
           appearance: none;
@@ -324,7 +286,7 @@ export const MediaComponentInner: FC<{
     props.media?.thumbnail || null
   );
   const [thumbnailTimestamp, setThumbnailTimestamp] = useState<number | null>(
-    props.media?.thumbnailTimestamp || null
+    props.media?.thumbnailTimestamp ?? null
   );
 
   useEffect(() => {
@@ -334,38 +296,45 @@ export const MediaComponentInner: FC<{
     };
   }, []);
 
+  const [saveError, setSaveError] = useState(false);
+  const saving = useRef(false);
+  useEffect(
+    () => () => {
+      if (newThumbnail) URL.revokeObjectURL(newThumbnail);
+    },
+    [newThumbnail]
+  );
   const save = useCallback(async () => {
+    if (saving.current || !media) return;
+    saving.current = true;
     setLoading(true);
-    let path = thumbnail || '';
-    if (newThumbnail) {
-      const blob = await (await fetch(newThumbnail)).blob();
-      const formData = new FormData();
-      formData.append('file', blob, 'media.jpg');
-      formData.append('preventSave', 'true');
-      const data = await (
-        await newFetch('/media/upload-simple', {
-          method: 'POST',
-          body: formData,
-        })
-      ).json();
-      path = data.path;
+    setSaveError(false);
+    try {
+      const saved = await persistMediaSettings(newFetch, {
+        id: media.id,
+        alt: altText,
+        thumbnail,
+        newThumbnail,
+        thumbnailTimestamp,
+      });
+      onSelect(saved);
+      onClose();
+    } catch {
+      setSaveError(true);
+    } finally {
+      saving.current = false;
+      setLoading(false);
     }
-
-    const media = await (
-      await newFetch('/media/information', {
-        method: 'POST',
-        body: JSON.stringify({
-          id: props.media.id,
-          alt: altText,
-          thumbnail: path,
-          thumbnailTimestamp: thumbnailTimestamp,
-        }),
-      })
-    ).json();
-
-    onSelect(media);
-    onClose();
-  }, [altText, newThumbnail, thumbnail, thumbnailTimestamp]);
+  }, [
+    media,
+    newFetch,
+    altText,
+    newThumbnail,
+    thumbnail,
+    thumbnailTimestamp,
+    onSelect,
+    onClose,
+  ]);
 
   return (
     <div className="mt-[10px] flex flex-col gap-[20px]">
@@ -377,7 +346,10 @@ export const MediaComponentInner: FC<{
           type="text"
           value={altText}
           onChange={(e) => setAltText(e.target.value)}
-          placeholder={t('describe_content_placeholder', 'Describe the image/video content...')}
+          placeholder={t(
+            'describe_content_placeholder',
+            'Describe the image/video content...'
+          )}
           className="w-full px-3 py-2 bg-fifth border border-tableBorder rounded-lg text-textColor placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-forth focus:border-transparent"
         />
       </div>
@@ -445,6 +417,7 @@ export const MediaComponentInner: FC<{
                       onClick={() => {
                         setNewThumbnail(null);
                         setThumbnail(null);
+                        setThumbnailTimestamp(null);
                       }}
                       className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-opacity-80 transition-all flex-1 border border-red-700 whitespace-nowrap"
                     >
@@ -483,16 +456,9 @@ export const MediaComponentInner: FC<{
                 {/* Thumbnail Editor */}
                 <CreateThumbnail
                   onSelect={(blob: Blob, timestampMs: number) => {
-                    // Convert blob to base64 or handle as needed
-                    const reader = new FileReader();
-                    reader.onload = () => {
-                      // You can handle the result here - for now just call onSelect with the blob URL
-                      const url = URL.createObjectURL(blob);
-                      setNewThumbnail(url);
-                      setThumbnailTimestamp(timestampMs);
-                      setIsEditingThumbnail(false);
-                    };
-                    reader.readAsDataURL(blob);
+                    setNewThumbnail(URL.createObjectURL(blob));
+                    setThumbnailTimestamp(timestampMs);
+                    setIsEditingThumbnail(false);
                   }}
                   media={media}
                   altText={altText}
@@ -504,6 +470,14 @@ export const MediaComponentInner: FC<{
         </>
       )}
 
+      {saveError && (
+        <p role="alert">
+          {t(
+            'media_settings_save_failed',
+            'Could not save the media settings. Try again; your changes are still open.'
+          )}
+        </p>
+      )}
       {!isEditingThumbnail && (
         <div className="flex space-x-2 !mt-[20px]">
           <button
@@ -515,6 +489,7 @@ export const MediaComponentInner: FC<{
           </button>
           <button
             onClick={save}
+            disabled={loading}
             className="flex-1 bg-forth text-white px-6 py-2 rounded-lg hover:bg-opacity-80 transition-all"
           >
             {t('save_changes', 'Save Changes')}

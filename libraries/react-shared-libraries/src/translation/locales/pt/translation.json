@@ -2837,5 +2837,6 @@
   "org_delete_failed": "Não foi possível excluir a organização. Recarregue a página e confira a permissão, o nome e a assinatura.",
   "preview_anchor_stale": "Este trecho foi alterado depois que o comentário foi escrito.",
   "preview_reply": "Responder",
-  "preview_sign_in": "Entrar"
+  "preview_sign_in": "Entrar",
+  "media_settings_save_failed": "Não foi possível salvar as configurações da mídia. Tente novamente; suas alterações continuam abertas."
 }

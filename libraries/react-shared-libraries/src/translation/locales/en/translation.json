@@ -2837,5 +2837,6 @@
   "org_delete_failed": "Could not delete the organization. Reload and check permissions, name and billing status.",
   "preview_anchor_stale": "This text has changed since the comment was written.",
   "preview_reply": "Reply",
-  "preview_sign_in": "Sign in"
+  "preview_sign_in": "Sign in",
+  "media_settings_save_failed": "Could not save the media settings. Try again; your changes are still open."
 }
