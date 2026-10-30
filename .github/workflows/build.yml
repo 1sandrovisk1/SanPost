@@ -53,13 +53,25 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Run tests
+      # Processes are sequential so ts-jest/coverage caches are released between
+      # batches. Both library shards plus backend cover the original root suite.
+      - name: Run library tests (1/2)
         env:
-          # Suite cresceu (~150+ tests adicionados em features recentes);
-          # heap default de 4GB do Node nao basta no runner ubuntu-latest
-          # (7GB RAM). Subir para 6GB previne JS heap OOM no jest.
           NODE_OPTIONS: --max-old-space-size=6144
-        run: pnpm test
+          JEST_JUNIT_OUTPUT_NAME: junit-libraries-1.xml
+        run: pnpm test --selectProjects nestjs-libraries --runInBand --shard=1/2 --coverageDirectory=coverage/libraries-1
+
+      - name: Run library tests (2/2)
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+          JEST_JUNIT_OUTPUT_NAME: junit-libraries-2.xml
+        run: pnpm test --selectProjects nestjs-libraries --runInBand --shard=2/2 --coverageDirectory=coverage/libraries-2
+
+      - name: Run backend tests
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+          JEST_JUNIT_OUTPUT_NAME: junit-backend.xml
+        run: pnpm test --selectProjects backend --runInBand --coverageDirectory=coverage/backend
 
       # O orchestrator roda em outro processo para liberar a cobertura das
       # suites antigas antes de instrumentar o worker Temporal. Juntar os tres

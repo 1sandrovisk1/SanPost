@@ -22,3 +22,7 @@ job vermelho mesmo quando testes e build tinham terminado com sucesso.
 
 Ao investigar uma falha futura, verificar a etapa que falhou. Um erro em
 `Post Setup pnpm cache` não deve ser confundido com falha de teste ou de build.
+
+## Memória dos testes na RC.5
+
+Com a ampliação das bibliotecas/SDKs, o processo conjunto de backend e bibliotecas atingiu o heap de 6 GB do runner. O workflow executa as bibliotecas em duas partes (`--shard=1/2`, `2/2`) e o backend em processo separado, todos sequenciais e com o mesmo heap. As partes dividem arquivos completos de teste, sem filtrar casos: a união corresponde às 280 suítes da configuração raiz (243 bibliotecas e 37 backend nesta versão). O orchestrator permanece separado. Diagnósticos TypeScript, instrumentação de cobertura e detecção de handles abertos continuam ativos; relatórios de cobertura/JUnit têm destinos distintos para não se sobrescreverem.

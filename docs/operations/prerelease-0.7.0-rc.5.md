@@ -40,3 +40,7 @@ A publicação real de uma thumbnail específica do YouTube permanece adiada. Te
 - Build e testes completos no Node exigido são confirmados pelo CI antes da tag. O Node local 22.22.3 permanece abaixo do patch 22.23.4 da imagem.
 
 Para detalhes de cada porte, consultar os planos e guias operacionais correspondentes.
+
+O primeiro CI completo detectou retornos implícitos no validador de X Articles (`noImplicitReturns`) e tipagem de mocks/fixtures nos testes de Tumblr e agendamento de artigos. Corrigidos sem relaxar o tsconfig, desativar diagnósticos ou alterar as expectativas funcionais. O gate completo foi reiniciado após testes direcionados com a configuração normal do Jest.
+
+O mesmo CI atingiu heap de 6 GB no processo conjunto. Bibliotecas passaram a executar em duas partes sequenciais e backend em outro processo, com cobertura/relatórios separados e sem desabilitar diagnósticos; a união das partes preserva a seleção original de 280 suítes.

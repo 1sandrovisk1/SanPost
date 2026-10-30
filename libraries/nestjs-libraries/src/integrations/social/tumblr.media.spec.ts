@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import type { AxiosInstance } from 'axios';
 import { TumblrProvider } from './tumblr.provider';
 import {
   mkdtempSync,
@@ -10,20 +11,29 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp from 'sharp';
+
+class TestTumblrProvider extends TumblrProvider {
+  public override getSsrfSafeAxios(): AxiosInstance {
+    return super.getSsrfSafeAxios();
+  }
+}
+
 describe('midia do Tumblr antes da publicacao', () => {
   let root: string;
   let before: string | undefined;
-  let p: TumblrProvider;
+  let p: TestTumblrProvider;
   let send: jest.Mock;
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'tumblr-proof-'));
     before = process.env.UPLOAD_DIRECTORY;
     process.env.UPLOAD_DIRECTORY = root;
-    p = new TumblrProvider();
+    p = new TestTumblrProvider();
     send = jest
       .fn()
       .mockResolvedValue({ status: 201, data: { response: { id: '123' } } });
-    jest.spyOn(p, 'getSsrfSafeAxios').mockReturnValue({ post: send } as any);
+    jest
+      .spyOn(p, 'getSsrfSafeAxios')
+      .mockReturnValue({ post: send } as unknown as AxiosInstance);
   });
   afterEach(() => {
     if (before === undefined) delete process.env.UPLOAD_DIRECTORY;

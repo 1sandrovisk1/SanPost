@@ -19,6 +19,15 @@ import { IntegrationService } from '../integrations/integration.service';
 import { PostsRepository } from './posts.repository';
 import { PostsService } from './posts.service';
 
+type ChainPost = Pick<
+  Awaited<ReturnType<PostsRepository['getPost']>>,
+  'id' | 'settings' | 'content' | 'image'
+> & { childrenPost: Array<{ id: string }> };
+
+// O consumidor aguarda o resultado; os accessors de relacao do Prisma nao sao usados.
+const postClient = (post: ChainPost) =>
+  Promise.resolve(post) as unknown as ReturnType<PostsRepository['getPost']>;
+
 const audio = { id: '123', audio_volume: 0, video_volume: 100 };
 const makePost = (
   settings: Record<string, unknown> = { audio },
@@ -144,14 +153,14 @@ describe('X Articles nos consumidores de posts', () => {
       { id: 'post-2', settings, content: 'Resposta', image: '[]' },
     ] as any);
     repo.getPost.mockImplementation(
-      async (id) =>
-        ({
+      (id) =>
+        postClient({
           id,
           settings,
           content: id === 'post-1' ? 'Corpo' : 'Resposta',
           image: '[]',
           childrenPost: id === 'post-1' ? [{ id: 'post-2' }] : [],
-        } as any)
+        })
     );
     await expect(
       service.changeDate(
@@ -166,14 +175,14 @@ describe('X Articles nos consumidores de posts', () => {
   });
   it('calendario usa ordem da cadeia e aceita corpo longo com resposta curta', async () => {
     const settings = JSON.stringify(article);
-    const seed = {
+    const seed: ChainPost = {
       id: 'post-1',
       settings,
       content: 'a'.repeat(10000),
       image: '[]',
       childrenPost: [{ id: 'post-2' }],
     };
-    const reply = {
+    const reply: ChainPost = {
       id: 'post-2',
       settings,
       content: 'Resposta',
@@ -188,7 +197,7 @@ describe('X Articles nos consumidores de posts', () => {
     } as any);
     repo.getPostsByGroup.mockResolvedValue([reply, seed] as any);
     repo.getPost.mockImplementation(
-      async (id) => (id === 'post-1' ? seed : reply) as any
+      (id) => postClient(id === 'post-1' ? seed : reply)
     );
     await service.changeDate(
       'org-1',

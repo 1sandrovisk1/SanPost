@@ -30,7 +30,7 @@ export function xArticleError(
   native = true,
   premium: unknown = false
 ): string | undefined {
-  if (settings?.post_type !== 'article') return;
+  if (settings?.post_type !== 'article') return undefined;
   if (!native) return 'Artigos exigem uma conexão nativa do X.';
   if (contents.slice(1).some((html) => articleImageUrls(html).length))
     return 'Use anexos para imagens nas respostas do artigo, sem imagens inline.';
@@ -69,6 +69,7 @@ export function xArticleError(
         ? 'O artigo excede 100.000 caracteres.'
         : 'Uma resposta do artigo excede o limite de texto do X.';
   }
+  return undefined;
 }
 
 export function articleContentState(
