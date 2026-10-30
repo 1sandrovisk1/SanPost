@@ -33,6 +33,7 @@ import { sanitizeChatContent } from '@gitroom/helpers/utils/sanitize.chat.conten
 import { TextMessage } from '@copilotkit/runtime-client-gql';
 import { AddEditModal } from '@gitroom/frontend/components/new-launch/add.edit.modal';
 import dayjs from 'dayjs';
+import { fromUtc } from '@gitroom/helpers/utils/user.timezone';
 import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import { ExistingDataContextProvider } from '@gitroom/frontend/components/launches/helpers/use.existing.data';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
@@ -69,7 +70,11 @@ const classifyAiError = (raw?: string): AiErrorKind => {
   ) {
     return 'credits';
   }
-  if (/unauthor|api key|invalid.{0,12}key|authentication|forbidden|401|403/.test(lower)) {
+  if (
+    /unauthor|api key|invalid.{0,12}key|authentication|forbidden|401|403/.test(
+      lower
+    )
+  ) {
     return 'auth';
   }
   if (/rate.?limit|too many|429/.test(lower)) {
@@ -167,7 +172,9 @@ export const AgentChat: FC = () => {
             labels={{
               title: t('your_assistant', 'Your Assistant'),
               placeholder: t('agent_input_placeholder', 'Type a message...'),
-              initial: t('agent_welcome_message', `Hello, I am your Postiz agent 🙌🏻.
+              initial: t(
+                'agent_welcome_message',
+                `Hello, I am your Postiz agent 🙌🏻.
               
 I can schedule a post or multiple posts to multiple channels and generate pictures and videos.
 
@@ -176,7 +183,8 @@ You can select the channels you want to use from the left menu.
 You can see your previous conversations from the right menu.
 
 You can also use me as an MCP Server, check Settings >> Public API
-`),
+`
+              ),
             }}
             UserMessage={Message}
             Input={NewInput}
@@ -440,7 +448,7 @@ const OpenModal: FC<{
               }}
             >
               <AddEditModal
-                date={dayjs.utc(integration.date)}
+                date={fromUtc(integration.date)}
                 allIntegrations={properties}
                 integrations={[foundIntegration]}
                 onlyValues={integration.posts.map((p) => ({

@@ -36,9 +36,13 @@ Regressões adicionais: 14 testes Vitest de UI/calendário, incluindo callbacks 
 
 ## Fechamento do primeiro bloco
 
-- Builds de frontend, backend e orchestrator: exit 0.
+- Frontend e orchestrator: exit 0. A primeira execução do backend apontou relações Prisma após formatar o controller; getSelf recebeu o payload Prisma com users/subscription e o build foi repetido.
 - UI/calendário: 15 testes, incluindo ausência de slot no dia local de 23 horas (linha omitida, sem agendar no dia anterior).
 - Banco temporário encerrado e removido; rota/servidores de QA removidos/parados. Screenshots locais: `/tmp/multipost-composer-desktop-final.png` e `/tmp/multipost-composer-mobile-final.png`.
 - Typecheck amplo de backend mantém três diagnósticos anteriores em `wallet.provider.ts` e nas duas classes legadas `agent.graph*`; as tipagens do QR foram instaladas e os 109 testes Farcaster passaram.
 - Runtime local Node 22.22.3 abaixo do mínimo declarado 22.23.4; lint continua com a configuração circular pré-existente. Nenhum deploy ou merge na main.
 - Propostas de instruções não aplicadas: mapa do compositor/mobile e helpers, contrato de fuso, filas de e-mail e reserva atômica Farcaster.
+
+Revisão macro: corrigida também a data do editor aberto pelo agente (somente apresentação, persistência UTC mantida), datas de apps/avisos e largura dos modais comuns no celular. Browser confirmou largura total de 390px tanto em mídia quanto na confirmação de republicação; input de alt entre x=24 e x=366. Screenshot /tmp/multipost-mobile-media-modal.png.
+
+Depois dos ajustes da aceitação, frontend e backend foram recompilados separadamente com exit 0; orchestrator também passou. Portanto os três builds do primeiro bloco estão aprovados. A preferência do editor aberto pelo agente e os modais móveis integram este mesmo bloco.

@@ -1,4 +1,5 @@
 'use client';
+import { getTimezone } from '@gitroom/helpers/utils/user.timezone';
 
 import { FC, Fragment, useCallback } from 'react';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
@@ -47,7 +48,10 @@ export const ApprovedAppsComponent: FC = () => {
           );
           mutate();
         } catch {
-          toaster.show(t('failed_to_revoke', 'Failed to revoke access'), 'warning');
+          toaster.show(
+            t('failed_to_revoke', 'Failed to revoke access'),
+            'warning'
+          );
         }
       }
     },
@@ -61,9 +65,7 @@ export const ApprovedAppsComponent: FC = () => {
   return (
     <div className="flex flex-col gap-[20px]">
       <div className="flex flex-col">
-        <h3 className="text-[20px]">
-          {t('approved_apps', 'Approved Apps')}
-        </h3>
+        <h3 className="text-[20px]">{t('approved_apps', 'Approved Apps')}</h3>
         <div className="text-customColor18 mt-[4px]">
           {t(
             'apps_you_have_authorized',
@@ -107,7 +109,9 @@ export const ApprovedAppsComponent: FC = () => {
                     )}
                     <div className="text-customColor18 text-[12px]">
                       {t('authorized_on', 'Authorized on')}{' '}
-                      {new Date(app.createdAt).toLocaleDateString()}
+                      {new Date(app.createdAt).toLocaleDateString(undefined, {
+                        timeZone: getTimezone(),
+                      })}
                     </div>
                   </div>
                 </div>
