@@ -8,7 +8,9 @@ const build = () => {
     org as any,
     membership as any,
     {} as any,
-    {} as any
+    {} as any,
+    createPrismaRepositoryMock('oAuthAuthorization') as unknown as
+      ConstructorParameters<typeof OrganizationRepository>[4]
   );
   return {
     repo,

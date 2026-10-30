@@ -9,7 +9,9 @@ describe('ProfileRepository - chave de perfil e exclusao de organizacao', () => 
       {} as any,
       {} as any,
       {} as any,
-      {} as any
+      {} as any,
+      createPrismaRepositoryMock('oAuthAuthorization') as unknown as
+        ConstructorParameters<typeof ProfileRepository>[5]
     );
     await repo.getProfileByApiKey('profile-key');
     expect(profile.model.profile.findFirst).toHaveBeenCalledWith(
