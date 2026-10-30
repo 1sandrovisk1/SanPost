@@ -1,4 +1,5 @@
 'use client';
+import { fromUtc } from '@gitroom/helpers/utils/user.timezone';
 
 import {
   FC,
@@ -138,7 +139,7 @@ export const StarsTableComponent = () => {
     mutate();
   }, [searchParams]);
   const renderMediaLink = useCallback((date: string) => {
-    const local = dayjs.utc(date).local();
+    const local = fromUtc(dayjs.utc(date));
     const weekNumber = local.isoWeek();
     const year = local.year();
     return `/launches?week=${weekNumber}&year=${year}`;
@@ -213,10 +214,16 @@ export const StarsTableComponent = () => {
                   <UpDown name={t('date', 'Date')} param="date" />
                 </th>
                 <th>
-                  <UpDown name={t('total_stars', 'Total Stars')} param="totalStars" />
+                  <UpDown
+                    name={t('total_stars', 'Total Stars')}
+                    param="totalStars"
+                  />
                 </th>
                 <th>
-                  <UpDown name={t('total_forks', 'Total Forks')} param="totalForks" />
+                  <UpDown
+                    name={t('total_forks', 'Total Forks')}
+                    param="totalForks"
+                  />
                 </th>
                 <th>
                   <UpDown name={t('stars', 'Stars')} param="stars" />

@@ -1,4 +1,5 @@
-'use client';
+import { newDayjs } from '@gitroom/helpers/utils/user.timezone';
+('use client');
 
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
@@ -8,7 +9,7 @@ import { FC, useEffect } from 'react';
 dayjs.extend(utc);
 dayjs.extend(timezone);
 export const IntegrationRedirectComponent: FC = () => {
-  const offset = dayjs.tz().utcOffset();
+  const offset = newDayjs().utcOffset();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();

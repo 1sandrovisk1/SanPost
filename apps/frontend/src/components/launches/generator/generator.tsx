@@ -1,4 +1,5 @@
 'use client';
+import { fromUtc } from '@gitroom/helpers/utils/user.timezone';
 
 import React, { FC, useCallback, useMemo, useState } from 'react';
 import { useUser } from '@gitroom/frontend/components/layout/user.context';
@@ -167,7 +168,7 @@ const FirstStep: FC = (props) => {
                 ...p,
               }))}
               mutate={reloadCalendarView}
-              date={dayjs.utc(load.date).local()}
+              date={fromUtc(dayjs.utc(load.date))}
               reopenModal={() => ({})}
               onlyValues={messages}
             />

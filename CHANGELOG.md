@@ -7,6 +7,18 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 
 ## [Unreleased]
 
+### Adicionado — compositor e fuso horário
+
+- Novo compositor responsivo do Postiz: edição e preview no celular, seleção de canais, configurações, tags, recorrência e data em painéis inferiores, com toolbar acima do teclado. Preservados os lotes, as datas por canal, a confirmação de republicação e o tratamento de salvamento parcial do Robô MultiPost.
+- Fuso horário IANA salvo por usuário nas configurações, aplicado a calendário, editor e datas, com transições de horário de verão. Agendamentos continuam persistidos em UTC; alterar a preferência não os reagenda.
+
+### Corrigido — integração dos portes
+
+- Instagram envia texto alternativo nas imagens de feed/carrossel; vídeos e stories não recebem `alt_text`. Textos acima de 1.000 caracteres são recusados antes do envio.
+- Calendário compartilha o backend de arraste entre montagens, preservando o arraste de texto/imagens dentro do editor. Discord distingue token do bot recusado de reconexão do canal.
+- Preview com comentários mantém imagens próprias e remove imagens externas. V112 recusa também canais desativados antes de decifrar credenciais ou publicar.
+
+
 ### Melhorado — publicação V112 e atualização automática
 
 - Novos agendamentos de todos os canais, inclusive Zernio, usam V112 e consultam a credencial atual do canal na publicação, sem configurar IDs ou variáveis de ativação na stack.

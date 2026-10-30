@@ -454,24 +454,24 @@ export class PostActivity {
     );
 
     const mappedPosts = await Promise.all(
-        (newPosts || []).map(async (p) => ({
-          id: p.id,
-          message: stripHtmlValidation(
-            getIntegration.editor,
-            p.content,
-            true,
-            false,
-            !/<\/?[a-z][\s\S]*>/i.test(p.content),
-            getIntegration.mentionFormat,
-            this.inlineImages(getIntegration, p.settings)
-          ),
-          settings: JSON.parse(p.settings || '{}'),
-          media: await this._postService.updateMedia(
-            p.id,
-            JSON.parse(p.image || '[]'),
-            getIntegration?.convertToJPEG || false
-          ),
-        }))
+      (newPosts || []).map(async (p) => ({
+        id: p.id,
+        message: stripHtmlValidation(
+          getIntegration.editor,
+          p.content,
+          true,
+          false,
+          !/<\/?[a-z][\s\S]*>/i.test(p.content),
+          getIntegration.mentionFormat,
+          this.inlineImages(getIntegration, p.settings)
+        ),
+        settings: JSON.parse(p.settings || '{}'),
+        media: await this._postService.updateMedia(
+          p.id,
+          JSON.parse(p.image || '[]'),
+          getIntegration?.convertToJPEG || false
+        ),
+      }))
     );
 
     const postNow = await this.keepReleaseOnPublishedError(integration, () =>
@@ -575,7 +575,7 @@ export class PostActivity {
       organizationId,
       integrationId
     );
-    if (!integration) {
+    if (!integration || integration.disabled || integration.deletedAt) {
       throw ApplicationFailure.nonRetryable(
         'Channel unavailable',
         'ChannelUnavailable'

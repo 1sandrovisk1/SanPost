@@ -189,7 +189,7 @@ export const Component: FC<{
                 ? modal.top
                   ? ''
                   : 'min-h-full pt-[100px] pb-[100px]'
-                : 'h-screen',
+                : 'h-screen mobile:h-dvh',
               modal.size && modal.height
                 ? 'flex justify-center items-center'
                 : 'top-0 left-0'
@@ -411,7 +411,10 @@ export const useDecisionModal = () => {
   const open = useCallback(
     ({
       title = t('are_you_sure', 'Are you sure?'),
-      description = t('are_you_sure_close_modal', 'Are you sure you want to close this modal?') as any,
+      description = t(
+        'are_you_sure_close_modal',
+        'Are you sure you want to close this modal?'
+      ) as any,
       onlyApprove = false,
       approveLabel = t('yes', 'Yes'),
       cancelLabel = t('no', 'No'),

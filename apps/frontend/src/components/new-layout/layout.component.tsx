@@ -1,5 +1,6 @@
 'use client';
 
+import { setUserTimezone } from '@gitroom/helpers/utils/user.timezone';
 import React, { ReactNode, useCallback } from 'react';
 import { Logo } from '@gitroom/frontend/components/new-layout/logo';
 import { jakartaSans } from '@gitroom/frontend/fonts/plus-jakarta-sans/plus.jakarta.sans.font';
@@ -55,6 +56,7 @@ export const LayoutComponent = ({ children }: { children: ReactNode }) => {
     return await (await fetch(path)).json();
   }, []);
   const { data: user, mutate } = useSWR('/user/self', load, {
+    onSuccess: (data) => setUserTimezone(data?.timezoneName),
     revalidateOnFocus: false,
     revalidateOnReconnect: false,
     revalidateIfStale: false,
@@ -63,6 +65,8 @@ export const LayoutComponent = ({ children }: { children: ReactNode }) => {
   });
 
   if (!user) return null;
+  // SWR cache hits also initialize before any child renders a date.
+  if (typeof window !== 'undefined') setUserTimezone(user.timezoneName);
 
   // Closed-by-default: org USER sem perfil atribuido nao carrega o app —
   // ve o estado "aguardando atribuicao" ate um admin conceder um perfil.

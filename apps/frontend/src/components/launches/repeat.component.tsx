@@ -6,7 +6,10 @@ import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { useClickOutside } from '@mantine/hooks';
 import { isUSCitizen } from '@gitroom/frontend/components/launches/helpers/isuscitizen.utils';
 import clsx from 'clsx';
-import { RepeatIcon, DropdownArrowIcon } from '@gitroom/frontend/components/ui/icons';
+import {
+  RepeatIcon,
+  DropdownArrowIcon,
+} from '@gitroom/frontend/components/ui/icons';
 const getList = (t: (key: string, fallback: string) => string) => [
   {
     value: 1,
@@ -52,6 +55,7 @@ const getList = (t: (key: string, fallback: string) => string) => [
 export const RepeatComponent: FC<{
   repeat: number | null;
   onChange: (newVal: number) => void;
+  list?: boolean;
 }> = (props) => {
   const { repeat } = props;
   const t = useT();
@@ -72,12 +76,48 @@ export const RepeatComponent: FC<{
     return list.find((p) => p.value === repeat)?.label;
   }, [repeat, list]);
 
+  if (props.list) {
+    // the radio list starts with "do not repeat", the dropdown ends with cancel
+    const options = [
+      ...list.filter((p) => !p.value),
+      ...list.filter((p) => p.value),
+    ];
+    return (
+      <div className="flex flex-col gap-[8px]">
+        {options.map((p) => {
+          const selected = p.value ? repeat === p.value : !repeat;
+          return (
+            <div
+              onClick={() => props.onChange(Number(p.value))}
+              key={p.label}
+              className="min-h-[48px] px-[12px] flex items-center justify-between gap-[12px] cursor-pointer select-none"
+            >
+              <div className="text-[14px] font-[400]">
+                {p.value ? p.label : t('do_not_repeat', 'Do Not Repeat')}
+              </div>
+              <div
+                className={clsx(
+                  'w-[24px] h-[24px] rounded-full border-[1.5px] flex justify-center items-center',
+                  selected ? 'border-[#FC69FF]' : 'border-newTextColor/20'
+                )}
+              >
+                {selected && (
+                  <div className="w-[12px] h-[12px] rounded-full bg-[#FC69FF]" />
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
   return (
     <div
       ref={ref}
       className={clsx(
         'border rounded-[8px] justify-center flex items-center relative h-[44px] text-[15px] font-[600] select-none',
-        isOpen ? 'border-[#612BD3]' : 'border-newTextColor/10',
+        isOpen ? 'border-[#612BD3]' : 'border-newTextColor/10'
       )}
     >
       <div
@@ -89,7 +129,10 @@ export const RepeatComponent: FC<{
         </div>
         <div className="cursor-pointer">
           {repeat
-            ? `${t('repeat_post_every_label', 'Repeat Post Every')} ${everyLabel}`
+            ? `${t(
+                'repeat_post_every_label',
+                'Repeat Post Every'
+              )} ${everyLabel}`
             : t('repeat_post_every', 'Repeat Post Every...')}
         </div>
         <div className="cursor-pointer">

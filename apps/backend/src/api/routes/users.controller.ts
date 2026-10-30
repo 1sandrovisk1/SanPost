@@ -27,6 +27,7 @@ import { pricing } from '@gitroom/nestjs-libraries/database/prisma/subscriptions
 import { ApiTags } from '@nestjs/swagger';
 import { UsersService } from '@gitroom/nestjs-libraries/database/prisma/users/users.service';
 import { UserDetailDto } from '@gitroom/nestjs-libraries/dtos/users/user.details.dto';
+import { TimezoneDto } from '@gitroom/nestjs-libraries/dtos/users/timezone.dto';
 import { EmailNotificationsDto } from '@gitroom/nestjs-libraries/dtos/users/email-notifications.dto';
 import { HttpForbiddenException } from '@gitroom/nestjs-libraries/services/exception.filter';
 import { RealIP } from 'nestjs-real-ip';
@@ -34,7 +35,10 @@ import { UserAgent } from '@gitroom/nestjs-libraries/user/user.agent';
 import { TrackEnum } from '@gitroom/nestjs-libraries/user/track.enum';
 import { TrackService } from '@gitroom/nestjs-libraries/track/track.service';
 import { makeSecureId } from '@gitroom/nestjs-libraries/services/make.secure.id';
-import { AuthorizationActions, Sections } from '@gitroom/backend/services/auth/permissions/permission.exception.class';
+import {
+  AuthorizationActions,
+  Sections,
+} from '@gitroom/backend/services/auth/permissions/permission.exception.class';
 
 @ApiTags('User')
 // Rotas de identidade/sessao precisam responder para org USER sem perfil
@@ -86,22 +90,36 @@ export class UsersController {
       ...user,
       orgId: organization.id,
       // @ts-ignore
-      totalChannels: !process.env.STRIPE_PUBLISHABLE_KEY ? 10000 : organization?.subscription?.totalChannels || pricing.FREE.channel,
+      totalChannels: !process.env.STRIPE_PUBLISHABLE_KEY
+        ? 10000
+        : organization?.subscription?.totalChannels || pricing.FREE.channel,
       // @ts-ignore
-      tier: organization?.subscription?.subscriptionTier || (!process.env.STRIPE_PUBLISHABLE_KEY ? 'ULTIMATE' : 'FREE'),
+      tier:
+        organization?.subscription?.subscriptionTier ||
+        (!process.env.STRIPE_PUBLISHABLE_KEY ? 'ULTIMATE' : 'FREE'),
       // @ts-ignore
       role: organization?.users[0]?.role,
       // @ts-ignore
       isLifetime: !!organization?.subscription?.isLifetime,
       admin: !!user.isSuperAdmin,
       impersonate: !!impersonate,
-      isTrailing: !process.env.STRIPE_PUBLISHABLE_KEY ? false : organization?.isTrailing,
+      isTrailing: !process.env.STRIPE_PUBLISHABLE_KEY
+        ? false
+        : organization?.isTrailing,
       allowTrial: organization?.allowTrial,
       streakSince: organization?.streakSince || null,
       // @ts-ignore
-      publicApi: organization?.users[0]?.role === 'SUPERADMIN' || organization?.users[0]?.role === 'ADMIN' ? organization?.apiKey : '',
+      publicApi:
+        organization?.users[0]?.role === 'SUPERADMIN' ||
+        organization?.users[0]?.role === 'ADMIN'
+          ? organization?.apiKey
+          : '',
       // @ts-ignore
-      profileApiKey: organization?.users[0]?.role === 'SUPERADMIN' || organization?.users[0]?.role === 'ADMIN' ? (profile?.apiKey ?? null) : null,
+      profileApiKey:
+        organization?.users[0]?.role === 'SUPERADMIN' ||
+        organization?.users[0]?.role === 'ADMIN'
+          ? profile?.apiKey ?? null
+          : null,
       profileId: profile?.id || null,
       profileName: profile?.name || null,
       // Papel no perfil ativo (VIEWER/EDITOR/MANAGER/OWNER; admin da org =
@@ -111,6 +129,11 @@ export class UsersController {
       // @ts-ignore
       profileAccess: req.profileAccess ?? null,
     };
+  }
+
+  @Post('/timezone')
+  setTimezone(@GetUserFromRequest() user: User, @Body() body: TimezoneDto) {
+    return this._userService.setTimezone(user.id, body.timezoneName);
   }
 
   @Get('/personal')

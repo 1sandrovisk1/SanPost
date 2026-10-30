@@ -118,20 +118,32 @@ export const ContinueIntegration: FC<{
 
   useEffect(() => {
     (async () => {
-      if (provider === 'facebook' && typeof searchParams.state === 'string' && searchParams.state.startsWith('fbauto_')) {
+      if (
+        provider === 'facebook' &&
+        typeof searchParams.state === 'string' &&
+        searchParams.state.startsWith('fbauto_')
+      ) {
         // React dev effects may replay; a one-use OAuth state must be exchanged once.
         if (facebookAutomationStarted.current) return;
         facebookAutomationStarted.current = true;
         try {
-          if (searchParams.error || !searchParams.code) throw new Error('OAUTH_CANCELLED');
+          if (searchParams.error || !searchParams.code)
+            throw new Error('OAUTH_CANCELLED');
           const response = await fetch('/facebook-automations/complete', {
             method: 'POST',
-            body: JSON.stringify({ state: searchParams.state, code: searchParams.code }),
+            body: JSON.stringify({
+              state: searchParams.state,
+              code: searchParams.code,
+            }),
           });
           if (!response.ok) throw new Error('OAUTH_FAILED');
           const result = await response.json();
           window.history.replaceState({}, '', '/integrations/social/facebook');
-          push(`/settings?tab=credentials&facebookAutomation=${encodeURIComponent(result.integrationId)}`);
+          push(
+            `/settings?tab=credentials&facebookAutomation=${encodeURIComponent(
+              result.integrationId
+            )}`
+          );
         } catch {
           window.history.replaceState({}, '', '/integrations/social/facebook');
           setErrorMessage(t('fb_auto_oauth_error'));
@@ -139,7 +151,7 @@ export const ContinueIntegration: FC<{
         }
         return;
       }
-      const timezone = String(dayjs.tz().utcOffset());
+      const timezone = String(newDayjs().utcOffset());
       if (provider === 'wrapcast') {
         clearFarcasterCode('connect');
       }
@@ -251,9 +263,10 @@ export const ContinueIntegration: FC<{
       }
 
       navigateOrShow(
-        `/launches?added=${provider}&msg=${t('channel_updated', 'Channel Updated')}${
-          onboarding ? '&onboarding=true' : ''
-        }`,
+        `/launches?added=${provider}&msg=${t(
+          'channel_updated',
+          'Channel Updated'
+        )}${onboarding ? '&onboarding=true' : ''}`,
         returnURL,
         t('channel_updated', 'Channel Updated')
       );
@@ -283,16 +296,21 @@ export const ContinueIntegration: FC<{
         ) {
           const errorData = await response.json().catch(() => ({}));
           setErrorMessage(
-            errorData.message || t('failed_to_save_channel', 'Failed to save channel configuration')
+            errorData.message ||
+              t(
+                'failed_to_save_channel',
+                'Failed to save channel configuration'
+              )
           );
           setError(true);
           return;
         }
 
         navigateOrShow(
-          `/launches?added=${provider}&msg=${t('channel_added', 'Channel Added')}${
-            twoStepState.onboarding ? '&onboarding=true' : ''
-          }`,
+          `/launches?added=${provider}&msg=${t(
+            'channel_added',
+            'Channel Added'
+          )}${twoStepState.onboarding ? '&onboarding=true' : ''}`,
           twoStepState.returnURL,
           t('channel_added', 'Channel Added')
         );
@@ -455,7 +473,17 @@ export const ContinueIntegration: FC<{
                 'An error occurred. Please try again.'
               )}
           </div>
-          {logged && <Redirect url={provider === 'facebook' && searchParams.state?.startsWith('fbauto_') ? '/settings?tab=credentials&facebookAutomation=error' : '/launches'} delay={3000} />}
+          {logged && (
+            <Redirect
+              url={
+                provider === 'facebook' &&
+                searchParams.state?.startsWith('fbauto_')
+                  ? '/settings?tab=credentials&facebookAutomation=error'
+                  : '/launches'
+              }
+              delay={3000}
+            />
+          )}
         </div>
       </div>
     );

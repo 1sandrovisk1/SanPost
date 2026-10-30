@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { HttpException, Injectable } from '@nestjs/common';
 import { UsersRepository } from '@gitroom/nestjs-libraries/database/prisma/users/users.repository';
 import { Provider } from '@prisma/client';
 import { UserDetailDto } from '@gitroom/nestjs-libraries/dtos/users/user.details.dto';
@@ -11,6 +11,23 @@ export class UsersService {
     private _usersRepository: UsersRepository,
     private _organizationRepository: OrganizationRepository
   ) {}
+
+  setTimezone(userId: string, timezoneName: string | null) {
+    if (timezoneName !== null) {
+      if (
+        typeof timezoneName !== 'string' ||
+        !timezoneName ||
+        timezoneName.length > 100
+      )
+        throw new HttpException('Invalid timezone', 400);
+      try {
+        new Intl.DateTimeFormat('en-US', { timeZone: timezoneName });
+      } catch {
+        throw new HttpException('Invalid timezone', 400);
+      }
+    }
+    return this._usersRepository.setTimezone(userId, timezoneName);
+  }
 
   getUserByEmail(email: string) {
     return this._usersRepository.getUserByEmail(email);

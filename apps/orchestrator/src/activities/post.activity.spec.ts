@@ -472,9 +472,9 @@ describe('PostActivity.sendWebhooks', () => {
       '1789',
       'integration-1'
     );
-    expect(
-      (ssrfSafeFetch as jest.Mock).mock.calls.map(([url]) => url)
-    ).toEqual(['https://hooks.example/all', 'https://hooks.example/canal']);
+    expect((ssrfSafeFetch as jest.Mock).mock.calls.map(([url]) => url)).toEqual(
+      ['https://hooks.example/all', 'https://hooks.example/canal']
+    );
     expect((ssrfSafeFetch as jest.Mock).mock.calls[0][1]).toEqual(
       expect.objectContaining({
         method: 'POST',
@@ -625,6 +625,30 @@ describe('PostActivity V102 - snapshots de organizacao excluida', () => {
       expect(comment).not.toHaveBeenCalled();
       expect(encryption.decrypt).not.toHaveBeenCalled();
       expect(postService.updateTags).not.toHaveBeenCalled();
+    }
+  );
+});
+
+describe('PostActivity V112 canal indisponivel', () => {
+  it.each([
+    null,
+    { ...integration, disabled: true },
+    { ...integration, deletedAt: new Date() },
+  ])(
+    'recusa canal antes de publicar com credencial armazenada',
+    async (live) => {
+      const { activity, integrationService, provider, encryption } =
+        buildActivity();
+      integrationService.getIntegrationById.mockResolvedValue(live as any);
+      await expect(
+        activity.postSocialPending('org-1', 'integration-1', [post as any])
+      ).rejects.toMatchObject({
+        type: 'ChannelUnavailable',
+        nonRetryable: true,
+      });
+      expect(provider.postPending).not.toHaveBeenCalled();
+      expect(provider.post).not.toHaveBeenCalled();
+      expect(encryption.decrypt).not.toHaveBeenCalled();
     }
   );
 });

@@ -10,8 +10,14 @@ import { skipDragsInsideEditor } from '@gitroom/frontend/components/launches/hel
 const CalendarBackend: typeof HTML5Backend = (manager, context, options) =>
   skipDragsInsideEditor(HTML5Backend(manager, context, options));
 
+const dndContext = typeof window === 'undefined' ? undefined : window;
+
 export const DNDProvider: FC<{
   children: ReactNode;
 }> = ({ children }) => {
-  return <DndProvider backend={CalendarBackend}>{children}</DndProvider>;
+  return (
+    <DndProvider backend={CalendarBackend} context={dndContext}>
+      {children}
+    </DndProvider>
+  );
 };

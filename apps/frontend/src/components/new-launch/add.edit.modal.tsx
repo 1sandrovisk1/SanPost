@@ -1,4 +1,6 @@
 'use client';
+import { fromUtc } from '@gitroom/helpers/utils/user.timezone';
+
 import 'reflect-metadata';
 import { useLaunchStore } from '@gitroom/frontend/components/new-launch/store';
 import dayjs from 'dayjs';
@@ -216,7 +218,7 @@ export const AddEditModalInnerInner: FC<AddEditModalProps> = (props) => {
           addInternalValue(0, sibling.integration, postValues(sibling.posts));
           setChannelDate(
             sibling.integration,
-            dayjs.utc(sibling.posts[0].publishDate).local()
+            fromUtc(dayjs.utc(sibling.posts[0].publishDate))
           );
         }
       }
@@ -276,9 +278,7 @@ export const AddEditModalInnerInner: FC<AddEditModalProps> = (props) => {
 
   return (
     <>
-      <style>
-        {`#support-discord {display: none !important;}`}
-      </style>
+      <style>{`#support-discord {display: none !important;}`}</style>
       <ManageModal {...props} />
     </>
   );

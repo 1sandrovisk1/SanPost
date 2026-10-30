@@ -89,7 +89,7 @@ export const withProvider = function <T extends object>(params: {
     maximumCharacters,
   } = params;
 
-  return forwardRef((props: { id: string }, ref) => {
+  const Wrapped = forwardRef((props: { id: string }, ref) => {
     const t = useT();
     const fetch = useFetch();
     const {
@@ -361,7 +361,14 @@ export const withProvider = function <T extends object>(params: {
               ))}
             {(SettingsComponent || !!data?.internalPlugs?.length) &&
               createPortal(
-                <div data-id={props.id} className={isGlobal ? 'bg-newSettings pb-[12px] px-[12px]' : 'hidden bg-newSettings px-[12px] pb-[12px]'}>
+                <div
+                  data-id={props.id}
+                  className={
+                    isGlobal
+                      ? 'bg-newSettings pb-[12px] px-[12px]'
+                      : 'hidden bg-newSettings px-[12px] pb-[12px]'
+                  }
+                >
                   {isGlobal && (
                     <style>{`#wrapper-settings {display: flex !important} #social-empty {display: block !important;}`}</style>
                   )}
@@ -380,10 +387,14 @@ export const withProvider = function <T extends object>(params: {
                           width={16}
                           height={16}
                           className="rounded-[16px] min-w-[16px] min-h-[16px] w-[16px] h-[16px] absolute bottom-0 end-0"
-                          src={getPlatformIconPath(selectedIntegration?.integration.identifier || '')}
+                          src={getPlatformIconPath(
+                            selectedIntegration?.integration.identifier || ''
+                          )}
                         />
                       </div>
-                      <div className="text-[20px]">{selectedIntegration?.integration.name}</div>
+                      <div className="text-[20px]">
+                        {selectedIntegration?.integration.name}
+                      </div>
                     </div>
                   )}
                   <SettingsComponent />
@@ -407,4 +418,11 @@ export const withProvider = function <T extends object>(params: {
       </IntegrationContext.Provider>
     );
   });
+  (Wrapped as any).__settings = { SettingsComponent };
+  return Wrapped;
 };
+
+export const getProviderSettingsMeta = (component: unknown) =>
+  (component as any)?.__settings as
+    | { SettingsComponent: FC<{ values?: any }> | null }
+    | undefined;

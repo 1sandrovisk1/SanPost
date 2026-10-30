@@ -1,4 +1,6 @@
 'use client';
+import { ownMediaPrefixes } from '@gitroom/helpers/utils/inline.images';
+import { useVariables } from '@gitroom/react/helpers/variable.context';
 import { useEffect, useRef, useState } from 'react';
 import { sanitizePostContent } from '@gitroom/helpers/utils/sanitize.post.content';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
@@ -16,6 +18,11 @@ export function PreviewText({
   postId: string;
   content: string;
 }) {
+  const { frontEndUrl, cloudflareUrl } = useVariables();
+  const prefixes = ownMediaPrefixes({
+    frontendUrl: frontEndUrl,
+    cloudflareUrl,
+  });
   const element = useRef<HTMLDivElement>(null);
   const [anchor, setAnchor] = useState<PreviewAnchor | null>(null);
   const [stale, setStale] = useState(false);
@@ -96,7 +103,9 @@ export function PreviewText({
         onMouseUp={select}
         onKeyUp={select}
         className="text-sm whitespace-pre-wrap preview [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-[6px] [&_img]:my-[8px]"
-        dangerouslySetInnerHTML={{ __html: sanitizePostContent(content) }}
+        dangerouslySetInnerHTML={{
+          __html: sanitizePostContent(content, prefixes),
+        }}
       />
       {stale && (
         <p role="status" className="text-sm">
