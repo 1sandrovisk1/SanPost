@@ -1,3 +1,6 @@
+import { useFormContext } from 'react-hook-form';
+import { facebookBackgroundPreset } from '@gitroom/nestjs-libraries/integrations/social/facebook.background';
+import { getPresetBackground } from './facebook.background';
 import { useIntegration } from '@gitroom/frontend/components/launches/helpers/use.integration';
 import { useLaunchStore } from '@gitroom/frontend/components/new-launch/store';
 import { useMediaDirectory } from '@gitroom/react/helpers/use.media.directory';
@@ -67,6 +70,27 @@ export const FacebookPreview: FC<{
   const current = useLaunchStore((state) => state.current);
   const mediaDir = useMediaDirectory();
   const t = useT();
+  const form = useFormContext();
+  const savedSettings = useLaunchStore(
+    (state) =>
+      state.selectedIntegrations.find(
+        (p) => p.integration.id === integration?.id
+      )?.settings
+  );
+  const settings = form?.watch() || savedSettings || {};
+  const preset =
+    integration?.identifier === 'facebook'
+      ? facebookBackgroundPreset({
+          message: stripHtmlValidation(
+            'normal',
+            topValue?.[0]?.content || '',
+            true
+          ),
+          media: topValue?.[0]?.image,
+          settings,
+        })
+      : undefined;
+  const background = getPresetBackground(preset);
 
   const renderContent = topValue.map((p) => {
     const newContent = stripHtmlValidation(
@@ -92,7 +116,10 @@ export const FacebookPreview: FC<{
         .replace(/\[\[\[([.\s\S]*?)]]]/, (match, match1) => {
           return `<span class="font-bold font-[arial]" style="color: #ae8afc">${match1}</span>`;
         }) +
-      `<mark class="bg-red-500" data-tooltip-id="tooltip" data-tooltip-content="${t('text_will_be_cropped', 'This text will be cropped')}">` +
+      `<mark class="bg-red-500" data-tooltip-id="tooltip" data-tooltip-content="${t(
+        'text_will_be_cropped',
+        'This text will be cropped'
+      )}">` +
       newContent.slice(end).replace(/\[\[\[([.\s\S]*?)]]]/, (match, match1) => {
         return `<span class="font-bold font-[arial]" style="color: #ae8afc">${match1}</span>`;
       }) +
@@ -131,12 +158,21 @@ export const FacebookPreview: FC<{
           </div>
         </div>
       </div>
-      <div
-        className="text-[14px] font-[400] whitespace-pre-line"
-        dangerouslySetInnerHTML={{
-          __html: renderContent?.[0]?.text,
-        }}
-      />
+      {background ? (
+        <div
+          className="-mx-[15px] flex min-h-[260px] items-center justify-center whitespace-pre-line break-words px-6 py-8 text-center text-[28px] font-bold"
+          style={{ background: background.background, color: background.text }}
+        >
+          {stripHtmlValidation('normal', topValue?.[0]?.content || '', true)}
+        </div>
+      ) : (
+        <div
+          className="text-[14px] font-[400] whitespace-pre-line"
+          dangerouslySetInnerHTML={{
+            __html: renderContent?.[0]?.text,
+          }}
+        />
+      )}
       {!!renderContent?.[0]?.images?.length && (
         <div className="h-[280px] -mx-[15px] overflow-hidden flex">
           {renderContent?.[0]?.images.map((image, index) => (

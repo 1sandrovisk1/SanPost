@@ -7,6 +7,12 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 
 ## [Unreleased]
 
+### Adicionado — áudio de Reels, fundos do Facebook e Tumblr
+
+- Instagram com Facebook Login: busca de músicas/áudios originais, escolha persistida no compositor e controle independente do volume do áudio e do vídeo. Disponível para um único Reel MP4; stories, carrosséis, Instagram Login e Zernio recusam essa opção antes do agendamento.
+- Facebook nativo: seleção de fundos coloridos e preview para texto de até 130 caracteres, sem mídia ou links. O catálogo é comunitário e o preview aproximado; recusa explícita do parâmetro permite publicar o texto sem fundo. Resposta incerta não dispara nova tentativa automática.
+- Tumblr nativo: OAuth por perfil/workspace, seleção de blog autorizado, reconexão, título, tags, link, fonte e publicação NPF de texto, imagens e vídeo. Uploads têm proteção SSRF, confinamento ao diretório local e limites de tamanho; sucesso exige ID confirmado e falha ambígua não repete o envio.
+
 ### Melhorado — Mastra, CopilotKit e MCP
 
 - Atualizados Mastra, memória PostgreSQL, AG-UI e CopilotKit para as versões portadas do Postiz. O chat usa o transporte HTTP Node e aceita o payload novo de canais, mantendo compatibilidade anterior, credenciais por perfil, persona e erro 412 de configuração. Preservado Chat Completions para os provedores OpenAI compatíveis, incluindo o caminho de ferramentas do editor.

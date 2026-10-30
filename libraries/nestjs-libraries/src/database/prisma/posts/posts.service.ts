@@ -1,3 +1,5 @@
+import { instagramAudioError } from '../../../integrations/social/instagram.audio';
+import type { InstagramDto } from '../../../dtos/posts/providers-settings/instagram.dto';
 import { createHash } from 'crypto';
 import {
   CommentPlacementInput,
@@ -639,10 +641,13 @@ export class PostsService {
       },
     });
 
-    return await validationPipe.transform(mappedValues, {
+    const validated = await validationPipe.transform(mappedValues, {
       type: 'body',
       metatype: CreatePostDto,
     });
+    // Shared by create and the agent's edit/schedule actions.
+    await this.assertSocialExtras(organization, validated);
+    return validated;
   }
 
   async getPostsRecursively(
@@ -1256,6 +1261,54 @@ export class PostsService {
     }
   }
 
+  private async assertSocialExtras(orgId: string, body: CreatePostDto) {
+    if (body.type === 'draft') return;
+    for (const post of body.posts || []) {
+      const settings = post.settings as InstagramDto & {
+        text_format_preset_id?: string;
+      };
+      if (
+        settings?.audio == null &&
+        !settings?.text_format_preset_id &&
+        post.value?.length <= 1
+      )
+        continue;
+      const integration = await this._integrationService.getIntegrationById(
+        orgId,
+        post.integration.id
+      );
+      if (!integration) throw new BadRequestException('Integration not found');
+      this.assertTumblrThread(
+        integration.providerIdentifier,
+        post.value?.length || 0
+      );
+      if (settings?.audio != null) {
+        const error = instagramAudioError(
+          settings,
+          post.value?.[0]?.image || [],
+          integration.providerIdentifier === 'instagram'
+        );
+        if (error) throw new BadRequestException(error);
+      }
+      if (
+        settings?.text_format_preset_id &&
+        integration.providerIdentifier !== 'facebook'
+      ) {
+        throw new BadRequestException(
+          'Este fundo exige um canal nativo do Facebook.'
+        );
+      }
+    }
+  }
+
+  private assertTumblrThread(providerIdentifier: string, count: number) {
+    if (providerIdentifier === 'tumblr' && count > 1) {
+      throw new BadRequestException(
+        'Tumblr aceita um único post, sem blocos de comentários. Remova os blocos extras para este canal.'
+      );
+    }
+  }
+
   private guardAgainstRepublish(
     post: {
       state: State;
@@ -1363,6 +1416,8 @@ export class PostsService {
         }
       }
     }
+
+    await this.assertSocialExtras(orgId, body);
 
     const postList = [];
     // lote (upstream a194e3f4): um por perfil de destino, so com mais de um
@@ -1516,6 +1571,17 @@ export class PostsService {
 
     if (action === 'schedule' && republish !== true) {
       this.guardAgainstRepublish(getPostById, 'changeDate');
+    }
+
+    if (
+      getPostById.integration.providerIdentifier === 'tumblr' &&
+      (action === 'schedule' || getPostById.state === 'QUEUE')
+    ) {
+      const chain = await this._postRepository.getPostsByGroup(
+        orgId,
+        getPostById.group
+      );
+      this.assertTumblrThread('tumblr', chain.length);
     }
 
     // schedule: Set status to QUEUE and change date (reschedule the post)

@@ -6,8 +6,10 @@ import { LinkedinContinue } from '@gitroom/frontend/components/new-launch/provid
 import { GmbContinue } from '@gitroom/frontend/components/new-launch/providers/continue-provider/gmb/gmb.continue';
 import { YoutubeContinue } from '@gitroom/frontend/components/new-launch/providers/continue-provider/youtube/youtube.continue';
 
+import {TumblrContinue} from './tumblr/tumblr.continue';
 export const continueProviderList = {
   instagram: InstagramContinue,
+  tumblr: TumblrContinue,
   facebook: FacebookContinue,
   'linkedin-page': LinkedinContinue,
   gmb: GmbContinue,

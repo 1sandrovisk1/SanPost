@@ -35,6 +35,7 @@ interface ProviderConfig {
 }
 
 const PROVIDERS: ProviderConfig[] = [
+  {provider:'tumblr',label:'Tumblr',iconUrl:'/icons/platforms/tumblr.png',fields:[{key:'clientId',label:'OAuth Consumer Key',placeholder:'Tumblr OAuth Consumer Key',placeholderKey:'credentials_tumblr_id'},{key:'clientSecret',label:'OAuth Consumer Secret',placeholder:'Tumblr OAuth Consumer Secret',placeholderKey:'credentials_tumblr_secret'}],docsUrl:'https://www.tumblr.com/oauth/apps',callbackPaths:[{path:'/integrations/social/tumblr'}],hint:{key:'credentials_tumblr_hint',fallback:'Create an OAuth app in Tumblr and register this callback URL. Credentials apply to the active profile.'}},
   {
     provider: 'tiktok',
     label: 'TikTok',
