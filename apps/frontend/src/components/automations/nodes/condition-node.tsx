@@ -6,26 +6,36 @@ import { useT } from '@gitroom/react/translation/get.transation.service.client';
 
 export const ConditionNode: FC<NodeProps> = memo(({ data, selected }) => {
   const t = useT();
-  const config = typeof data?.config === 'string'
-    ? (() => { try { return JSON.parse(data.config as string); } catch { return {}; } })()
-    : (data?.config || {});
+  const config =
+    typeof data?.config === 'string'
+      ? (() => {
+          try {
+            return JSON.parse(data.config as string);
+          } catch {
+            return {};
+          }
+        })()
+      : data?.config || {};
   const keywords: string[] = config.keywords || [];
 
   return (
     <div
-      className={`rounded-[8px] border-2 px-[16px] py-[12px] min-w-[200px] ${
-        selected ? 'border-yellow-400' : 'border-yellow-600'
-      }`}
-      style={{ background: 'rgba(234, 179, 8, 0.15)' }}
+      className="automation-node automation-color-condition rounded-[8px] border-2 px-[16px] py-[12px] min-w-[200px]"
+      data-selected={!!selected}
     >
-      <Handle type="target" position={Position.Top} className="!bg-yellow-400" />
+      <Handle
+        type="target"
+        position={Position.Top}
+        className="automation-node-handle"
+      />
       <div className="flex items-center gap-[8px] mb-[4px]">
         <svg
           width="16"
           height="16"
           viewBox="0 0 24 24"
           fill="none"
-          stroke="#eab308"
+          stroke="currentColor"
+          className="automation-accent"
           strokeWidth="2"
         >
           <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />

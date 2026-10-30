@@ -97,10 +97,8 @@ export const TriggerNode: FC<NodeProps> = memo(({ data, selected }) => {
 
   return (
     <div
-      className={`rounded-[8px] border-2 px-[16px] py-[12px] min-w-[200px] max-w-[320px] ${
-        selected ? 'border-green-400' : 'border-green-600'
-      }`}
-      style={{ background: 'rgba(34, 197, 94, 0.15)' }}
+      className="automation-node automation-color-trigger rounded-[8px] border-2 px-[16px] py-[12px] min-w-[200px] max-w-[320px]"
+      data-selected={!!selected}
     >
       <div className="flex items-center gap-[8px] mb-[4px]">
         <svg
@@ -108,7 +106,8 @@ export const TriggerNode: FC<NodeProps> = memo(({ data, selected }) => {
           height="16"
           viewBox="0 0 24 24"
           fill="none"
-          stroke="#22c55e"
+          stroke="currentColor"
+          className="automation-accent"
           strokeWidth="2"
         >
           <path d="M13 2L3 14H12L11 22L21 10H12L13 2Z" />
@@ -126,14 +125,14 @@ export const TriggerNode: FC<NodeProps> = memo(({ data, selected }) => {
         </p>
       )}
       {config.requireFollow && (
-        <span className="inline-block mt-[6px] text-[10px] px-[6px] py-[2px] rounded-[10px] border border-yellow-500/40 bg-yellow-500/10 text-yellow-200">
-          ⚠️ {t('trigger_node_follow_gate_badge', 'Pede para seguir')}
+        <span className="automation-badge automation-color-follow inline-block mt-[6px] text-[10px] px-[6px] py-[2px] rounded-[10px] border">
+          {t('trigger_node_follow_gate_badge', 'Pede para seguir')}
         </span>
       )}
       <Handle
         type="source"
         position={Position.Bottom}
-        className="!bg-green-400"
+        className="automation-node-handle"
       />
     </div>
   );

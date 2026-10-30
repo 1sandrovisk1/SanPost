@@ -102,3 +102,10 @@ O formulário usa grupos numerados com cor, ícone e resumo por etapa. Conta, or
 As pendências reais de configuração aparecem em um único card abaixo do telefone, substituindo dicas genéricas e a lista acima do formulário. O card acompanha a mesma validação que impede salvar/ativar e some quando não há pendências. Com pendências, a escala do telefone se ajusta para que o card permaneça visível. Carregamento, troca de aba ou estado bloqueado não criam avisos artificiais. No construtor sem telefone, a lista permanece acessível no corpo; histórico não exibe pendências do editor.
 
 No seletor da conta, autorização indisponível usa um triângulo de alerta. Hover e foco abrem ajuda flutuante, sem mover o layout; Escape/saída fecham. O próprio ícone continua abrindo Credenciais em outra aba, inclusive quando apenas a seleção da conta está bloqueada. O indicador pronto continua refletindo a consulta de prontidão existente, sem inferir conexão a partir do estado ativo da automação.
+
+
+## Paleta compartilhada das etapas
+
+Gatilho/conta usa ardósia, origem azul, condições âmbar, resposta pública esmeralda, mensagem privada violeta e seguidores ciano. Cores são complementares aos ícones, títulos e números. O fundo suave permanece ao recolher/expandir; o corpo usa a superfície interna do tema, branca no claro.
+
+Os tokens de `automation-colors.scss` também definem as cores dos nós compartilhados V1/V2 e da paleta/minimapa do construtor legado. Selecionar um nó realça sua própria cor. O gatilho reúne conta e origem no canvas existente e usa ardósia; o pedido para seguir aparece em badge ciano quando configurado. Extras/espera e as saídas semânticas de condições preservam suas identidades. O tema escuro mantém as mesmas famílias com fundos escuros e texto auxiliar claro.

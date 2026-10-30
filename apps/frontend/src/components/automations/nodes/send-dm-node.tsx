@@ -31,15 +31,13 @@ export const SendDmNode: FC<NodeProps> = memo(({ data, selected }) => {
 
   return (
     <div
-      className={`rounded-[8px] border-2 px-[16px] py-[12px] min-w-[200px] ${
-        selected ? 'border-purple-400' : 'border-purple-600'
-      }`}
-      style={{ background: 'rgba(168, 85, 247, 0.15)' }}
+      className="automation-node automation-color-dm rounded-[8px] border-2 px-[16px] py-[12px] min-w-[200px]"
+      data-selected={!!selected}
     >
       <Handle
         type="target"
         position={Position.Top}
-        className="!bg-purple-400"
+        className="automation-node-handle"
       />
       <div className="flex items-center gap-[8px] mb-[4px]">
         <svg
@@ -47,7 +45,8 @@ export const SendDmNode: FC<NodeProps> = memo(({ data, selected }) => {
           height="16"
           viewBox="0 0 24 24"
           fill="none"
-          stroke="#a855f7"
+          stroke="currentColor"
+          className="automation-accent"
           strokeWidth="2"
         >
           <line x1="22" y1="2" x2="11" y2="13" />
@@ -64,7 +63,7 @@ export const SendDmNode: FC<NodeProps> = memo(({ data, selected }) => {
       )}
       {hasButton && (
         <span
-          className="inline-block mt-[6px] text-[10px] px-[6px] py-[2px] rounded-[10px] border border-purple-400/40 bg-purple-500/10 text-textColor max-w-[180px] truncate"
+          className="inline-block mt-[6px] text-[10px] px-[6px] py-[2px] rounded-[10px] automation-badge border max-w-[180px] truncate"
           title={buttonUrl}
         >
           🔗 {buttonText}
@@ -73,7 +72,7 @@ export const SendDmNode: FC<NodeProps> = memo(({ data, selected }) => {
       <Handle
         type="source"
         position={Position.Bottom}
-        className="!bg-purple-400"
+        className="automation-node-handle"
       />
     </div>
   );

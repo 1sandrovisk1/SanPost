@@ -7,6 +7,10 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 
 ## [Unreleased]
 
+### Melhorado — paleta das etapas de automação (30/10/2026)
+
+- Grupos usam ardósia, azul, âmbar, esmeralda, violeta e ciano, com fundo suave constante e campos sobre superfície interna. Nós, paleta e minimapa do construtor compartilham as cores equivalentes, inclusive o badge de seguidores; seleção e foco usam a própria identidade. Tema escuro tem fundos e textos auxiliares adaptados para leitura.
+
 ### Melhorado — publicação V112 e atualização automática
 
 - Novos agendamentos de todos os canais, inclusive Zernio, usam V112 e consultam a credencial atual do canal na publicação, sem configurar IDs ou variáveis de ativação na stack.
