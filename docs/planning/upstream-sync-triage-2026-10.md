@@ -874,6 +874,110 @@ um `autopost-*` ativo; depois, confirmar no Temporal UI execuções
 nas filas `email`/`email-bulk` e um webhook de publicação com payload
 preenchido.
 
+### TikTok for Business (28/10/2026)
+
+Branch `feat/tiktok-business-2026-10`. Novo canal `tiktok-business`, porte do
+`tiktok.business.provider.ts` de `upstream/main` (base da versão de 28/10)
+com o histórico `4ace3a7a`, `cae2565e` (só a parte do provider), `885f9a5c`,
+`306b6e94`, `25b47887`/`4e959fa4`, `4c835138` (CVE-2026-94456), parte Business
+do #2186 (`bcbc1195`/`56f42d09`), `96b78476`, `6f79545d`, `6eed47e0`,
+`541c7a45`, #2240 (`1004ca92`/`a15f6ea3`), `15c4ce19` (falha cedo sem
+`auth_code`) e `97ee8b9f` ("The access token is invalid" → refresh-token).
+Portado também: DTO com música/localização, seletores do compositor
+(`tiktok.music.tsx`, `tiktok.location.tsx`), mapeamento `auth_code` → `code`
+no `continue.integration.tsx`, analytics da plataforma, ícone, `.env.example`
+e `docker-compose.yaml`.
+
+Reaproveitado do fork em vez do código do upstream: limites de legenda de
+`tiktok.caption.ts` (`TIKTOK_IDENTIFIERS` ganha `tiktok-business`, então
+`PostsService.createPost` devolve 400 também para esse canal);
+`PostsService.resolveRelease` + `GET /posts/:id/release-url` (o provider só
+implementa `resolveReleaseId`/`releaseUrl`); lane V112 (`postPending` +
+`checkPostStatus`, que já existe no fork atrás de `POST_WORKFLOW_V112_*`).
+
+Divergências do upstream:
+- Credenciais por workspace/perfil: `generateAuthUrl`, `authenticate` e
+  `refreshToken` recebem `ClientInformation`, resolvida pela chave
+  `tiktok-business` (sem alias para o `tiktok` nativo — é outro app);
+  `TIKTOK_BUSINESS_CLIENT_ID/SECRET` só como fallback (`ENV_MAPPING`). Card
+  próprio em Configurações > Credenciais, com placeholders e orientação via
+  `useT()` e a URL de callback com a barra final. O "Testar" usa o caminho
+  padrão (campos preenchidos): a Business API não tem `client_credentials`.
+- Sem `Disconnect`/`MIGRATE_PROVIDERS`/`HIDDEN_PROVIDERS` (`cae2565e`): o
+  fork não tem a classe nem a migração de canal, e o provider Business nunca
+  classifica erro como disconnect (cota diária segue bad-body, como no
+  upstream). Por isso o nome é "TikTok Business" — os dois canais aparecem em
+  "Adicionar canal".
+- Sem `checkValidity` do servidor no fork: as regras de mídia (nenhuma mídia,
+  vídeo misturado com fotos, mais de 35 fotos), a legenda e a pré-checagem de
+  1080px do #2240 rodam em `postPending` antes do publish (cobre API pública,
+  MCP e CLI). A pré-checagem lê uma imagem por vez com sharp (URL pelo axios
+  SSRF-safe com prazo de 20 s, arquivo local por `readOrFetch`) e deixa
+  passar imagem que não dá para medir. O compositor faz a mesma conta no
+  navegador (`identifier === 'tiktok' || 'tiktok-business'`) e o limite de 35.
+- Música/localização num `TikTokBusinessDto` próprio (o upstream pôs no
+  `TikTokDto`), para o nativo e o `zernio-tiktok` não anunciarem campos que
+  ignoram (pitfall 15).
+- `analytics`, `postAnalytics` e `resolveReleaseId` via `analyticsFetch`
+  (pitfall 13); `missing` e a publicação seguem no `this.fetch`.
+  `resolveReleaseId` não resolve sem `integration.profile` (evita `/@null`
+  persistido) e trata corpo não-JSON como pendente; `releaseUrl` só aceita id
+  numérico; handles codificados na URL.
+- `post()` (caminho V102, padrão do fork) mantém o limite de 8 min do upstream
+  abaixo do timeout de 10 min da activity, agora contado desde antes da
+  pré-checagem. Depois do publish nada vira erro retentável: tempo esgotado ou
+  token expirado na consulta viram `PublishedWithError` (o share_id e o link do
+  perfil ficam salvos e o `resolveReleaseId` acha o post depois) em vez do
+  `BadBody` "refused" do upstream — um `RefreshToken` ali fazia o V102 renovar
+  e publicar de novo. Sem `integration.profile`, o status guarda o share_id com
+  a home do TikTok em vez de montar `/@/...`; FAILED sem motivo mapeado mostra
+  o `reason` do TikTok.
+- Pré-checagem de imagem com teto de 25 MB por imagem e orçamento total de
+  60 s; credencial do perfil sempre em par (nunca mistura `client_id` salvo com
+  o segredo do env); campos de exibição de música/localização com tamanho
+  máximo e capa só em URL https (vão para `<img src>` no compositor).
+- State de OAuth com `makeSecureId(32)` (upstream usa 16); logs com
+  `summarizeError`.
+
+Specs (mock de fetch, sem chamada real): `handleErrors` (as duas mensagens
+novas, precedência dos `spam_risk*`, cota diária), `auth_code` ausente →
+`BadBody` sem chamar o TikTok, URL de auth com `makeSecureId` e credencial do
+perfil/env, troca e refresh com `ClientInformation`, regras de mídia, legenda,
+pré-checagem de imagem (mock e sharp real em `UPLOAD_DIRECTORY`), payloads de
+vídeo/foto em DIRECT_POST e UPLOAD (música, volumes, localização, música
+aleatória e fallback `auto_add_music`), `checkPostStatus` (int64, `/photo/`,
+caixa de entrada, FAILED, envelope com erro de token), `post()` publicando uma
+vez, `resolveReleaseId`/`releaseUrl`, `musicSearch`/`locationSearch` e
+analytics; DTO (validação aninhada e schema do MCP com campos herdados);
+`IntegrationManager` (registro, credencial, `isDashboardCallable` das duas
+`@Tool`); `PostsService.createPost` com 400 para `tiktok-business`.
+
+Só dá para validar com a API aprovada: conexão de verdade (redirect com
+barra final e `auth_code`, `checkScopes` com o formato de `scope` da Business
+API, campos de `/business/get/`), publicação PULL_FROM_URL com o domínio de
+mídia verificado no app, música (`song_clip_id`, volumes) e localização,
+música aleatória, status/`post_ids` (inclusive atraso de até 3 min), rascunho
+UPLOAD e "Conectar post", estatísticas da conta e do post e o refresh com o
+app do perfil.
+
+Revisões: `code-reviewer` (0 MUST FIX; SHOULD FIX aplicados — `/@/` sem
+perfil, republicação após `RefreshToken` no V102, FAILED com mensagem vazia,
+lacunas de spec em `post()`/`missing`/`postAnalytics`; NITs aplicados: volume
+`null`, lista de músicas fora do ar, `maxConcurrentJob` sem efeito removido,
+par de credenciais, `validacao-dev.md`); `security-auditor` (0 CRITICAL/HIGH;
+MEDIUM introduzidos e resolvidos: download sem teto/orçamento, mistura de
+credenciais, campos de exibição sem limite).
+
+Follow-ups: teste de credencial dedicado no `CredentialService` quando houver
+um endpoint barato; o seletor "Quem pode ver" continua visível em vídeo
+Business, embora a API só aplique privacidade em foto; `tiktok-business` não
+é destino de repost (`repost.matrix.ts` — decidir se entra junto do
+`tiktok`); pré-existentes apontados pelo `security-auditor`: redirect via
+`redirectmeto.com` quando `FRONTEND_URL` não é https (mesmo padrão do TikTok
+nativo — leva `auth_code`/`state` a terceiro) e saída das `@Tool` de provider
+(`musicSearch`/`locationSearch`, como as demais) entregue ao agente MCP sem o
+invólucro `<source>` de dado não confiável.
+
 ## Apêndice — classificação 1 por 1 (171 PRs + 74 commits diretos)
 
 Legenda: **P0** segurança (nesta branch) · **ADOPT** cherry-pick/porte leve ·

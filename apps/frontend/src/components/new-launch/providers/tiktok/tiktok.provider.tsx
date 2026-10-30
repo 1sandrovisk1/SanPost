@@ -17,19 +17,28 @@ import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { useIntegration } from '@gitroom/frontend/components/launches/helpers/use.integration';
 import { Input } from '@gitroom/react/form/input';
 import { TiktokPreview } from '@gitroom/frontend/components/new-launch/providers/tiktok/tiktok.preview';
+import { TikTokMusicSelector } from '@gitroom/frontend/components/new-launch/providers/tiktok/tiktok.music';
+import { TikTokLocationSelector } from '@gitroom/frontend/components/new-launch/providers/tiktok/tiktok.location';
 
 const TikTokSettings: FC<{
   values?: any;
 }> = (props) => {
   const { watch, register } = useSettings();
-  const { value } = useIntegration();
+  const { value, integration } = useIntegration();
   const t = useT();
+
+  // Musica e localizacao vem da Business API (v1.3): a Content Posting API do
+  // canal `tiktok` nativo (e do zernio-tiktok) nao tem esses campos.
+  const isBusiness = integration?.identifier === 'tiktok-business';
 
   const isTitle = useMemo(() => {
     return value?.[0]?.image?.some((p) => (p?.path?.indexOf?.('mp4') ?? -1) === -1);
   }, [value]);
+  const hasMedia = (value?.[0]?.image?.length ?? 0) > 0;
+  const isVideo = hasMedia && !isTitle;
 
   const disclose = watch('disclose');
+  const autoAddMusic = watch('autoAddMusic');
   const brand_organic_toggle = watch('brand_organic_toggle');
   const brand_content_toggle = watch('brand_content_toggle');
   const content_posting_method = watch('content_posting_method');
@@ -120,7 +129,11 @@ const TikTokSettings: FC<{
       </Select>
       {isUploadMode && <div className="-mt-[23px] mb-[23px] text-red-600">After posting you fill find a notification inside your Inbox about your post (not content studio)</div>}
       <Select
-        label={t('label_auto_add_music', 'Auto add music')}
+        label={
+          isBusiness
+            ? t('label_add_random_music', 'Add random music')
+            : t('label_auto_add_music', 'Auto add music')
+        }
         {...register('autoAddMusic', {
           value: 'no',
         })}
@@ -133,11 +146,51 @@ const TikTokSettings: FC<{
         ))}
       </Select>
       <div className="text-[14px] mt-[10px] mb-[24px] text-balance">
-        {t(
-          'this_feature_available_only_for_photos',
-          'This feature available only for photos, it will add a default music that\n        you can change later.'
-        )}
+        {isBusiness
+          ? t(
+              'tiktok_random_music_only_for_photos',
+              "This feature is available only for photos, it adds a random trending track from TikTok's commercial music library."
+            )
+          : t(
+              'this_feature_available_only_for_photos',
+              'This feature available only for photos, it will add a default music that\n        you can change later.'
+            )}
       </div>
+      {isBusiness && (
+        <div
+          className={clsx(
+            'flex flex-col gap-[18px] mb-[24px]',
+            // UPLOAD manda so a legenda: musica e localizacao sao descartadas
+            isUploadMode && 'opacity-50 pointer-events-none'
+          )}
+        >
+          {/* Musica aleatoria substitui a escolha manual em fotos: o seletor
+              fica escondido (mas registrado) enquanto ela estiver ligada. */}
+          <div
+            className={clsx(
+              !isVideo && autoAddMusic === 'yes' && 'invisible h-0 overflow-hidden'
+            )}
+          >
+            <TikTokMusicSelector
+              label={t('tiktok_music_label', 'Music')}
+              showVolumes={isVideo}
+              {...register('music')}
+            />
+          </div>
+          <TikTokLocationSelector
+            label={t('tiktok_location_label', 'Location')}
+            {...register('location')}
+          />
+          {isUploadMode && (
+            <div className="text-[14px] text-balance">
+              {t(
+                'tiktok_music_location_direct_post_only',
+                'Music and location are only applied when posting directly to TikTok.'
+              )}
+            </div>
+          )}
+        </div>
+      )}
       <hr className="mb-[15px] border-tableBorder" />
       <div className="text-[14px] mb-[10px]">
         {t('allow_user_to', 'Allow User To:')}
@@ -337,13 +390,22 @@ export default withProvider({
       return 'You need one media';
     }
 
-    // Porte do upstream #1875 (no fork a validacao e client-side): o TikTok
-    // rejeita o post inteiro quando uma imagem passa de 1080px no lado menor
-    // e o status so diz picture_size_check_failed, sem apontar qual. So no
-    // canal nativo: o zernio-tiktok compartilha este componente e o Zernio
-    // redimensiona as imagens por conta propria.
+    // A Business API aceita ate 35 fotos por post (upstream 4ace3a7a)
+    if (identifier === 'tiktok-business' && (firstItems?.length ?? 0) > 35) {
+      return t?.(
+        'tiktok_business_max_pictures',
+        'You can select up to 35 pictures'
+      ) ?? 'You can select up to 35 pictures';
+    }
+
+    // Porte do upstream #1875/#2240 (no fork a validacao e client-side): o
+    // TikTok rejeita o post inteiro quando uma imagem passa de 1080px no lado
+    // menor e o status so diz picture_size_check_failed, sem apontar qual. So
+    // nos canais nativos (tiktok e tiktok-business, que repete a conta no
+    // servidor antes do publish): o zernio-tiktok compartilha este componente
+    // e o Zernio redimensiona as imagens por conta propria.
     if (
-      identifier === 'tiktok' &&
+      (identifier === 'tiktok' || identifier === 'tiktok-business') &&
       (firstItems ?? []).every((p) => (p?.path?.indexOf?.('mp4') ?? -1) === -1)
     ) {
       const dimensions = await Promise.all(

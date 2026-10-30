@@ -73,6 +73,16 @@ export const ContinueIntegration: FC<{
       };
     }
 
+    if (provider === 'tiktok-business') {
+      // a Business API volta com `auth_code` em vez de `code`; sem ele o
+      // backend falha cedo com a mensagem certa (consentimento recusado)
+      return {
+        state: searchParams.state || '',
+        code: searchParams.auth_code || searchParams.code || '',
+        refresh: searchParams.refresh || '',
+      };
+    }
+
     if (provider === 'vk') {
       return {
         ...searchParams,
@@ -293,6 +303,7 @@ export const ContinueIntegration: FC<{
       'linkedin-page': 'LinkedIn',
       youtube: 'YouTube',
       gmb: 'Google Business',
+      'tiktok-business': 'TikTok Business',
     };
     return names[provider] || provider;
   }, [provider]);

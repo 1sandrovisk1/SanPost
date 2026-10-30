@@ -2786,5 +2786,22 @@
   "delete_only_from": "Só de",
   "batch_save_partial_failure": "Alguns canais foram salvos, mas outros falharam. Abra a publicação de novo para revisá-los.",
   "post_channel_date_in_past": "Escolha uma data futura para este canal",
-  "batch_delete_partial_failure": "A publicação foi excluída de alguns canais, mas não de outros. Confira o calendário."
+  "batch_delete_partial_failure": "A publicação foi excluída de alguns canais, mas não de outros. Confira o calendário.",
+  "label_add_random_music": "Adicionar música aleatória",
+  "tiktok_random_music_only_for_photos": "Disponível apenas para fotos: adiciona uma faixa aleatória entre as tendências da biblioteca de músicas comerciais do TikTok.",
+  "tiktok_music_label": "Música",
+  "tiktok_location_label": "Localização",
+  "tiktok_add_music": "Adicionar música",
+  "tiktok_search_music": "Filtrar faixas em alta por nome ou artista",
+  "tiktok_no_music_found": "Nenhuma música encontrada",
+  "tiktok_music_volume": "Volume da música",
+  "tiktok_video_volume": "Volume original do vídeo",
+  "tiktok_add_location": "Adicionar localização",
+  "tiktok_search_location": "Buscar localização",
+  "tiktok_no_location_found": "Nenhuma localização encontrada",
+  "tiktok_music_location_direct_post_only": "Música e localização só são aplicadas ao publicar direto no TikTok.",
+  "tiktok_business_max_pictures": "Você pode selecionar até 35 fotos",
+  "credentials_tiktok_business_app_id_placeholder": "Cole o Client ID (App ID) do app do TikTok for Business",
+  "credentials_tiktok_business_secret_placeholder": "Cole o Client Secret do app do TikTok for Business",
+  "credentials_tiktok_business_hint": "Use o app criado no portal TikTok API for Business (não o app do TikTok for Developers). Cadastre a URL de callback exatamente como aparece abaixo, com a barra no final."
 }

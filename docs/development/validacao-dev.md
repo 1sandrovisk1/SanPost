@@ -405,6 +405,7 @@ docker compose -f docker-compose.dev.yaml up -d  # Sobe infraestrutura dev
 | `FACEBOOK_APP_ID/SECRET`     | Facebook/Instagram API             |
 | `LINKEDIN_CLIENT_ID/SECRET`  | LinkedIn API                       |
 | `TIKTOK_CLIENT_ID/SECRET`    | TikTok API                         |
+| `TIKTOK_BUSINESS_CLIENT_ID/SECRET` | TikTok for Business (fallback das Credenciais) |
 | Stripe vars                  | Para pagamentos                     |
 | Email vars                   | Para envio de emails                |
 

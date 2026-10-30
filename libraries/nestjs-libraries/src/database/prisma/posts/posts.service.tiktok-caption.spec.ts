@@ -72,7 +72,7 @@ const buildService = () => {
 // Dashboard, API publica e MCP passam por createPost: texto que o TikTok vai
 // recusar e barrado na criacao (400 com o tamanho), nao na hora de publicar.
 describe('PostsService.createPost - limite de texto do TikTok', () => {
-  it.each(['tiktok', 'zernio-tiktok'])(
+  it.each(['tiktok', 'zernio-tiktok', 'tiktok-business'])(
     '%s: agendar video com mais de 2.200 caracteres responde 400 sem gravar',
     async (identifier) => {
       const { service, repo } = buildService();
