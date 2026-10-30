@@ -14,6 +14,17 @@ Authorization: SUA_CHAVE_DE_API
 
 `401` chave ausente/inválida · `403` chave de perfil tentando outro perfil (canal de outro perfil nas rotas por id também responde 403; canal inexistente, 404).
 
+### Apps OAuth (`POST /oauth/token`)
+
+Apps OAuth trocam o código de autorização por um token `pos_` (use-o no header
+`Authorization` como a chave de API). A resposta é
+`{ "id", "access_token", "token_type": "bearer" }`. O código vale uma única
+troca: uma segunda troca do mesmo código, mesmo em paralelo, recebe
+`400 invalid_grant`. A rota tem limite próprio de tentativas por app
+(`client_id` do corpo ou do header `Basic`) e responde `429` quando ele
+estoura. Remover o membro da organização ou do perfil revoga os tokens que ele
+aprovou.
+
 ## Swagger interativo
 
 `/docs` no domínio do backend (ex.: `https://SEU_BACKEND/docs`). Clique em **Authorize**, cole a chave, e use **Try it out**. Os endpoints públicos ficam sob `/public/v1` (a UI mostra sem o prefixo `/api`).
@@ -26,7 +37,7 @@ Authorization: SUA_CHAVE_DE_API
 |---|---|---|
 | `GET` | `/public/v1/profiles` | Listar perfis (id, name, isDefault) |
 | `GET` | `/public/v1/integrations` | Listar canais conectados (use `id` como `integrationId`) |
-| `GET` | `/public/v1/social/:integration` | URL de OAuth para conectar um canal; com chave de perfil, o canal conectado nasce no perfil da chave (canais sem perfil criados antes continuam sem perfil; reconectar um deles por chave de perfil em provider de duas etapas pode responder 409) |
+| `GET` | `/public/v1/social/:integration` | URL de OAuth para conectar um canal; com chave de perfil, o canal conectado nasce no perfil da chave (canais sem perfil criados antes continuam sem perfil; reconectar um deles por chave de perfil em provider de duas etapas pode responder 409; `?refresh=` de canal de outro perfil, mesmo desativado, responde 403) |
 | `GET` | `/public/v1/find-slot/:id` | Próximo horário livre para agendar |
 | `POST` | `/public/v1/upload` | Upload de arquivo (multipart, campo `file`) |
 | `POST` | `/public/v1/upload-from-url` | Upload de mídia a partir de uma URL |
@@ -36,7 +47,7 @@ Authorization: SUA_CHAVE_DE_API
 | `DELETE` | `/public/v1/posts/:id` | Excluir um post — devolve `{ "id": "<post>" }` (grupo inexistente: `{ "error": true }`) |
 | `GET` | `/public/v1/analytics/:integration` | Analytics de um canal (`?date=` dias) |
 | `GET` | `/public/v1/analytics/post/:postId` | Analytics de um post |
-| `POST` | `/public/v1/generate-video` | Gerar vídeo (IA) |
+| `POST` | `/public/v1/generate-video` | Gerar vídeo (IA); com chave de perfil, o vídeo entra na biblioteca do perfil |
 | `GET` | `/public/v1/notifications` | Listar notificações |
 | `DELETE` | `/public/v1/integrations/:id` | Excluir um canal e seus posts (chave de perfil: só canais do próprio perfil) |
 | `GET` | `/public/v1/integration-settings/:id` | Configurações/validação de um canal (idem) |

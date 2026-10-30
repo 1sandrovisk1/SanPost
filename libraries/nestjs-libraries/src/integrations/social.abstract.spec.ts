@@ -456,11 +456,15 @@ describe('SocialAbstract.fetch (retentativas esgotadas)', () => {
 // runInConcurrent nao vira 'Unknown Error'.
 describe('SocialAbstract.runInConcurrent (erro classificado)', () => {
   const provider = new TestProvider();
-  const errorLog = jest
-    .spyOn((SocialAbstract as any).logger, 'error')
-    .mockImplementation(() => undefined);
+  let errorLog: jest.SpyInstance;
 
-  afterAll(() => errorLog.mockRestore());
+  beforeEach(() => {
+    errorLog = jest
+      .spyOn((SocialAbstract as any).logger, 'error')
+      .mockImplementation(() => undefined);
+  });
+
+  afterEach(() => errorLog.mockRestore());
 
   it('BadBody do provider sai com a propria mensagem', async () => {
     const original = new BadBody('test', '{}', '', 'Video too large');
@@ -490,7 +494,6 @@ describe('SocialAbstract.runInConcurrent (erro classificado)', () => {
   });
 
   it('erro cru passa pelo handleErrors e o log sai resumido', async () => {
-    errorLog.mockClear();
     const raw = Object.assign(new Error('falhou'), {
       data: { error: 'expired token', access_token: 'segredo-que-nao-pode-vazar' },
     });
@@ -500,6 +503,7 @@ describe('SocialAbstract.runInConcurrent (erro classificado)', () => {
         throw raw;
       })
     ).rejects.toBeInstanceOf(RefreshToken);
+    expect(errorLog).toHaveBeenCalledTimes(1);
     expect(String(errorLog.mock.calls[0][0])).not.toContain(
       'segredo-que-nao-pode-vazar'
     );

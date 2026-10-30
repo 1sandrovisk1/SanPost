@@ -1776,6 +1776,14 @@ export class PostsService {
     integrationId?: string,
     profileId?: string
   ) {
+    // os horarios de um canal so para quem alcanca o canal (dashboard e API)
+    if (integrationId && profileId) {
+      await this._integrationService.validateIntegrationProfile(
+        orgId,
+        integrationId,
+        profileId
+      );
+    }
     const findTimes = await this._integrationService.findFreeDateTime(
       orgId,
       integrationId

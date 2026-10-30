@@ -201,6 +201,17 @@ export class IntegrationService {
     return this._integrationRepository.getIntegrationById(org, id);
   }
 
+  // perfil do canal da org com esse internalId (inclusive desativado) — para
+  // checar quem pode reconectar
+  async getChannelProfileByInternalId(org: string, internalId: string) {
+    const channel =
+      await this._integrationRepository.findActiveByOrgAndInternalIdWithProfile(
+        org,
+        internalId
+      );
+    return channel ? { profileId: channel.profileId ?? null } : null;
+  }
+
   getIntegrationsByInternalId(internalId: string) {
     return this._integrationRepository.getIntegrationsByInternalId(internalId);
   }

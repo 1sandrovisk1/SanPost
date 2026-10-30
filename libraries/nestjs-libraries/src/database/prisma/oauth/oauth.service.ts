@@ -4,6 +4,13 @@ import { CreateOAuthAppDto } from '@gitroom/nestjs-libraries/dtos/oauth/create-o
 import { UpdateOAuthAppDto } from '@gitroom/nestjs-libraries/dtos/oauth/update-oauth-app.dto';
 import { makeSecureId } from '@gitroom/nestjs-libraries/services/make.secure.id';
 import { AuthService } from '@gitroom/helpers/auth/auth.service';
+import { timingSafeEqual } from 'crypto';
+
+const sameSecret = (stored: string | null | undefined, given: string) => {
+  const a = Buffer.from(stored || '');
+  const b = Buffer.from(given || '');
+  return a.length > 0 && a.length === b.length && timingSafeEqual(a, b);
+};
 
 @Injectable()
 export class OAuthService {
@@ -117,7 +124,8 @@ export class OAuthService {
       );
     }
 
-    if (app.clientSecret !== AuthService.fixedEncryption(clientSecret)) {
+    // comparacao em tempo constante (o segredo e o fator de autenticacao)
+    if (!sameSecret(app.clientSecret, AuthService.fixedEncryption(clientSecret))) {
       throw new HttpException(
         { error: 'invalid_client' },
         HttpStatus.UNAUTHORIZED
@@ -142,17 +150,27 @@ export class OAuthService {
 
     const token = 'pos_' + makeSecureId(40);
     const encryptedToken = AuthService.fixedEncryption(token);
-    const {
-      organizationId,
-      organization: { paymentId },
-    } = await this._oauthRepository.exchangeCodeForToken(
-      auth.id,
-      encryptedToken
-    );
+    // codigo ja trocado (troca concorrente) nao casa mais: P2025. Outros erros
+    // (banco fora) seguem como 500
+    const exchanged = await this._oauthRepository
+      .exchangeCodeForToken(auth.id, encryptedToken, encryptedCode)
+      .catch((err: { code?: string }) => {
+        if (err?.code === 'P2025') {
+          return null;
+        }
+        throw err;
+      });
+    if (!exchanged) {
+      throw new HttpException(
+        { error: 'invalid_grant' },
+        HttpStatus.BAD_REQUEST
+      );
+    }
+    const { organizationId } = exchanged;
 
+    // sem o cliente Stripe da org (cus): o app de terceiro nao precisa dele
     return {
       id: organizationId,
-      cus: paymentId,
       access_token: token,
       token_type: 'bearer',
     };

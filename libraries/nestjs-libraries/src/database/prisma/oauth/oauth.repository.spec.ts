@@ -67,3 +67,19 @@ describe('OAuthRepository (perfil do token OAuth)', () => {
     expect(member.model.profileMember.findFirst).not.toHaveBeenCalled();
   });
 });
+
+describe('OAuthRepository.exchangeCodeForToken (codigo de uso unico)', () => {
+  it('so troca se o codigo ainda for o mesmo e a autorizacao nao foi revogada', async () => {
+    const auth = createPrismaRepositoryMock('oAuthAuthorization');
+    auth.model.oAuthAuthorization.update.mockResolvedValue({ organizationId: 'org-1' } as any);
+    const repo = new OAuthRepository({} as any, auth as any, {} as any, {} as any);
+
+    await repo.exchangeCodeForToken('auth-1', 'tok', 'cod');
+
+    expect(auth.model.oAuthAuthorization.update).toHaveBeenCalledWith({
+      where: { id: 'auth-1', authorizationCode: 'cod', revokedAt: null },
+      select: { organizationId: true },
+      data: { accessToken: 'tok', authorizationCode: null, codeExpiresAt: null },
+    });
+  });
+});

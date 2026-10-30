@@ -61,6 +61,15 @@ class Routes {
   @Post('/public/facebook-automations/:app') webhook() {
     return {};
   }
+  @Post('/oauth/token') token() {
+    return {};
+  }
+  @Post('/autopost/send') autopostSend() {
+    return {};
+  }
+  @Post('/autopost') autopostCreate() {
+    return {};
+  }
 }
 describe('limites HTTP das automacoes', () => {
   let app: INestApplication;
@@ -149,6 +158,49 @@ describe('limites HTTP das automacoes', () => {
   it('nao captura webhook publico da Meta', async () => {
     expect(await request('/public/facebook-automations/app', 'POST')).toBe(201);
     expect(await request('/public/facebook-automations/app', 'POST')).toBe(201);
+  });
+  const tokenRequest = async (clientId: string) => {
+    const response = await fetch(url + '/oauth/token', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ client_id: clientId }),
+    });
+    await response.text();
+    return response.status;
+  };
+
+  it('troca de codigo OAuth conta por app cliente (nao por IP do proxy)', async () => {
+    expect(await tokenRequest('pcd_app_a')).toBe(201);
+    expect(await tokenRequest('pcd_app_a')).toBe(429);
+    // outro app nao e bloqueado por quem martela o primeiro
+    expect(await tokenRequest('pcd_app_b')).toBe(201);
+  });
+
+  it('client_secret_basic conta pelo client_id do header', async () => {
+    const basic = (id: string) =>
+      fetch(url + '/oauth/token', {
+        method: 'POST',
+        headers: {
+          authorization:
+            'Basic ' + Buffer.from(`${id}:segredo`).toString('base64'),
+        },
+      }).then(async (r) => {
+        await r.text();
+        return r.status;
+      });
+    expect(await basic('pcd_basic_a')).toBe(201);
+    expect(await basic('pcd_basic_a')).toBe(429);
+    // mesmo app pelo corpo cai no mesmo balde
+    expect(await tokenRequest('pcd_basic_a')).toBe(429);
+    expect(await basic('pcd_basic_b')).toBe(201);
+  });
+
+  it('teste de feed do autopost tem orcamento proprio', async () => {
+    expect(await request('/autopost/send', 'POST', 'oauth-fixture')).toBe(201);
+    expect(await request('/autopost/send', 'POST', 'oauth-fixture')).toBe(429);
+    // o resto do autopost nao e limitado
+    expect(await request('/autopost', 'POST', 'oauth-fixture')).toBe(201);
+    expect(await request('/autopost', 'POST', 'oauth-fixture')).toBe(201);
   });
 });
 

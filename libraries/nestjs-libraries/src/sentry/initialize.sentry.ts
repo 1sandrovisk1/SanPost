@@ -1,4 +1,10 @@
 import * as Sentry from '@sentry/nestjs';
+import {
+  redactSentryBreadcrumb,
+  redactSentryEvent,
+  redactSentryLog,
+  redactSentrySpan,
+} from '@gitroom/nestjs-libraries/sentry/redact.sentry.log';
 import { nodeProfilingIntegration } from '@sentry/profiling-node';
 import { capitalize } from 'lodash';
 
@@ -57,6 +63,12 @@ export const initializeSentry = (appName: string, allowLogs = false) => {
         { op: 'middleware.express' },
       ],
       enableLogs: true,
+      // console.* vira log no Sentry: segredos saem redigidos (mensagem,
+      // atributos e objetos logados), e o mesmo vale para eventos e breadcrumbs
+      beforeSendLog: (log) => redactSentryLog(log),
+      beforeSend: (event) => redactSentryEvent(event),
+      beforeBreadcrumb: (breadcrumb) => redactSentryBreadcrumb(breadcrumb),
+      beforeSendSpan: (span) => redactSentrySpan(span),
 
       // Profiling
       profileSessionSampleRate: process.env.NODE_ENV === 'development' ? 1.0 : 0.4,

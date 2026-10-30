@@ -24,6 +24,7 @@ describe('ProfileRepository - Persona', () => {
       mockProfileMemberModel as any,
       mockPersonaModel as any,
       mockUserOrgModel as any,
+      {} as any,
       {} as any
     );
   });
