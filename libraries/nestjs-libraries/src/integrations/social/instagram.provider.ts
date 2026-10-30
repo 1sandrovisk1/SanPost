@@ -1,3 +1,8 @@
+import { instagramAudioError, isInstagramVideo } from './instagram.audio';
+import { EncryptionService } from '../../crypto/encryption.service';
+import { decryptIntegrationToken } from '../../crypto/integration-token.helper';
+import { ssrfSafeFetch } from '../../dtos/webhooks/ssrf.safe.dispatcher';
+import { Tool } from '../tool.decorator';
 import { DashboardFunction } from '@gitroom/nestjs-libraries/integrations/dashboard.function.decorator';
 import {
   AnalyticsData,
@@ -815,6 +820,12 @@ export class InstagramProvider
     type = 'graph.facebook.com'
   ): Promise<PostResponse[]> {
     const [firstPost] = postDetails;
+    const audioError = instagramAudioError(
+      firstPost?.settings,
+      firstPost?.media,
+      type === 'graph.facebook.com'
+    );
+    if (audioError) throw new BadBody(this.identifier, '{}', '{}', audioError);
     if (firstPost.media?.some((media) => (media.alt?.length || 0) > 1000)) {
       throw new BadBody(
         this.identifier,
@@ -844,7 +855,7 @@ export class InstagramProvider
             ? `&caption=${encodeURIComponent(firstPost.message)}`
             : ``;
         const altText =
-          m.alt && !isStory && !m.path.includes('.mp4')
+          m.alt && !isStory && !isInstagramVideo(m.path)
             ? `&alt_text=${encodeURIComponent(m.alt)}`
             : '';
         const isCarousel =
@@ -852,26 +863,25 @@ export class InstagramProvider
             ? `&is_carousel_item=true`
             : ``;
         const isReel =
-          m.path.indexOf('.mp4') > -1 &&
+          isInstagramVideo(m.path) &&
           firstPost?.media?.length === 1 &&
           !isStory;
 
-        const mediaType =
-          m.path.indexOf('.mp4') > -1
-            ? firstPost?.media?.length === 1
-              ? isStory
-                ? `video_url=${m.path}&media_type=STORIES`
-                : `video_url=${m.path}&media_type=REELS&thumb_offset=${
-                    m?.thumbnailTimestamp || 0
-                  }`
-              : isStory
+        const mediaType = isInstagramVideo(m.path)
+          ? firstPost?.media?.length === 1
+            ? isStory
               ? `video_url=${m.path}&media_type=STORIES`
-              : `video_url=${m.path}&media_type=VIDEO&thumb_offset=${
+              : `video_url=${m.path}&media_type=REELS&thumb_offset=${
                   m?.thumbnailTimestamp || 0
                 }`
             : isStory
-            ? `image_url=${m.path}&media_type=STORIES`
-            : `image_url=${m.path}`;
+            ? `video_url=${m.path}&media_type=STORIES`
+            : `video_url=${m.path}&media_type=VIDEO&thumb_offset=${
+                m?.thumbnailTimestamp || 0
+              }`
+          : isStory
+          ? `image_url=${m.path}&media_type=STORIES`
+          : `image_url=${m.path}`;
 
         const trialParams = isTrialReel
           ? `&trial_params=${encodeURIComponent(
@@ -895,11 +905,25 @@ export class InstagramProvider
             ? `&cover_url=${encodeURIComponent(coverPath)}`
             : ``;
 
+        const audioConfiguration = firstPost.settings.audio?.id
+          ? '&audio_configuration=' +
+            encodeURIComponent(
+              JSON.stringify({
+                audio_id: firstPost.settings.audio.id,
+                ...(firstPost.settings.audio.audio_volume !== undefined
+                  ? { audio_volume: firstPost.settings.audio.audio_volume }
+                  : {}),
+                ...(firstPost.settings.audio.video_volume !== undefined
+                  ? { video_volume: firstPost.settings.audio.video_volume }
+                  : {}),
+              })
+            )
+          : '';
         const { id: photoId } = await (
           await this.fetch(
             `${metaGraphUrl(
               type
-            )}/${id}/media?${mediaType}${altText}${isCarousel}${itemCollaborators}${trialParams}${coverUrl}&access_token=${accessToken}${caption}`,
+            )}/${id}/media?${mediaType}${altText}${isCarousel}${itemCollaborators}${trialParams}${coverUrl}${audioConfiguration}&access_token=${accessToken}${caption}`,
             {
               method: 'POST',
             }
@@ -1175,6 +1199,99 @@ export class InstagramProvider
         data.q
       )}&access_token=${accessToken}`
     );
+  }
+
+  @Tool({
+    description:
+      'Search music or original sounds to attach to an Instagram Reel using Facebook Login. Empty query returns trending audio.',
+    dataSchema: [
+      {
+        key: 'q',
+        type: 'string',
+        description: 'Search query, empty for trending',
+      },
+      { key: 'type', type: 'string', description: 'music or original_sound' },
+    ],
+  })
+  async audioSearch(
+    _pageToken: string,
+    data: { q?: string; type?: 'music' | 'original_sound' },
+    _internalId?: string,
+    integration?: Integration
+  ) {
+    const unavailable = () =>
+      new BadBody(
+        this.identifier,
+        '{}',
+        '{}',
+        'Reconecte o Instagram pelo Facebook Login para pesquisar áudio. A publicação do canal não foi desconectada.'
+      );
+    if (
+      integration?.providerIdentifier !== 'instagram' ||
+      !integration.refreshToken
+    )
+      throw unavailable();
+    let userToken: string;
+    try {
+      userToken = decryptIntegrationToken(
+        new EncryptionService(),
+        integration.refreshToken
+      );
+    } catch {
+      throw unavailable();
+    }
+    if (!userToken || userToken === _pageToken) throw unavailable();
+    if (
+      (data?.q !== undefined &&
+        (typeof data.q !== 'string' || data.q.length > 200)) ||
+      (data?.type !== undefined &&
+        !['music', 'original_sound'].includes(data.type))
+    )
+      throw new BadBody(
+        this.identifier,
+        '{}',
+        '{}',
+        'Busca de áudio inválida.'
+      );
+    const query = new URLSearchParams({
+      audio_type: data?.type || 'music',
+      user_id: integration.internalId || _internalId || '',
+    });
+    if (data?.q) query.set('search_query', data.q);
+    let response: Response;
+    try {
+      response = await ssrfSafeFetch(
+        `${META_FACEBOOK_GRAPH_URL}/ig_audio?${query}`,
+        {
+          headers: { Authorization: `Bearer ${userToken}` },
+          signal: AbortSignal.timeout(20_000),
+        }
+      );
+    } catch {
+      throw unavailable();
+    }
+    let body: any;
+    try {
+      body = await response.json();
+    } catch {
+      throw unavailable();
+    }
+    if (!response.ok || body?.error || !Array.isArray(body?.audio))
+      throw unavailable();
+    return body.audio
+      .map((audio: any) => ({
+        id: String(audio.audio_id || ''),
+        title: String(audio.title || ''),
+        artist: String(audio.display_artist || audio.ig_username || ''),
+        image:
+          audio.cover_artwork_thumbnail_uri ||
+          audio.cover_artwork_thumbnail_url ||
+          audio.profile_picture_url ||
+          '',
+        duration: Number(audio.duration_in_ms) || 0,
+        previewUrl: audio.download_url || '',
+      }))
+      .filter((a: any) => /^\d+$/.test(a.id));
   }
 
   async postAnalytics(

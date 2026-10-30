@@ -109,6 +109,8 @@ describe('IntegrationManager.isDashboardCallable', () => {
   const dashboardCalls: Array<[string, string]> = [
     ['facebook', 'pages'],
     ['instagram', 'pages'],
+    ['instagram','audioSearch'],
+    ['tumblr','pages'],
     ['youtube', 'pages'],
     ['gmb', 'pages'],
     ['linkedin-page', 'companies'],
@@ -195,3 +197,12 @@ describe('IntegrationManager.isDashboardCallable', () => {
     expect(manager.isDashboardCallable(provider('facebook'), 'scopes')).toBe(false);
   });
 });
+
+ describe('IntegrationManager - Tumblr',()=>{
+  it('registra Tumblr e resolve app pelo perfil sem alias',async()=>{
+   const credentials={getRawShared:jest.fn().mockResolvedValue({clientId:'tumblr-app',clientSecret:'tumblr-secret'})};const manager=new IntegrationManager(credentials as any);
+   expect(manager.getAllowedSocialsIntegrations()).toContain('tumblr');
+   expect(await manager.getProviderCredentials('tumblr','org','profile')).toEqual({clientId:'tumblr-app',clientSecret:'tumblr-secret'});
+   expect(credentials.getRawShared).toHaveBeenCalledWith('org','tumblr','profile');
+  });
+ });

@@ -1,3 +1,4 @@
+import { TumblrDto } from './tumblr.dto';
 import { RedditSettingsDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/reddit.dto';
 import { PinterestSettingsDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/pinterest.dto';
 import { ZernioPinterestSettingsDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/zernio-pinterest.dto';
@@ -29,6 +30,7 @@ import { MeweDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings
 
 export type ProviderExtension<T extends string, M> = { __type: T } & M;
 export type AllProvidersSettings =
+  | ProviderExtension<'tumblr', TumblrDto>
   | ProviderExtension<'reddit', RedditSettingsDto>
   | ProviderExtension<'lemmy', LemmySettingsDto>
   | ProviderExtension<'youtube', YoutubeSettingsDto>
@@ -81,6 +83,7 @@ type None = NonNullable<unknown>;
 
 export const allProviders = (setEmpty?: any) => {
   return [
+    {value:TumblrDto,name:'tumblr'},
     { value: RedditSettingsDto, name: 'reddit' },
     { value: LemmySettingsDto, name: 'lemmy' },
     { value: YoutubeSettingsDto, name: 'youtube' },
