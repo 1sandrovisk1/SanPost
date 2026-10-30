@@ -1,5 +1,11 @@
 # Credencial congelada em workflows V102 agendados
 
+> **Atualização de 30/10/2026:** V112 passou a ser o padrão e a recuperação dos
+> agendamentos futuros em espera é automática. Use o
+> [runbook atual](temporal-v112-atualizacao-automatica.md). O procedimento de reset
+> abaixo fica como referência de instalações antigas; reset não troca a versão
+> do workflow e não é o procedimento normal de atualização.
+
 Este runbook trata um modo de falha do `postWorkflowV102` que aparece quando um
 canal é reconectado depois que os workflows dos posts agendados já começaram.
 Ele não se aplica ao `postWorkflowV112`, que é imune por construção.

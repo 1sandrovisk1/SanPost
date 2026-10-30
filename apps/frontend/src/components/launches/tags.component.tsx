@@ -97,14 +97,19 @@ export const TagsComponentInner: FC<{
     if (newTag) {
       const modify = [...tagValue, newTag];
       setTagValue(modify);
+      // mesmo formato dos outros caminhos ({ label, value } com o nome); a
+      // tag crua chegava ao backend sem value/label
       onChange({
         target: {
-          value: modify,
+          value: modify.map((p: any) => ({
+            label: p.name,
+            value: p.name,
+          })),
           name,
         },
       });
     }
-  }, []);
+  }, [tagValue, name, onChange, mutate, modals, t]);
 
   const editTag = useCallback(
     async (tag: any, e: React.MouseEvent) => {

@@ -14,3 +14,5 @@ export * from './enrich-unmatched-comment.workflow';
 export * from './repost.workflow';
 
 export * from './shared-flow.workflow';
+
+export * from './migrate-post-workflows-v112.workflow';

@@ -1,3 +1,5 @@
+import { PostWorkflowMigrationRepository } from './posts/post-workflow-migration.repository';
+import { PostWorkflowMigrationService } from './posts/post-workflow-migration.service';
 import { AutomationHistoryRepository } from './automation-history/automation-history.repository';
 import { AutomationHistoryService } from './automation-history/automation-history.service';
 import { PostManagementService } from './posts/post-management.service';
@@ -7,7 +9,11 @@ import { ScheduledPostsRepository } from './scheduled-automations/scheduled-post
 import { SharedFlowEventsService } from './flows-v2/shared-flow-events.service';
 import { SharedFlowsRepository } from './flows-v2/shared-flows.repository';
 import { Global, Module } from '@nestjs/common';
-import { PrismaRepository, PrismaService, PrismaTransaction } from './prisma.service';
+import {
+  PrismaRepository,
+  PrismaService,
+  PrismaTransaction,
+} from './prisma.service';
 import { OrganizationRepository } from '@gitroom/nestjs-libraries/database/prisma/organizations/organization.repository';
 import { OrganizationService } from '@gitroom/nestjs-libraries/database/prisma/organizations/organization.service';
 import { UsersService } from '@gitroom/nestjs-libraries/database/prisma/users/users.service';
@@ -100,6 +106,8 @@ import { AiModule } from '@gitroom/nestjs-libraries/ai/ai.module';
     IntegrationRepository,
     PostsService,
     PostsRepository,
+    PostWorkflowMigrationRepository,
+    PostWorkflowMigrationService,
     StripeService,
     SignatureRepository,
     AutopostRepository,

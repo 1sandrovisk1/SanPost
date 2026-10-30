@@ -40,6 +40,20 @@ describe('post workflow history replay', () => {
     );
   });
 
+  it('reproduz V112 anterior sem o marcador de persistencia do aceite', async () => {
+    const repoRoot = resolve(__dirname, '../../../..');
+    const fixture = resolve(__dirname, 'fixtures/v112-before-accepted-reference.json');
+    const workflows = resolve(__dirname, '../workflows/index.ts');
+    const script = [
+      "const { Worker, Runtime } = require('@temporalio/worker');",
+      "const { temporal } = require('@temporalio/proto');",
+      "const fs = require('node:fs');",
+      `const history = temporal.api.history.v1.History.fromObject(JSON.parse(fs.readFileSync(${JSON.stringify(fixture)}, 'utf8')));`,
+      `Worker.runReplayHistory({ workflowsPath: ${JSON.stringify(workflows)} }, history, 'fixture-before-marker').then(() => Runtime.instance().shutdown()).then(() => process.stdout.write('ok'));`,
+    ].join('');
+    await expect(promisify(execFile)(process.execPath, ['-e', script], { cwd: repoRoot })).resolves.toEqual(expect.objectContaining({ stdout: 'ok' }));
+  }, 30000);
+
   it('remove o separador que o pnpm repassa ao script', () => {
     expect(
       parseReplayArguments(['--', 'tmp/temporal-replay/meta.json', 'post_1'])

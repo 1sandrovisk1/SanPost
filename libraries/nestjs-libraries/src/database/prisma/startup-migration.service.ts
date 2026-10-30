@@ -1,17 +1,27 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { PostWorkflowMigrationService } from './posts/post-workflow-migration.service';
+import { summarizeError } from '@gitroom/nestjs-libraries/services/error.summary';
+import {
+  Injectable,
+  Logger,
+  OnApplicationBootstrap,
+  OnModuleInit,
+} from '@nestjs/common';
 import { PrismaService } from './prisma.service';
 import { RepostService } from './repost/repost.service';
 import { RefreshIntegrationService } from '@gitroom/nestjs-libraries/integrations/refresh.integration.service';
 import { AuthService } from '@gitroom/helpers/auth/auth.service';
 
 @Injectable()
-export class StartupMigrationService implements OnModuleInit {
+export class StartupMigrationService
+  implements OnModuleInit, OnApplicationBootstrap
+{
   private readonly logger = new Logger(StartupMigrationService.name);
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly repostService: RepostService,
-    private readonly refreshIntegrationService: RefreshIntegrationService
+    private readonly refreshIntegrationService: RefreshIntegrationService,
+    private readonly postWorkflowMigration: PostWorkflowMigrationService
   ) {}
 
   async onModuleInit() {
@@ -23,14 +33,29 @@ export class StartupMigrationService implements OnModuleInit {
     await this.cleanupExpiredStatusEvents();
     await this.cleanupExpiredScheduledAutomationEvents();
     await this.backfillFlowsToDefaultProfile();
+  }
+
+  // Passos que iniciam workflows no Temporal: o cliente do nestjs-temporal-core
+  // so fica pronto no onModuleInit dele, que corre em paralelo com o nosso
+  // ("Temporal Service is not initialized"). O bootstrap roda depois de todos
+  // os onModuleInit.
+  async onApplicationBootstrap() {
     await this.reconcileRepostWorkflows();
     await this.reconcileRefreshTokensCron();
+    try {
+      await this.postWorkflowMigration.ensureMigrationWorkflow();
+    } catch (error) {
+      this.logger.warn(
+        `reconcilePostWorkflowsV112 falhou: ${summarizeError(error)}`
+      );
+    }
   }
 
   private async cleanupExpiredScheduledAutomationEvents() {
     try {
       const where = { expiresAt: { lt: new Date(Date.now() - 7 * 86400000) } };
-      if (!await this.prisma.scheduledAutomationEvent.count({ where })) return;
+      if (!(await this.prisma.scheduledAutomationEvent.count({ where })))
+        return;
       await this.prisma.scheduledAutomationEvent.deleteMany({ where });
     } catch {
       this.logger.warn('Scheduled automation capture cleanup unavailable.');
@@ -391,7 +416,11 @@ export class StartupMigrationService implements OnModuleInit {
         );
         if (extraClaims.length) {
           this.logger.warn(
-            `Skool integration ${row.id} (org ${row.organizationId}) carried unexpected claims in legacy JWT cookies: ${extraClaims.join(', ')} — possible tampering; claims dropped on conversion.`
+            `Skool integration ${row.id} (org ${
+              row.organizationId
+            }) carried unexpected claims in legacy JWT cookies: ${extraClaims.join(
+              ', '
+            )} — possible tampering; claims dropped on conversion.`
           );
         }
 

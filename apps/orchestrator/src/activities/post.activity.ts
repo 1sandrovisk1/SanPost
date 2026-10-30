@@ -350,6 +350,23 @@ export class PostActivity {
     });
   }
 
+  // Somente escrita: o aceite remoto ja foi registrado na history pelo retorno
+  // de postSocialPending. Retry desta activity nunca reenvia para a rede.
+  @ActivityMethod()
+  async recordAcceptedPost(
+    organizationId: string,
+    postDbId: string,
+    remoteId: string,
+    releaseURL: string
+  ) {
+    await this._postService.updatePublishedRelease(
+      postDbId,
+      organizationId,
+      remoteId,
+      releaseURL
+    );
+  }
+
   @ActivityMethod()
   async checkPostStatus(
     organizationId: string,

@@ -1200,10 +1200,10 @@ export class PostsService {
     source: 'createPost' | 'changeDate'
   ) {
     // ERROR com id na plataforma: entrou no ar e falhou num passo seguinte
-    // (PublishedWithError, ex.: miniatura do YouTube) — publicar de novo
+    // (ou QUEUE aceito por provider assincrono): publicar de novo
     // subiria o video outra vez
     const liveWithError =
-      post?.state === 'ERROR' &&
+      (post?.state === 'ERROR' || post?.state === 'QUEUE') &&
       !!post.releaseId &&
       post.releaseId !== 'missing';
     if (post?.state !== 'PUBLISHED' && !liveWithError) {

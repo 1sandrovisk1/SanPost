@@ -12,7 +12,7 @@ services:
       DATABASE_URL: 'postgresql://postiz-user:postiz-password@postiz-postgres:5432/postiz-db-local'
       REDIS_URL: 'redis://postiz-redis:6379'
       BACKEND_INTERNAL_URL: 'http://localhost:3000'
-      TEMPORAL_ADDRESS: "temporal:7233"
+      TEMPORAL_ADDRESS: 'temporal:7233'
       # TEMPORAL_NAMESPACE: 'default'
       # TEMPORAL_API_KEY: ''
       # TEMPORAL_TLS: 'false'
@@ -20,9 +20,7 @@ services:
       # EXCLUDE_QUEUE: '' # filas de provider separadas por virgula; nunca main
       # TEMPORAL_HEALTH_TASK_QUEUES: 'main' # pollers de workflow
       # TEMPORAL_HEALTH_ACTIVITY_TASK_QUEUES: 'facebook,instagram' # pollers de activity
-      # POST_WORKFLOW_V112_INTEGRATION_IDS: '' # canario por integration.id exato
-      # POST_WORKFLOW_V112_PROVIDERS: '' # expansao por provider exato
-      # POST_WORKFLOW_V112_ALL: 'false' # somente apos todos os smoke tests
+      # V112 e padrao; agendamentos legados futuros sao migrados automaticamente.
       IS_GENERAL: 'true'
       DISABLE_REGISTRATION: 'false'
 
@@ -195,7 +193,7 @@ services:
       - postiz-config:/config/
       - postiz-uploads:/uploads/
     ports:
-      - "4007:5000"
+      - '4007:5000'
     networks:
       - postiz-network
       - temporal-network

@@ -64,14 +64,41 @@ describe('PostsService - selecao do workflow de publicacao', () => {
   it('aguarda RPC estrito com deadline real e preserva erro de agendamento', async () => {
     const { service, start, temporalService } = buildService();
     start.mockRejectedValue(new Error('offline'));
-    await expect(service.startWorkflow('instagram', 'post-1', 'org-1', 'QUEUE', { id: 'i', providerIdentifier: 'instagram' }, { strict: true })).rejects.toThrow('offline');
-    expect(temporalService.client.getRawClient().workflow.withDeadline).toHaveBeenCalledWith(expect.any(Number), expect.any(Function));
+    await expect(
+      service.startWorkflow(
+        'instagram',
+        'post-1',
+        'org-1',
+        'QUEUE',
+        { id: 'i', providerIdentifier: 'instagram' },
+        { strict: true }
+      )
+    ).rejects.toThrow('offline');
+    expect(
+      temporalService.client.getRawClient().workflow.withDeadline
+    ).toHaveBeenCalledWith(expect.any(Number), expect.any(Function));
   });
   it('stopOnly de publicado nunca inicia publicacao e sync estrito nao aceita PUBLISHED', async () => {
     const { service, start } = buildService();
-    await service.startWorkflow('instagram', 'post-1', 'org-1', 'PUBLISHED', { id: 'i', providerIdentifier: 'instagram' }, { strict: true, stopOnly: true });
+    await service.startWorkflow(
+      'instagram',
+      'post-1',
+      'org-1',
+      'PUBLISHED',
+      { id: 'i', providerIdentifier: 'instagram' },
+      { strict: true, stopOnly: true }
+    );
     expect(start).not.toHaveBeenCalled();
-    await expect(service.startWorkflow('instagram', 'post-1', 'org-1', 'PUBLISHED', { id: 'i', providerIdentifier: 'instagram' }, { strict: true })).rejects.toThrow('POST_SYNC_STATE_UNSUPPORTED');
+    await expect(
+      service.startWorkflow(
+        'instagram',
+        'post-1',
+        'org-1',
+        'PUBLISHED',
+        { id: 'i', providerIdentifier: 'instagram' },
+        { strict: true }
+      )
+    ).rejects.toThrow('POST_SYNC_STATE_UNSUPPORTED');
   });
   const originalEnv = {
     ids: process.env.POST_WORKFLOW_V112_INTEGRATION_IDS,
@@ -119,7 +146,7 @@ describe('PostsService - selecao do workflow de publicacao', () => {
     });
 
     expect(start).toHaveBeenCalledWith(
-      'postWorkflowV102',
+      'postWorkflowV112',
       expect.objectContaining({ workflowId: 'post_post-z' })
     );
   });

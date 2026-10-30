@@ -4,11 +4,15 @@ import {
   GenerateAuthUrlResponse,
   PostDetails,
   PostResponse,
+  PendingCheckResponse,
   SocialProvider,
 } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
 import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import { makeSecureId } from '@gitroom/nestjs-libraries/services/make.secure.id';
-import { SocialAbstract } from '@gitroom/nestjs-libraries/integrations/social.abstract';
+import {
+  BadBody,
+  SocialAbstract,
+} from '@gitroom/nestjs-libraries/integrations/social.abstract';
 import { Integration } from '@prisma/client';
 import Zernio from '@zernio/node';
 import { ioRedis } from '@gitroom/nestjs-libraries/redis/redis.service';
@@ -119,12 +123,16 @@ export class ZernioBaseProvider
 
     return {
       id: zernioAccountId,
-      name: account?.displayName || account?.username || `${this.platformName} Account`,
+      name:
+        account?.displayName ||
+        account?.username ||
+        `${this.platformName} Account`,
       accessToken: zernioApiKey,
       refreshToken: '',
       expiresIn: 999999999,
       picture,
-      username: account?.username || account?.displayName || `${this.platform}_user`,
+      username:
+        account?.username || account?.displayName || `${this.platform}_user`,
     };
   }
 
@@ -140,7 +148,10 @@ export class ZernioBaseProvider
     };
   }
 
-  private async checkUsage(zernio: InstanceType<typeof Zernio>, apiKey: string) {
+  private async checkUsage(
+    zernio: InstanceType<typeof Zernio>,
+    apiKey: string
+  ) {
     const cached = usageCache.get(apiKey);
     if (cached && cached.expiresAt > Date.now()) {
       return cached.data;
@@ -159,6 +170,16 @@ export class ZernioBaseProvider
     accessToken: string,
     postDetails: PostDetails[],
     integration: Integration
+  ): Promise<PostResponse[]> {
+    return this.sendPost(id, accessToken, postDetails, integration, false);
+  }
+
+  private async sendPost(
+    id: string,
+    accessToken: string,
+    postDetails: PostDetails[],
+    integration: Integration,
+    pending: boolean
   ): Promise<PostResponse[]> {
     // validacao da rede de destino antes de gastar chamadas na Zernio
     this.assertPublishable(postDetails);
@@ -225,6 +246,25 @@ export class ZernioBaseProvider
       });
 
       const zernioPostId = data?.post?._id || '';
+      if (pending) {
+        if (!zernioPostId) {
+          throw new BadBody(
+            this.identifier,
+            '{}',
+            Buffer.from('{}'),
+            'A Zernio não devolveu o identificador da publicação. Confira o painel Zernio antes de tentar novamente.'
+          );
+        }
+        return [
+          {
+            id: firstPost.id,
+            postId: zernioPostId,
+            releaseURL: '',
+            status: 'pending',
+            pendingData: { postId: zernioPostId },
+          },
+        ];
+      }
 
       // Poll Zernio API to verify the post was actually published on the platform.
       // Zernio accepts the post immediately but publishing may fail asynchronously
@@ -234,7 +274,8 @@ export class ZernioBaseProvider
         if (finalStatus === 'failed') {
           const errorMsg = await this.getPostErrorMessage(zernio, zernioPostId);
           throw new Error(
-            errorMsg || `Post was sent to Zernio but failed to publish on ${this.platformName}. Check your Zernio dashboard for details.`
+            errorMsg ||
+              `Post was sent to Zernio but failed to publish on ${this.platformName}. Check your Zernio dashboard for details.`
           );
         }
       }
@@ -262,6 +303,57 @@ export class ZernioBaseProvider
     }
   }
 
+  async postPending(
+    id: string,
+    accessToken: string,
+    postDetails: PostDetails[],
+    integration: Integration
+  ): Promise<PostResponse[]> {
+    // Mesmo preparo do legado, mas sem aguardar/confirmar resultado no envio.
+    return this.sendPost(id, accessToken, postDetails, integration, true);
+  }
+
+  async checkPostStatus(
+    accessToken: string,
+    pendingData: unknown,
+    _integration: Integration
+  ): Promise<PendingCheckResponse> {
+    const state = pendingData as { postId?: unknown };
+    if (!state || typeof state.postId !== 'string' || !state.postId) {
+      throw new BadBody(
+        this.identifier,
+        '{}',
+        Buffer.from('{}'),
+        'Identificador de publicação Zernio ausente. Confira o painel Zernio antes de tentar novamente.'
+      );
+    }
+    const zernio = new Zernio({ apiKey: accessToken });
+    const { data } = await zernio.posts.getPost({
+      path: { postId: state.postId },
+    });
+    const post = data?.post;
+    if (['failed', 'partial', 'cancelled'].includes(post?.status || '')) {
+      throw new BadBody(
+        this.identifier,
+        '{}',
+        Buffer.from('{}'),
+        'A publicação não foi concluída pela Zernio. Confira o resultado por plataforma no painel Zernio antes de tentar novamente.'
+      );
+    }
+    if (post?.status !== 'published') {
+      return { status: 'pending', pendingData: { postId: state.postId } };
+    }
+    const platform = post.platforms?.find(
+      (p: { platform?: string; platformPostUrl?: string }) =>
+        p.platform === this.platform
+    );
+    return {
+      status: 'completed',
+      postId: state.postId,
+      releaseURL: platform?.platformPostUrl || '',
+    };
+  }
+
   private async pollPostStatus(
     zernio: InstanceType<typeof Zernio>,
     postId: string,
@@ -275,7 +367,11 @@ export class ZernioBaseProvider
           path: { postId },
         });
         const status = data?.post?.status;
-        if (status === 'published' || status === 'failed' || status === 'partial') {
+        if (
+          status === 'published' ||
+          status === 'failed' ||
+          status === 'partial'
+        ) {
           return status;
         }
         // 'publishing' or 'scheduled' — keep polling
@@ -301,9 +397,12 @@ export class ZernioBaseProvider
         },
       });
       const logs = ((data as any)?.logs || []) as Array<any>;
-      const failedLog = logs.find(
-        (log) => log.status === 'failed' && (log.post_id === postId || log.postId === postId)
-      ) || logs[0];
+      const failedLog =
+        logs.find(
+          (log) =>
+            log.status === 'failed' &&
+            (log.post_id === postId || log.postId === postId)
+        ) || logs[0];
       return (
         failedLog?.error_message ||
         failedLog?.response?.errorMessage ||

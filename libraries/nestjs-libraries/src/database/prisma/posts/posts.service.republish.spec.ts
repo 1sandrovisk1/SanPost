@@ -207,7 +207,36 @@ describe('PostsService - republicacao explicita', () => {
       service.createPost('org-1', makeBody() as any, 'profile-1')
     ).rejects.toThrow('republish: true');
     await expect(
-      service.changeDate('org-1', 'post-1', '2026-12-01T10:00:00Z', 'schedule', 'profile-1')
+      service.changeDate(
+        'org-1',
+        'post-1',
+        '2026-12-01T10:00:00Z',
+        'schedule',
+        'profile-1'
+      )
+    ).rejects.toThrow('republish: true');
+    expect(repository.createOrUpdatePost).not.toHaveBeenCalled();
+    expect(repository.changeDate).not.toHaveBeenCalled();
+  });
+
+  it('envio aceito ainda em QUEUE exige opt-in no editor e reagendamento', async () => {
+    const { service, repository } = buildService();
+    repository.getPostById.mockResolvedValue({
+      ...publishedPost,
+      state: 'QUEUE',
+      releaseId: 'zernio-accepted',
+    } as any);
+    await expect(
+      service.createPost('org-1', makeBody() as any, 'profile-1')
+    ).rejects.toThrow('republish: true');
+    await expect(
+      service.changeDate(
+        'org-1',
+        'post-1',
+        '2026-12-01T10:00:00Z',
+        'schedule',
+        'profile-1'
+      )
     ).rejects.toThrow('republish: true');
     expect(repository.createOrUpdatePost).not.toHaveBeenCalled();
     expect(repository.changeDate).not.toHaveBeenCalled();
@@ -353,9 +382,16 @@ describe('PostsService - republicacao explicita', () => {
 describe('PostsService.updatePublishedRelease', () => {
   it('delega ao repositorio restrito a org', async () => {
     const { service, repository } = buildService();
-    repository.updatePublishedRelease.mockResolvedValue({ id: 'post-1' } as any);
+    repository.updatePublishedRelease.mockResolvedValue({
+      id: 'post-1',
+    } as any);
 
-    await service.updatePublishedRelease('post-1', 'org-1', 'vid-1', 'https://www.youtube.com/watch?v=vid-1');
+    await service.updatePublishedRelease(
+      'post-1',
+      'org-1',
+      'vid-1',
+      'https://www.youtube.com/watch?v=vid-1'
+    );
 
     expect(repository.updatePublishedRelease).toHaveBeenCalledWith(
       'post-1',

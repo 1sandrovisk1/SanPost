@@ -17,7 +17,10 @@ describe('StartupMigrationService.cleanupExpiredUnmatchedComments', () => {
 
   beforeEach(() => {
     prisma = {
-      scheduledAutomationEvent: { count: jest.fn().mockResolvedValue(0), deleteMany: jest.fn() },
+      scheduledAutomationEvent: {
+        count: jest.fn().mockResolvedValue(0),
+        deleteMany: jest.fn(),
+      },
       providerCredential: { count: jest.fn().mockResolvedValue(0) },
       organization: { count: jest.fn().mockResolvedValue(0) },
       integration: {
@@ -40,20 +43,23 @@ describe('StartupMigrationService.cleanupExpiredUnmatchedComments', () => {
     service = new StartupMigrationService(
       prisma,
       {
-        reconcileWorkflows: jest.fn().mockResolvedValue({ started: 0 }),
+        reconcileWorkflows: jest
+          .fn()
+          .mockResolvedValue({ total: 0, reconciled: 0 }),
       } as any,
       {
-        ensureRefreshTokensCronWorkflow: jest
-          .fn()
-          .mockResolvedValue(undefined),
-      } as any
+        ensureRefreshTokensCronWorkflow: jest.fn().mockResolvedValue(undefined),
+      } as any,
+      { ensureMigrationWorkflow: jest.fn().mockResolvedValue(undefined) } as any
     );
   });
 
   it('limpa capturas agendadas expiradas no boot de forma idempotente', async () => {
     prisma.scheduledAutomationEvent.count.mockResolvedValue(2);
     await service.onModuleInit();
-    expect(prisma.scheduledAutomationEvent.deleteMany).toHaveBeenCalledWith({where:{expiresAt:{lt:expect.any(Date)}}});
+    expect(prisma.scheduledAutomationEvent.deleteMany).toHaveBeenCalledWith({
+      where: { expiresAt: { lt: expect.any(Date) } },
+    });
     prisma.scheduledAutomationEvent.deleteMany.mockClear();
     prisma.scheduledAutomationEvent.count.mockResolvedValue(0);
     await service.onModuleInit();
@@ -120,13 +126,14 @@ describe('StartupMigrationService.backfillFlowsToDefaultProfile', () => {
     service = new StartupMigrationService(
       prisma,
       {
-        reconcileWorkflows: jest.fn().mockResolvedValue({ started: 0 }),
+        reconcileWorkflows: jest
+          .fn()
+          .mockResolvedValue({ total: 0, reconciled: 0 }),
       } as any,
       {
-        ensureRefreshTokensCronWorkflow: jest
-          .fn()
-          .mockResolvedValue(undefined),
-      } as any
+        ensureRefreshTokensCronWorkflow: jest.fn().mockResolvedValue(undefined),
+      } as any,
+      { ensureMigrationWorkflow: jest.fn().mockResolvedValue(undefined) } as any
     );
   });
 
@@ -181,25 +188,43 @@ describe('StartupMigrationService.reconcileRefreshTokensCron', () => {
     $executeRawUnsafe: jest.fn(),
   });
 
-  const buildService = (ensure: jest.Mock) =>
+  const buildService = (
+    ensure: jest.Mock,
+    reconcile = jest.fn().mockResolvedValue({ total: 0, reconciled: 0 })
+  ) =>
     new StartupMigrationService(
       buildPrisma() as any,
-      { reconcileWorkflows: jest.fn().mockResolvedValue({ started: 0 }) } as any,
-      { ensureRefreshTokensCronWorkflow: ensure } as any
+      { reconcileWorkflows: reconcile } as any,
+      { ensureRefreshTokensCronWorkflow: ensure } as any,
+      { ensureMigrationWorkflow: jest.fn().mockResolvedValue(undefined) } as any
     );
 
-  it('garante o workflow cron de refresh (singleton) no boot', async () => {
+  // o cliente do Temporal so fica pronto no onModuleInit do TemporalService,
+  // que corre em paralelo com o nosso: os passos que iniciam workflow vao para
+  // o bootstrap (depois de todos os onModuleInit)
+  it('garante o cron de refresh e os reposts so no bootstrap', async () => {
     const ensure = jest.fn().mockResolvedValue(undefined);
+    const reconcile = jest.fn().mockResolvedValue({ total: 0, reconciled: 0 });
+    const service = buildService(ensure, reconcile);
 
-    await buildService(ensure).onModuleInit();
+    await service.onModuleInit();
+    expect(ensure).not.toHaveBeenCalled();
+    expect(reconcile).not.toHaveBeenCalled();
 
+    await service.onApplicationBootstrap();
     expect(ensure).toHaveBeenCalledTimes(1);
+    expect(reconcile).toHaveBeenCalledTimes(1);
+    expect(
+      (service as any).postWorkflowMigration.ensureMigrationWorkflow
+    ).toHaveBeenCalledTimes(1);
   });
 
   it('nao derruba o boot quando o start do cron falha', async () => {
     const ensure = jest.fn().mockRejectedValue(new Error('temporal down'));
 
-    await expect(buildService(ensure).onModuleInit()).resolves.toBeUndefined();
+    await expect(
+      buildService(ensure).onApplicationBootstrap()
+    ).resolves.toBeUndefined();
   });
 });
 
@@ -210,7 +235,9 @@ describe('StartupMigrationService.migrateSkoolExtensionCookies', () => {
   const ORIGINAL_SECRET = process.env.JWT_SECRET;
   const secret = 'segredo-de-teste';
   // eslint-free: jsonwebtoken e CJS; sign real para o verifyJWT do helper
-  const { sign } = jest.requireActual('jsonwebtoken') as typeof import('jsonwebtoken');
+  const { sign } = jest.requireActual(
+    'jsonwebtoken'
+  ) as typeof import('jsonwebtoken');
   const { AuthService } = jest.requireActual(
     '@gitroom/helpers/auth/auth.service'
   ) as typeof import('@gitroom/helpers/auth/auth.service');
@@ -226,12 +253,15 @@ describe('StartupMigrationService.migrateSkoolExtensionCookies', () => {
     const service = new StartupMigrationService(
       prisma as any,
       {} as any,
-      {} as any
+      {} as any,
+      { ensureMigrationWorkflow: jest.fn().mockResolvedValue(undefined) } as any
     );
     const warn = jest
       .spyOn((service as any).logger, 'warn')
       .mockImplementation(() => undefined);
-    jest.spyOn((service as any).logger, 'log').mockImplementation(() => undefined);
+    jest
+      .spyOn((service as any).logger, 'log')
+      .mockImplementation(() => undefined);
     const run = () => (service as any).migrateSkoolExtensionCookies();
     return { prisma, run, warn };
   };
@@ -309,7 +339,10 @@ describe('StartupMigrationService.migrateSkoolExtensionCookies', () => {
     prisma.integration.count.mockResolvedValue(2);
     prisma.integration.findMany.mockResolvedValue([
       row(sign({ client_id: 'cid' }, secret), 'int-sem-token'),
-      row(sign({ client_id: 'cid', auth_token: 'tok' }, 'outro'), 'int-outro-segredo'),
+      row(
+        sign({ client_id: 'cid', auth_token: 'tok' }, 'outro'),
+        'int-outro-segredo'
+      ),
     ]);
 
     await run();

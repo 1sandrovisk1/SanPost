@@ -52,7 +52,7 @@ Durante a validação do criador compartilhado, `docker events` confirmou um OOM
 
 Após recriar somente o app às 17:56, o navegador autenticado renderizou o criador, o calendário `/launches` e as configurações `/settings`; a automação salva e ativa permaneceu no banco recuperado. Amostras do app ficaram entre 2,9 e 3,9 GiB, com zero reinicializações/OOM e healthcheck saudável durante essa verificação. Isso não representa medição contínua nem garantia de estabilidade prolongada. O ajuste fica restrito ao ambiente local; não altera o build de produção nem a sanitização.
 
-Os dois avisos de inicialização `reconcileRefreshTokensCron: Temporal Service is not initialized` continuam registrados no backend/worker local. São anteriores ao dispatcher compartilhado; `RUN_CRON` continua vazio e nenhuma renovação global foi habilitada. O dispatcher V2 inicializou e executou suas atividades separadamente.
+Os dois avisos de inicialização `reconcileRefreshTokensCron: Temporal Service is not initialized` (corrigidos em 28/10/2026 — a reconciliação roda em `onApplicationBootstrap`, depois do cliente do Temporal ficar pronto) apareciam no backend/worker local. Eram anteriores ao dispatcher compartilhado; `RUN_CRON` continua vazio e nenhuma renovação global foi habilitada. O dispatcher V2 inicializou e executou suas atividades separadamente.
 
 ### Reinicializações do frontend e erro 502 — 21/10/2026
 
@@ -149,7 +149,7 @@ Validado em 19/10/2026:
 - Tela `/auth` inspecionada no navegador: formulário de cadastro em português, sem erros no console coletado. A primeira compilação do login levou cerca de 39 segundos; os acessos seguintes responderam normalmente.
 - Nenhuma conta/Página criada ou conectada automaticamente. Cadastro, credenciais Meta e OAuth permanecem com o usuário. Nenhum túnel público iniciado.
 
-Limitação observada no código existente: `StartupMigrationService.onModuleInit` tentou executar `reconcileRefreshTokensCron` antes da inicialização do cliente Temporal, com `Temporal Service is not initialized`. A consulta ao Temporal confirmou que `refresh-tokens-cron` não foi criado. Isso não impediu API, cadastro ou pollers de iniciar, mas a renovação proativa em lote não está validada e precisa de correção com teste antes de homologação prolongada. O boot também emitiu aviso de configuração antiga do Sentry (`onRequestError` ausente). Esses pontos não foram alterados como parte da preparação Docker.
+Limitação observada no código existente (corrigida em 28/10/2026, ver `StartupMigrationService.onApplicationBootstrap`): `StartupMigrationService.onModuleInit` tentou executar `reconcileRefreshTokensCron` antes da inicialização do cliente Temporal, com `Temporal Service is not initialized`. A consulta ao Temporal confirmou que `refresh-tokens-cron` não foi criado. Isso não impediu API, cadastro ou pollers de iniciar, mas a renovação proativa em lote não está validada e precisa de correção com teste antes de homologação prolongada. O boot também emitiu aviso de configuração antiga do Sentry (`onRequestError` ausente). Esses pontos não foram alterados como parte da preparação Docker.
 
 
 ## Cache do frontend no túnel — 21/10/2026
