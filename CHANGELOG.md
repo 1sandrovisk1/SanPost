@@ -52,6 +52,17 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 - **Reconectar canal** de Farcaster, Telegram e Moltbook passa a abrir o modal de conexão (antes o botão abria uma URL quebrada), uma vez só por clique.
 - **Segurança:** cada aprovação fica registrada no servidor e só vale para quem a iniciou — no login, o mesmo navegador (cookie httpOnly); no canal, a mesma organização, usuário e fluxo — e uma vez só. O navegador recebe apenas um identificador opaco, que não passa pela URL. A conexão lê a conta e o perfil na Neynar em vez de confiar no navegador; login sem acesso aprovado deixa de gerar identidade vazia. Rotas do login com Farcaster (inclusive a troca do código) só existem com o botão ligado e têm limite por cliente e teto global; o patrocínio da Neynar vale só para conexão de canal.
 
+### Corrigido
+- **Revisão de imagem inline:** análise da colagem usa parser sem carregar recursos externos, preserva entidades no HTML, rejeita separadores codificados e evita conflito entre o arraste do editor e o calendário. Encurtamento preserva os URLs das imagens.
+
+
+### Adicionado — imagem dentro do conteúdo no WordPress e no ListMonk (2026-10-28)
+
+- Ao personalizar um canal **WordPress** ou **ListMonk**, as imagens vão para dentro do texto, no ponto do cursor: enviar arquivo, colar imagem, arrastar para o editor ou escolher na biblioteca de mídia (inclusive imagem gerada por IA ou criada no editor de design) insere a imagem no conteúdo, que pode ser arrastada para outra posição. O artigo do WordPress e o e-mail do ListMonk saem com as imagens no lugar em que aparecem; nos outros canais nada muda e o texto segue sem imagem. Vídeo não entra no conteúdo (aviso na tela).
+- Só imagens da biblioteca de mídia da própria instância entram no conteúdo: imagem de outro site colada no editor é descartada com aviso, e o servidor remove ao salvar qualquer `<img>` de outra origem, `data:`, caminho relativo e atributos como `onerror` — o preview público e os links de revisão não carregam pixel de terceiros nem abrem brecha de script.
+- API pública e agente MCP: o conteúdo aceita `<img src="...">` com mídia da biblioteca nos canais que levam imagem no corpo; as regras do WordPress e do ListMonk orientam o agente a usar `mediaListTool`/`generateImageTool`.
+- Arrastar texto e imagens dentro do editor de posts volta a funcionar (o arrastar do calendário não cancela mais o do editor).
+
 ### Melhorado — ferramentas de texto das automações (28/10/2026)
 
 - Resposta pública usa diretamente a etapa verde; pedido para seguir vira switch com apenas suas subetapas expansíveis. Alternativas privadas ganham boxes próprios para texto e botão/link.

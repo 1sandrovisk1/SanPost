@@ -12,11 +12,16 @@ import { WordpressDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-set
 import slugify from 'slugify';
 import { Tool } from '@gitroom/nestjs-libraries/integrations/tool.decorator';
 import { ssrfSafeFetch } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
+import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorator';
 
 // Hosts com WAF recusam requisicoes sem User-Agent (upstream #2172).
 const WORDPRESS_USER_AGENT =
   'RoboMultipost/1.0 (+https://github.com/maiconramos/robo-multipost)';
 
+// upstream 28701a98, com as tools do fork (nao ha uploadFromUrlTool aqui)
+@Rules(
+  'WordPress publishes the content as an article: pictures go inside the content as <img src="..."> where they should appear, the src must be the path of a picture from the media library (find it with mediaListTool, or create it with generateImageTool) - any other src is removed, attachments are not published, the cover picture is the main_image setting'
+)
 export class WordpressProvider
   extends SocialAbstract
   implements SocialProvider
@@ -30,6 +35,12 @@ export class WordpressProvider
   dto = WordpressDto;
   maxLength() {
     return 100000;
+  }
+
+  // o conteudo vira o corpo do artigo: figuras do editor ficam no lugar
+  // (upstream 2aae02fe)
+  inlineImages() {
+    return true;
   }
 
   private decodeToken(token: string) {

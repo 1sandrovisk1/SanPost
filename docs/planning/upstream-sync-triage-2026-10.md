@@ -1070,6 +1070,66 @@ PR); limite de 2 embeds por cast da Neynar não é validado no compositor (a
 Neynar recusa com `bad-body`); corpo exato do erro de signer revogado na Neynar
 não está documentado — conferir no teste de revogação em produção.
 
+### Imagem inline no editor (28/10/2026)
+
+Portados `2aae02fe` (imagem inline) e `28701a98` (descrição para o agente)
+na branch `feat/editor-inline-image-2026-10`. Editor: nó `image` arrastável,
+`Dropcursor`/`TrailingNode`, upload/colar/soltar/biblioteca inserem no
+cursor quando o canal personalizado declara `inlineImages` (WordPress e
+ListMonk) e o editor é `html`; só imagem (vídeo recusado com aviso);
+`ThirdPartyMedia` e vídeo por IA escondidos nesse modo. `dnd.provider` não
+cancela mais o arrastar nativo dentro do editor. Backend:
+`SocialProvider.inlineImages?(settings)`, `PostActivity` passa o sinal ao
+`stripHtmlValidation` nos dois mapeamentos (V102 e V112),
+`isAllowedUploadPath` extraído do `ValidUrlPath`, CSS de imagem no e-mail do
+ListMonk e `@Rules` do WordPress/ListMonk.
+
+Divergências (mais estritas que o upstream):
+- **Só mídia da instância.** O upstream aceita qualquer `src` http(s); o fork
+  aceita `FRONTEND_URL/uploads/...` e `CLOUDFLARE_BUCKET_URL/...`
+  (`helpers/utils/inline.images.ts`): sem credenciais na URL, sem `..` fora de
+  `/uploads/`, path só com os caracteres que o storage gera, query/fragmento
+  descartados, `RESTRICT_UPLOAD_DOMAINS` quando configurado. Outro site vira
+  pixel de rastreio no preview público/revisão e hotlink no artigo/e-mail.
+- **Sem hook global no DOMPurify.** O upstream registra
+  `uponSanitizeElement` na instância compartilhada, o que também alcançaria o
+  `sanitizeChatContent`. Aqui o DOMPurify roda como antes (agora com `img`,
+  `src`, `alt`) e `rewriteInlineImages` filtra depois, na árvore do parse5.
+- **`convertImages` na árvore, não por regex.** O regex do upstream deixava
+  o alt `&amp;quot;` virar `"` depois da decodificação de entidades do modo
+  `html` (atributo quebrado no HTML enviado), e um `<img` dentro do valor de
+  outro atributo deslocava aspas. O fork reconstrói só `src` normalizado e
+  `alt` sem `"`/`&`/`<`/`>`.
+- **Editor também filtra.** O nó `image` e o HTML colado só aceitam mídia da
+  instância (prefixos de `useVariables()`); imagem de fora é descartada com
+  aviso (`inline_image_not_from_media_library`).
+- **X fora.** O fork não tem X Articles (`173f92ed`, opcional na triagem de
+  agosto); a parte do X (`inlineMediaIds`, upload das figuras do artigo,
+  `inlineImages` do composer do X e a frase do `@Rules`) não se aplica. Tweet
+  segue texto puro.
+- **MCP.** O fork não tem `uploadFromUrlTool`; a descrição do conteúdo (no
+  `schedulePostTool` e no `managedMessageSchema`, que alimenta o
+  `updatePostTool` e o OpenAPI) e os `@Rules` apontam para
+  `mediaListTool`/`generateImageTool`, mantendo o escopo por perfil
+  (`CHANNEL_PROFILE_MISMATCH`).
+- Preview público (`/p/[id]`) com `max-width` nas imagens do conteúdo.
+
+Testes: `inline.images.spec.ts`, `sanitize.post.content.spec.ts` (casos de
+XSS), `strip.html.validation.inline.images.spec.ts`, `valid.url.path.spec.ts`,
+`inline.images.conversion.spec.ts` (X/WordPress/ListMonk/Telegram/Hashnode),
+`listmonk.provider.spec.ts`, `wordpress.provider.spec.ts`, spec do
+`schedulePostTool`, `post.activity.spec.ts` e o vitest
+`new-launch/inline.images.spec.ts` (DOMPurify real: `onerror`, `javascript:`,
+`data:` SVG, `svg/image`, `picture/source`, mXSS de `math`/`noscript`).
+
+Follow-ups: o preview do composer (`general.preview`) não mostra a imagem
+inline (como no upstream); conteúdo só com imagem e sem texto/anexo continua
+recusado pelo `ValidContent` (como no upstream). Pré-existente, registrado: o
+modo `html` do `stripHtmlValidation` decodifica `&lt;`/`&gt;` depois do
+`striptags`, então texto digitado como `<script>` chega como HTML ao
+WordPress/ListMonk — vale para o autor do post no próprio site/lista, não é
+superfície nova deste porte.
+
 ## Apêndice — classificação 1 por 1 (171 PRs + 74 commits diretos)
 
 Legenda: **P0** segurança (nesta branch) · **ADOPT** cherry-pick/porte leve ·

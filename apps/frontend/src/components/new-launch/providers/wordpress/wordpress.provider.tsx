@@ -63,4 +63,5 @@ export default withProvider<WordpressDto>({
   checkValidity: undefined,
   maximumCharacters: 100000,
   defaults: { status: 'publish' },
+  inlineImages: true,
 });

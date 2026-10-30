@@ -51,6 +51,7 @@ import { SubscriptionService } from '@gitroom/nestjs-libraries/database/prisma/s
 import { FlowsService } from '@gitroom/nestjs-libraries/database/prisma/flows/flows.service';
 import { EncryptionService } from '@gitroom/nestjs-libraries/crypto/encryption.service';
 import { PostActivity } from './post.activity';
+import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validation';
 import {
   BadBody,
   PublishedWithError,
@@ -500,3 +501,54 @@ describe('PostActivity.sendWebhooks', () => {
   });
 });
 
+// imagem inline (upstream 2aae02fe): a conversao do conteudo so mantem <img>
+// para o provider que declara inlineImages (WordPress, ListMonk), com as
+// settings do post.
+describe('PostActivity imagem inline', () => {
+  const strip = stripHtmlValidation as jest.Mock;
+
+  beforeEach(() => strip.mockClear());
+
+  const inlineArg = () => strip.mock.calls[0][6];
+
+  it('V112 passa inlineImages com as settings do post', async () => {
+    const { activity, provider, postService } = buildActivity();
+    const inlineImages = jest.fn().mockReturnValue(true);
+    Object.assign(provider, { editor: 'html', inlineImages });
+    const withSettings = { ...post, settings: '{"title":"t"}' };
+    postService.updateTags.mockResolvedValue([withSettings] as any);
+    provider.postPending.mockResolvedValue([
+      { id: 'post-1', postId: 'r', releaseURL: '', status: 'completed' },
+    ]);
+
+    await activity.postSocialPending('org-1', 'integration-1', [
+      withSettings as any,
+    ]);
+
+    expect(inlineImages).toHaveBeenCalledWith({ title: 't' });
+    expect(inlineArg()).toBe(true);
+  });
+
+  it('V102 tambem passa inlineImages', async () => {
+    const { activity, provider } = buildActivity();
+    Object.assign(provider, { inlineImages: () => true });
+    provider.post.mockResolvedValue([
+      { id: 'post-1', postId: 'r', releaseURL: '', status: 'success' },
+    ]);
+
+    await activity.postSocial({ ...integration } as any, [post as any]);
+
+    expect(inlineArg()).toBe(true);
+  });
+
+  it('provider sem inlineImages recebe false (texto sem <img>)', async () => {
+    const { activity, provider } = buildActivity();
+    provider.postPending.mockResolvedValue([
+      { id: 'post-1', postId: 'r', releaseURL: '', status: 'completed' },
+    ]);
+
+    await activity.postSocialPending('org-1', 'integration-1', [post as any]);
+
+    expect(inlineArg()).toBe(false);
+  });
+});

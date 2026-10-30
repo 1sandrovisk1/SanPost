@@ -2813,5 +2813,7 @@
   "farcaster_qr_alt": "QR code para aprovar o acesso no app do Farcaster",
   "farcaster_neynar_unavailable": "O Farcaster está indisponível nesta instância (conta da Neynar). Avise o administrador.",
   "farcaster_rate_limited": "Muitas tentativas de conexão com o Farcaster. Aguarde alguns minutos e tente de novo.",
-  "farcaster_session_invalid": "Esta aprovação do Farcaster não é mais válida. Feche e tente de novo."
+  "farcaster_session_invalid": "Esta aprovação do Farcaster não é mais válida. Feche e tente de novo.",
+  "only_images_can_be_added_to_the_content": "Apenas imagens podem ser adicionadas ao conteúdo",
+  "inline_image_not_from_media_library": "Só imagens da biblioteca de mídia podem entrar no conteúdo"
 }
