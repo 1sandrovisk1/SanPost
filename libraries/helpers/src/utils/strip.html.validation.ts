@@ -171,6 +171,7 @@ export const stripHtmlValidation = (
       ),
       [
         'ul',
+        'ol',
         'li',
         'h1',
         'h2',

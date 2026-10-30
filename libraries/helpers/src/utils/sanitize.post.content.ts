@@ -11,6 +11,7 @@ const ALLOWED_TAGS = [
   'u',
   'a',
   'ul',
+  'ol',
   'li',
   'h1',
   'h2',

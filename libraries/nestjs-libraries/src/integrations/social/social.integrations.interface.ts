@@ -203,7 +203,7 @@ export interface SocialProvider
   // acontece via MetaSystemUserService (System User token) ou no post-time.
   noNativeRefresh?: boolean;
   dto?: any;
-  maxLength: (additionalSettings?: any) => number;
+  maxLength: (additionalSettings?: any, settings?: any) => number;
   isWeb3?: boolean;
   isChromeExtension?: boolean;
   extensionCookies?: { name: string; domain: string }[];

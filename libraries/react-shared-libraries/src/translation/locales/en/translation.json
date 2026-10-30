@@ -2964,5 +2964,18 @@
   "facebook_preset_219266485227663": "Solid magenta",
   "facebook_preset_1289741387813798": "Solid dark red",
   "facebook_preset_1365883126823705": "Solid blue",
-  "tumblr_single_post": "Tumblr supports one post, without comment blocks. Remove the extra blocks for this channel."
+  "tumblr_single_post": "Tumblr supports one post, without comment blocks. Remove the extra blocks for this channel.",
+  "x_post_format": "Post format",
+  "x_format_post": "Post",
+  "x_format_article": "Article",
+  "x_article_native_only": "Articles require a native X connection.",
+  "x_use_regular_post": "Use regular post",
+  "x_article_title": "Article title",
+  "x_article_destination": "Send article to X",
+  "x_article_save_draft": "Save draft on X",
+  "x_article_publish": "Publish article",
+  "x_article_cover": "Article cover",
+  "x_article_cover_hint": "Optional cover, separate from images in the article body.",
+  "x_article_requirements": "Requires article access on the X account and app. Saving a draft sends it to X without publishing; draft articles cannot have replies.",
+  "x_article_invalid": "Check the article title, images, text limits and remove replies from draft articles."
 }

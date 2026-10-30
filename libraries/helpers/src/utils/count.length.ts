@@ -1,5 +1,6 @@
 // @ts-ignore
 import twitter from 'twitter-text';
+import { stripHtmlValidation } from './strip.html.validation';
 
 // Zernio publica nas mesmas redes: zernio-twitter conta como x e
 // zernio-threads como threads.
@@ -48,7 +49,19 @@ export const weightedLength = (text: string): number => {
 // Comprimento efetivo do texto para o limite de cada rede: X pesa pelo
 // twitter-text; Threads limita em bytes UTF-8 (acentos e emoji contam mais);
 // as demais contam caracteres.
-export const countLength = (integrationType: string, text: string): number => {
+export const countLength = (
+  integrationType: string,
+  text: string,
+  settings?: unknown
+): number => {
+  if (
+    integrationType === 'x' &&
+    settings &&
+    typeof settings === 'object' &&
+    'post_type' in settings &&
+    settings.post_type === 'article'
+  )
+    return text.length;
   const platform = platformOf(integrationType);
   if (platform === 'x') {
     return weightedLength(text);
@@ -59,6 +72,26 @@ export const countLength = (integrationType: string, text: string): number => {
   }
 
   return text.length;
+};
+
+export const countPostContent = (
+  identifier: string,
+  html: string,
+  settings?: unknown,
+  index = 0
+): number => {
+  const article =
+    identifier === 'x' &&
+    settings &&
+    typeof settings === 'object' &&
+    'post_type' in settings &&
+    settings.post_type === 'article' &&
+    index === 0;
+  return countLength(
+    identifier,
+    stripHtmlValidation(article ? 'none' : 'normal', html, true),
+    article ? settings : undefined
+  );
 };
 
 // Unidade do limite, para mensagens de erro: Threads limita em bytes UTF-8.

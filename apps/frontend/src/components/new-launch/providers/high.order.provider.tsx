@@ -74,10 +74,13 @@ export const withProvider = function <T extends object>(params: {
     t?: (key: string, defaultValue: string) => string,
     // identificador do canal (ex.: 'tiktok' vs 'zernio-tiktok'): componentes
     // compartilhados com os canais Zernio usam para limitar checagens nativas
-    identifier?: string
+    identifier?: string,
+    contents?: string[]
   ) => Promise<string | true>;
-  maximumCharacters?: number | ((settings: any) => number);
-  inlineImages?: boolean | ((values: any) => boolean);
+  maximumCharacters?:
+    | number
+    | ((additionalSettings: any, values?: any) => number);
+  inlineImages?: boolean | ((values: any, identifier?: string) => boolean);
 }) {
   const {
     postComment,
@@ -138,48 +141,6 @@ export const withProvider = function <T extends object>(params: {
       }))
     );
 
-    useEffect(() => {
-      if (!setTotalChars) {
-        return;
-      }
-
-      setChars(
-        props.id,
-        typeof maximumCharacters === 'number'
-          ? maximumCharacters
-          : maximumCharacters(
-              JSON.parse(
-                selectedIntegration.integration.additionalSettings || '[]'
-              )
-            )
-      );
-
-      if (isGlobal) {
-        setComments(true);
-        setPostComment(PostComment.ALL);
-        setTotalChars(0);
-        setEditor('normal');
-        setInlineImages(false);
-      }
-
-      if (current) {
-        setComments(
-          typeof params.comments === 'undefined' ? true : params.comments
-        );
-        setEditor(selectedIntegration?.integration.editor);
-        setPostComment(postComment);
-        setTotalChars(
-          typeof maximumCharacters === 'number'
-            ? maximumCharacters
-            : maximumCharacters(
-                JSON.parse(
-                  selectedIntegration.integration.additionalSettings || '[]'
-                )
-              )
-        );
-      }
-    }, [justCurrent, current, isGlobal, setTotalChars]);
-
     // com midia, o painel de miniaturas mantem as configuracoes visiveis
     // mesmo sem configuracao do canal (upstream #2285)
     const hasMediaSettings = useMediaSettingsValues().some(
@@ -224,15 +185,53 @@ export const withProvider = function <T extends object>(params: {
       reValidateMode: 'onChange',
     });
 
-    // the post settings can turn inline images on (upstream: X article; the
-    // fork has no X article, so today only WordPress/ListMonk set `true`)
+    // Settings control inline pictures and reactive character limits (X Articles).
     const values = useWatch({
       control: form.control,
-      disabled: typeof params.inlineImages !== 'function',
+      disabled:
+        typeof params.inlineImages !== 'function' &&
+        typeof maximumCharacters !== 'function',
     });
+    const characterLimit =
+      typeof maximumCharacters === 'number'
+        ? maximumCharacters
+        : maximumCharacters?.(
+            JSON.parse(
+              selectedIntegration.integration.additionalSettings || '[]'
+            ),
+            values
+          ) || 1000000;
+    useEffect(() => {
+      if (!setTotalChars) {
+        return;
+      }
+
+      setChars(props.id, characterLimit);
+
+      if (isGlobal) {
+        setComments(true);
+        setPostComment(PostComment.ALL);
+        setTotalChars(0);
+        setEditor('normal');
+        setInlineImages(false);
+      }
+
+      if (current) {
+        setComments(
+          typeof params.comments === 'undefined' ? true : params.comments
+        );
+        setEditor(selectedIntegration?.integration.editor);
+        setPostComment(postComment);
+        setTotalChars(characterLimit);
+      }
+    }, [justCurrent, current, isGlobal, setTotalChars, characterLimit]);
+
     const inlineImages =
       typeof params.inlineImages === 'function'
-        ? params.inlineImages(values)
+        ? params.inlineImages(
+            values,
+            selectedIntegration.integration.identifier
+          )
         : !!params.inlineImages;
     useEffect(() => {
       if (current) {
@@ -259,19 +258,13 @@ export const withProvider = function <T extends object>(params: {
                     selectedIntegration.integration.additionalSettings || '[]'
                   ),
                   t,
-                  selectedIntegration.integration.identifier
+                  selectedIntegration.integration.identifier,
+                  value.map((p) => p.content)
                 )
               : true,
             settings,
             values: value,
-            maximumCharacters:
-              typeof maximumCharacters === 'number'
-                ? maximumCharacters
-                : maximumCharacters(
-                    JSON.parse(
-                      selectedIntegration.integration.additionalSettings || '[]'
-                    )
-                  ),
+            maximumCharacters: characterLimit,
             fix: () => {
               setCurrent(props.id);
               setHide(true);
@@ -294,7 +287,7 @@ export const withProvider = function <T extends object>(params: {
           return form.trigger();
         },
       }),
-      [value]
+      [value, characterLimit]
     );
 
     return (
@@ -333,31 +326,9 @@ export const withProvider = function <T extends object>(params: {
                 (!SettingsComponent && !data?.internalPlugs?.length)) &&
               !!value?.[0]?.content?.length &&
               (CustomPreviewComponent ? (
-                <CustomPreviewComponent
-                  maximumCharacters={
-                    typeof maximumCharacters === 'number'
-                      ? maximumCharacters
-                      : maximumCharacters(
-                          JSON.parse(
-                            selectedIntegration.integration
-                              .additionalSettings || '[]'
-                          )
-                        )
-                  }
-                />
+                <CustomPreviewComponent maximumCharacters={characterLimit} />
               ) : (
-                <GeneralPreviewComponent
-                  maximumCharacters={
-                    typeof maximumCharacters === 'number'
-                      ? maximumCharacters
-                      : maximumCharacters(
-                          JSON.parse(
-                            selectedIntegration.integration
-                              .additionalSettings || '[]'
-                          )
-                        )
-                  }
-                />
+                <GeneralPreviewComponent maximumCharacters={characterLimit} />
               ))}
             {(SettingsComponent || !!data?.internalPlugs?.length) &&
               createPortal(

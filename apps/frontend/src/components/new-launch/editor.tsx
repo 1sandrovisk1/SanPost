@@ -1,4 +1,6 @@
 'use client';
+import { xMaximumLength } from '@gitroom/nestjs-libraries/integrations/social/x.article';
+
 
 import React, {
   FC,
@@ -54,7 +56,7 @@ import { Fragment, Slice } from '@tiptap/pm/model';
 import Underline from '@tiptap/extension-underline';
 import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validation';
 import { History } from '@tiptap/extension-history';
-import { BulletList, ListItem } from '@tiptap/extension-list';
+import { BulletList, ListItem, OrderedList } from '@tiptap/extension-list';
 import { Bullets } from '@gitroom/frontend/components/new-launch/bullets.component';
 import Heading from '@tiptap/extension-heading';
 import { HeadingComponent } from '@gitroom/frontend/components/new-launch/heading.component';
@@ -922,9 +924,13 @@ export const Editor: FC<{
     noDrag: internalDrag || (num > 0 && comments === 'no-media'),
   });
 
+  const activeChannelId = useLaunchStore(s => s.current);
+  const articleReplyLimit = identifier === 'x' && props.totalChars === 100000 && (num || 0) > 0
+    ? xMaximumLength(JSON.parse(props.selectedIntegration.find(p => p.integration.id === activeChannelId)?.integration.additionalSettings || '[]')) : props.totalChars;
+  const articleBody = identifier === 'x' && props.totalChars === 100000 && (num || 0) === 0;
   const valueWithoutHtml = useMemo(() => {
-    return stripHtmlValidation('normal', props.value || '', true);
-  }, [props.value]);
+    return stripHtmlValidation(articleBody ? 'none' : 'normal', props.value || '', true);
+  }, [props.value, articleBody]);
 
   const addText = useCallback(
     (emoji: string) => {
@@ -1100,10 +1106,11 @@ export const Editor: FC<{
                     insertInContent={inlineImages ? insertInline : undefined}
                     information={
                       <InformationComponent
+                        article={articleBody}
                         isPicture={pictures?.length > 0}
                         chars={chars}
                         totalChars={valueWithoutHtml.length}
-                        totalAllowedChars={props.totalChars}
+                        totalAllowedChars={articleReplyLimit}
                         text={valueWithoutHtml}
                       />
                     }
@@ -1398,6 +1405,7 @@ export const OnlyEditor = forwardRef<
         : []),
       ...(editorType === 'html' || editorType === 'markdown'
         ? [
+            OrderedList,
             Heading.configure({
               levels: [1, 2, 3],
             }),

@@ -23,7 +23,7 @@ import { isAllowedMediaPath, isRemoteMediaPath } from './media.path.guard';
 import { checkPublicHttpsUrl } from '../../../dtos/validators/is-public-https-url.validator';
 import { socialIntegrationList } from '../../../integrations/integration.manager';
 import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validation';
-import { countLength, countLengthUnit } from '@gitroom/helpers/utils/count.length';
+import { countPostContent, countLengthUnit } from '@gitroom/helpers/utils/count.length';
 import { coerceJsonSettingValue, stringKeysOf } from '../../../chat/tools/settings.value.coercion';
 
 function parse<T>(schema: z.ZodType<T>, raw: unknown): T {
@@ -282,10 +282,9 @@ export class PostManagementService {
     } catch {
       /* Missing legacy metadata uses the regular provider limit. */
     }
-    for (const message of value.value) {
-      const text = stripHtmlValidation('normal', message.content, true);
-      const length = countLength(provider.identifier, text);
-      if (length > (provider.maxLength(verified) || 1000000))
+    for (const [index, message] of value.value.entries()) {
+      const length = countPostContent(provider.identifier, message.content, value.settings, index);
+      if (length > (provider.maxLength(verified, index === 0 ? value.settings : undefined) || 1000000))
         postError(countLengthUnit(provider.identifier) === 'bytes' ? 'POST_CONTENT_TOO_LONG_BYTES' : 'POST_CONTENT_TOO_LONG');
     }
     return {
