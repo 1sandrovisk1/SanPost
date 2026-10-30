@@ -2,10 +2,7 @@ import { HttpException, Injectable } from '@nestjs/common';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import OpenAI from 'openai';
-import {
-  ImageOptions,
-  TextOptions,
-} from './ai-credential.schemas';
+import { ImageOptions, TextOptions } from './ai-credential.schemas';
 import { ResolvedAiCredential } from './ai-credential.service';
 import { AiProviderResolverService } from './ai-provider-resolver.service';
 
@@ -178,12 +175,18 @@ export class AiClientFactory {
    * `openai` v4 e chama `openai.beta.chat.completions.stream(...)`. No `openai`
    * v6 (versao deste monorepo) esse helper saiu de `beta` e virou
    * `chat.completions.stream`. Religamos `beta.chat -> chat` para o adapter
-   * voltar a funcionar sem precisar fazer downgrade do SDK.
+   * voltar a funcionar sem precisar fazer downgrade do SDK. O shim atende o
+   * process() legado; o modelo retornado abaixo atende getLanguageModel()
+   * do CopilotKit 1.72 sem mudar para o protocolo Responses.
    */
   async buildOpenAiCompatibleClient(
     organizationId: string,
     profileId?: string
-  ): Promise<{ client: OpenAI; model: string }> {
+  ): Promise<{
+    client: OpenAI;
+    model: string;
+    languageModel: ReturnType<ReturnType<typeof createOpenAI>['chat']>;
+  }> {
     const cfg = await this.openAiCompatibleTextConfig(
       organizationId,
       profileId
@@ -193,7 +196,13 @@ export class AiClientFactory {
     if (beta && !beta.chat) {
       beta.chat = (client as any).chat;
     }
-    return { client, model: cfg.model };
+    // CopilotKit 1.72 otherwise calls provider(model) and switches to Responses.
+    // Preserve the Chat Completions contract for OpenAI-compatible providers.
+    const languageModel = createOpenAI({
+      apiKey: cfg.apiKey,
+      baseURL: cfg.baseURL,
+    }).chat(cfg.model);
+    return { client, model: cfg.model, languageModel };
   }
 
   /**

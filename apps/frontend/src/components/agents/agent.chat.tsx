@@ -13,8 +13,9 @@ import {
   ErrorMessageProps,
   InputProps,
   UserMessageProps,
-} from '@copilotkit/react-ui/dist/components/chat/props';
+} from '@copilotkit/react-ui';
 import { Input } from '@gitroom/frontend/components/agents/agent.input';
+import { getAgentMessageText } from './agent.message';
 import { useToaster } from '@gitroom/react/toaster/toaster';
 import { useModals } from '@gitroom/frontend/components/layout/new-modal';
 import {
@@ -150,6 +151,7 @@ export const AgentChat: FC = () => {
       credentials="include"
       runtimeUrl={backendUrl + '/copilot/agent'}
       showDevConsole={false}
+      enableInspector={false}
       agent="postiz"
       properties={{
         integrations: properties,
@@ -234,7 +236,7 @@ const LoadMessages: FC<{ id: string }> = ({ id }) => {
 
 const Message: FC<UserMessageProps> = (props) => {
   const convertContentToImagesAndVideo = useMemo(() => {
-    const html = (props.message?.content || '')
+    const html = getAgentMessageText(props.message?.content)
       .replace(/Video: (http.*mp4\n)/g, (match, p1) => {
         return `<video controls class="h-[150px] w-[150px] rounded-[8px] mb-[10px]"><source src="${p1.trim()}" type="video/mp4">Your browser does not support the video tag.</video>`;
       })

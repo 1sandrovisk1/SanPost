@@ -18,13 +18,23 @@ const fixAcceptHeader = (req: Request) => {
   }
 };
 
+// New-era clients keep this acknowledgement stream open indefinitely. Tool
+// definitions are static, so close only authenticated listen streams after 10s.
+const endListenStream = (req: Request, res: Response) => {
+  if (req.headers['mcp-method'] !== 'subscriptions/listen') return;
+  const timer = setTimeout(() => res.end(), 10_000);
+  res.once('close', () => clearTimeout(timer));
+};
+
 export const startMcp = async (app: INestApplication) => {
   const mastraService = app.get(MastraService, { strict: false });
   const organizationService = app.get(OrganizationService, { strict: false });
   const oauthService = app.get(OAuthService, { strict: false });
   const profileService = app.get(ProfileService, { strict: false });
 
-  const resolveAuth = async (token: string): Promise<{ org: any; profileId?: string } | null> => {
+  const resolveAuth = async (
+    token: string
+  ): Promise<{ org: any; profileId?: string } | null> => {
     if (token.startsWith('pos_')) {
       const authorization = await oauthService.getOrgByOAuthToken(token);
       if (!authorization) return null;
@@ -46,6 +56,7 @@ export const startMcp = async (app: INestApplication) => {
 
   const serverConfig = {
     name: 'Postiz MCP',
+    protocolVersion: '2026-07-28' as const,
     version: '1.0.0',
     tools,
     agents: { postiz: agent },
@@ -53,7 +64,10 @@ export const startMcp = async (app: INestApplication) => {
 
   const server = new MCPServer(serverConfig);
 
-  const oauthResource = new URL('/mcp-oauth', process.env.NEXT_PUBLIC_BACKEND_URL!).toString();
+  const oauthResource = new URL(
+    '/mcp-oauth',
+    process.env.NEXT_PUBLIC_BACKEND_URL!
+  ).toString();
   const oauthMiddleware = createOAuthMiddleware({
     oauth: {
       resource: oauthResource,
@@ -61,7 +75,11 @@ export const startMcp = async (app: INestApplication) => {
       validateToken: async (token: string) => {
         const resolved = await resolveAuth(token);
         if (!resolved) {
-          return { valid: false, error: 'invalid_token', errorDescription: 'Invalid API Key or OAuth token' };
+          return {
+            valid: false,
+            error: 'invalid_token',
+            errorDescription: 'Invalid API Key or OAuth token',
+          };
         }
         return { valid: true, subject: token };
       },
@@ -70,84 +88,114 @@ export const startMcp = async (app: INestApplication) => {
   });
 
   if (process.env.OPENAI_APP_CHALLANGE) {
-    app.use('/.well-known/openai-apps-challenge', (req: Request, res: Response) => {
-      res.setHeader('Content-Type', 'text/plain');
-      res.send(process.env.OPENAI_APP_CHALLANGE);
-    });
+    app.use(
+      '/.well-known/openai-apps-challenge',
+      (req: Request, res: Response) => {
+        res.setHeader('Content-Type', 'text/plain');
+        res.send(process.env.OPENAI_APP_CHALLANGE);
+      }
+    );
   }
 
-  app.use('/.well-known/oauth-protected-resource', async (req: Request, res: Response, next: () => void) => {
-    // Only /mcp-oauth is OAuth-protected. Keep the root and key-in-URL
-    // connectors outside OAuth discovery.
-    if (req.path !== '/mcp-oauth') {
-      next();
-      return;
+  app.use(
+    '/.well-known/oauth-protected-resource',
+    async (req: Request, res: Response, next: () => void) => {
+      // Only /mcp-oauth is OAuth-protected. Keep the root and key-in-URL
+      // connectors outside OAuth discovery.
+      if (req.path !== '/mcp-oauth') {
+        next();
+        return;
+      }
+
+      const url = new URL(
+        '/.well-known/oauth-protected-resource',
+        process.env.NEXT_PUBLIC_BACKEND_URL
+      );
+      await oauthMiddleware(req, res, url);
     }
+  );
 
-    const url = new URL('/.well-known/oauth-protected-resource', process.env.NEXT_PUBLIC_BACKEND_URL);
-    await oauthMiddleware(req, res, url);
-  });
+  app.use(
+    '/.well-known/oauth-authorization-server',
+    async (req: Request, res: Response, next: () => void) => {
+      if (req.path !== '/mcp-oauth') {
+        next();
+        return;
+      }
 
-  app.use('/.well-known/oauth-authorization-server', async (req: Request, res: Response, next: () => void) => {
-    if (req.path !== '/mcp-oauth') {
-      next();
-      return;
-    }
-
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    if (req.method === 'OPTIONS') {
-      res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-      res.writeHead(204);
-      res.end();
-      return;
-    }
-    res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Cache-Control', 'max-age=3600');
-    res.json({
-      issuer: oauthResource,
-      authorization_endpoint: `${process.env.FRONTEND_URL}/oauth/authorize`,
-      token_endpoint: `${process.env.NEXT_PUBLIC_OVERRIDE_BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL}/oauth/token`,
-      response_types_supported: ['code'],
-      grant_types_supported: ['authorization_code'],
-      code_challenge_methods_supported: ['S256'],
-      scopes_supported: ['mcp:read', 'mcp:write'],
-    });
-  });
-
-  app.use('/mcp-oauth', async (req: Request, res: Response, next: () => void) => {
-    // Skip if this is the /mcp/:id route
-    if (req.path !== '/' && req.path !== '') {
-      next();
-      return;
-    }
-
-    const url = new URL('/mcp-oauth', process.env.NEXT_PUBLIC_BACKEND_URL);
-
-    const result = await oauthMiddleware(req, res, url);
-    if (!result.proceed) return;
-
-    const token = result.tokenValidation?.subject;
-    const resolved = await resolveAuth(token!);
-    if (!resolved) {
-      res.status(401).json({ error: 'invalid_token', error_description: 'Could not resolve organization' });
-      return;
-    }
-
-    fixAcceptHeader(req);
-    await runWithContext({ requestId: token!, auth: resolved.org, profileId: resolved.profileId }, async () => {
-      await server.startHTTP({
-        url: url,
-        httpPath: url.pathname,
-        options: {
-          serverless: true,
-          enableJsonResponse: true,
-        },
-        req,
-        res,
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      if (req.method === 'OPTIONS') {
+        res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+        res.writeHead(204);
+        res.end();
+        return;
+      }
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Cache-Control', 'max-age=3600');
+      res.json({
+        issuer: oauthResource,
+        authorization_endpoint: `${process.env.FRONTEND_URL}/oauth/authorize`,
+        token_endpoint: `${
+          process.env.NEXT_PUBLIC_OVERRIDE_BACKEND_URL ||
+          process.env.NEXT_PUBLIC_BACKEND_URL
+        }/oauth/token`,
+        response_types_supported: ['code'],
+        grant_types_supported: ['authorization_code'],
+        code_challenge_methods_supported: ['S256'],
+        scopes_supported: ['mcp:read', 'mcp:write'],
       });
-    });
-  });
+    }
+  );
+
+  app.use(
+    '/mcp-oauth',
+    async (req: Request, res: Response, next: () => void) => {
+      // Skip if this is the /mcp/:id route
+      if (req.path !== '/' && req.path !== '') {
+        next();
+        return;
+      }
+
+      const url = new URL('/mcp-oauth', process.env.NEXT_PUBLIC_BACKEND_URL);
+
+      const result = await oauthMiddleware(req, res, url);
+      if (!result.proceed) return;
+
+      const token = result.tokenValidation?.subject;
+      const resolved = await resolveAuth(token!);
+      if (!resolved) {
+        res
+          .status(401)
+          .json({
+            error: 'invalid_token',
+            error_description: 'Could not resolve organization',
+          });
+        return;
+      }
+
+      fixAcceptHeader(req);
+      endListenStream(req, res);
+      await runWithContext(
+        {
+          requestId: token!,
+          auth: resolved.org,
+          profileId: resolved.profileId,
+        },
+        async () => {
+          await server.startHTTP({
+            url: url,
+            httpPath: url.pathname,
+            options: {
+              serverless: true,
+            },
+            req,
+            res,
+          });
+        }
+      );
+    }
+  );
 
   app.use('/mcp', async (req: Request, res: Response, next: () => void) => {
     // Skip if this is the /mcp/:id route
@@ -184,18 +232,21 @@ export const startMcp = async (app: INestApplication) => {
     const url = new URL('/mcp', process.env.NEXT_PUBLIC_BACKEND_URL);
 
     fixAcceptHeader(req);
-    await runWithContext({ requestId: token, auth: resolved.org, profileId: resolved.profileId }, async () => {
-      await server.startHTTP({
-        url,
-        httpPath: url.pathname,
-        options: {
-          serverless: true,
-          enableJsonResponse: true,
-        },
-        req,
-        res,
-      });
-    });
+    endListenStream(req, res);
+    await runWithContext(
+      { requestId: token, auth: resolved.org, profileId: resolved.profileId },
+      async () => {
+        await server.startHTTP({
+          url,
+          httpPath: url.pathname,
+          options: {
+            serverless: true,
+          },
+          req,
+          res,
+        });
+      }
+    );
   });
 
   app.use('/mcp/:id', async (req: Request, res: Response) => {
@@ -219,12 +270,10 @@ export const startMcp = async (app: INestApplication) => {
     // @ts-ignore
     req.auth = resolved.org;
 
-    const url = new URL(
-      `/mcp/${mcpId}`,
-      process.env.NEXT_PUBLIC_BACKEND_URL
-    );
+    const url = new URL(`/mcp/${mcpId}`, process.env.NEXT_PUBLIC_BACKEND_URL);
 
     fixAcceptHeader(req);
+    endListenStream(req, res);
     await runWithContext(
       { requestId: mcpId, auth: resolved.org, profileId: resolved.profileId },
       async () => {
@@ -233,7 +282,6 @@ export const startMcp = async (app: INestApplication) => {
           httpPath: url.pathname,
           options: {
             serverless: true,
-            enableJsonResponse: true,
           },
           req,
           res,
@@ -266,7 +314,11 @@ export const startMcp = async (app: INestApplication) => {
     const url = new URL(req.originalUrl, process.env.NEXT_PUBLIC_BACKEND_URL);
 
     await runWithContext(
-      { requestId: sseId, auth: resolvedSse.org, profileId: resolvedSse.profileId },
+      {
+        requestId: sseId,
+        auth: resolvedSse.org,
+        profileId: resolvedSse.profileId,
+      },
       async () => {
         await new MCPServer(serverConfig).startSSE({
           url,
