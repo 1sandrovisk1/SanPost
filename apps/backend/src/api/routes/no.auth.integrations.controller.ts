@@ -128,6 +128,8 @@ export class NoAuthIntegrationsController {
             code: body.code,
             codeVerifier: getCodeVerifier,
             refresh: body.refresh,
+            // Farcaster confere que o code (signer do registro) e deste fluxo
+            state: body.state,
           },
           details ? JSON.parse(details) : undefined
         );

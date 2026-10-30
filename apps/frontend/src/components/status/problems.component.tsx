@@ -5,6 +5,7 @@ import useSWR from 'swr';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import { LoadingComponent } from '@gitroom/frontend/components/layout/loading';
+import { useOpenWeb3 } from '@gitroom/frontend/components/launches/web3/use.open.web3';
 import { Button } from '@gitroom/react/form/button';
 import {
   ChannelAvatar,
@@ -35,8 +36,15 @@ export const ProblemsComponent: FC = () => {
   );
   const { data, isLoading, error } = useSWR('status-problems', load);
 
+  const openWeb3 = useOpenWeb3();
+
   const reconnect = useCallback(
     (identifier: string, internalId: string) => async () => {
+      // Farcaster/Telegram/Moltbook nao tem URL OAuth: reconectam pelo modal
+      if (await openWeb3(identifier, { refresh: internalId })) {
+        return;
+      }
+
       const { url } = await (
         await fetch(
           `/integrations/social/${identifier}?refresh=${internalId}`,
@@ -45,7 +53,7 @@ export const ProblemsComponent: FC = () => {
       ).json();
       window.location.href = url;
     },
-    [fetch]
+    [fetch, openWeb3]
   );
 
   // Dedup: um canal caído gera N posts em erro — agrupa por canal. Guarda o id

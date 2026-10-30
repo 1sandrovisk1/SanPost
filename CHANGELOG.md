@@ -40,6 +40,18 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 - No compositor, o canal ganha **música** da biblioteca comercial do TikTok (com prévia e volumes em vídeo), **música aleatória** para fotos e **localização**; valem só na publicação direta. Também disponíveis para o agente (MCP) e na API pública.
 - Antes de publicar, o post é recusado com motivo claro quando a legenda passa do limite do TikTok, uma foto passa de 1080px no lado menor ou a mídia não é aceita. Autorização cancelada no TikTok para antes da troca de código e registra a causa real no log, e o token recusado como "The access token is invalid" é renovado automaticamente.
 
+### Corrigido
+- **Farcaster:** troca do código de login é reservada atomicamente entre as rotas antes de cadastro/convite/sessão; segundo consumo é recusado. O fallback local do Redis respeita NX, expiração EX e o resultado real de DEL.
+
+
+### Alterado — Farcaster com managed signers da Neynar (28/10/2026)
+
+- **Conexão do Farcaster por QR code** (porte do Postiz #2078/#2080): Adicionar canal, Reconectar canal e o login com Farcaster abrem um modal com QR code e "Copiar link do Farcaster"; o usuário aprova o acesso no app do Farcaster pelo celular e o modal conclui sozinho. Substitui o "Sign In With Neynar", que abria uma janela em branco.
+- **Novas variáveis** `NEYNAR_APP_FID`, `NEYNAR_APP_MNEMONIC` e `NEYNAR_SPONSOR_SIGNERS` (além de `NEYNAR_SECRET_KEY`); `NEYNAR_CLIENT_ID` agora só liga o botão de login e `NEYNAR_LOGIN_URL` deixou de existir. Sem a configuração, o modal avisa que o Farcaster não está configurado. Guia em `docs/operations/farcaster-neynar.md`.
+- **Canais já conectados continuam publicando** enquanto a chave da Neynar for a mesma (publicar só exige `NEYNAR_SECRET_KEY`). Se a autorização do canal for revogada (ou a chave trocar de app), o post falha com o motivo, o canal fica como "precisa reconectar" com notificação e a reconexão é feita pelo novo modal. Chave recusada, conta sem créditos, 403 genérico ou Neynar fora do ar aparecem como erro do post, sem desconectar os canais; o modal mostra o motivo e para de consultar quando a falha é permanente.
+- **Reconectar canal** de Farcaster, Telegram e Moltbook passa a abrir o modal de conexão (antes o botão abria uma URL quebrada), uma vez só por clique.
+- **Segurança:** cada aprovação fica registrada no servidor e só vale para quem a iniciou — no login, o mesmo navegador (cookie httpOnly); no canal, a mesma organização, usuário e fluxo — e uma vez só. O navegador recebe apenas um identificador opaco, que não passa pela URL. A conexão lê a conta e o perfil na Neynar em vez de confiar no navegador; login sem acesso aprovado deixa de gerar identidade vazia. Rotas do login com Farcaster (inclusive a troca do código) só existem com o botão ligado e têm limite por cliente e teto global; o patrocínio da Neynar vale só para conexão de canal.
+
 ### Melhorado — ferramentas de texto das automações (28/10/2026)
 
 - Resposta pública usa diretamente a etapa verde; pedido para seguir vira switch com apenas suas subetapas expansíveis. Alternativas privadas ganham boxes próprios para texto e botão/link.

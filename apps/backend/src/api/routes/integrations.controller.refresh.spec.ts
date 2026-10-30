@@ -39,6 +39,7 @@ const build = (channelProfileId: string | null) => {
     {} as any,
     {} as any,
     {} as any,
+    {} as any,
     {} as any
   );
   return { controller, provider };

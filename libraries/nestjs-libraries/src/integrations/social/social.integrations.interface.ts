@@ -13,6 +13,8 @@ export interface IAuthenticator {
       code: string;
       codeVerifier: string;
       refresh?: string;
+      // state do fluxo de conexao (Farcaster amarra o code a ele)
+      state?: string;
     },
     clientInformation?: ClientInformation
   ): Promise<AuthTokenDetails | string>;

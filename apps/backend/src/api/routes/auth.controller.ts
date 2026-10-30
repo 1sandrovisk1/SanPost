@@ -7,7 +7,19 @@ import {
   Query,
   Req,
   Res,
+  UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
+import {
+  ThrottlerFarcasterLoginGuard,
+  ThrottlerRealIpGuard,
+} from '@gitroom/nestjs-libraries/throttler/throttler.provider';
+import {
+  FARCASTER_LOGIN_COOKIE,
+  FarcasterSignerService,
+} from '@gitroom/nestjs-libraries/integrations/social/farcaster.signer.service';
+import { FARCASTER_SIGNER_TTL_SECONDS } from '@gitroom/nestjs-libraries/integrations/social/farcaster.signer.registry';
+import { FarcasterSignerStatusDto } from '@gitroom/nestjs-libraries/dtos/integrations/farcaster.signer.dto';
 import { Response, Request } from 'express';
 
 import { CreateOrgUserDto } from '@gitroom/nestjs-libraries/dtos/auth/create.org.user.dto';
@@ -27,12 +39,25 @@ import {
 import { Provider } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 
+const FARCASTER = 'FARCASTER';
+
+// mesmas flags do cookie `auth`; vida do registro do signer
+const farcasterCookieOptions = () => ({
+  domain: getCookieUrlFromDomain(process.env.FRONTEND_URL!),
+  httpOnly: true,
+  ...(!process.env.NOT_SECURED
+    ? { secure: true, sameSite: 'none' as const }
+    : {}),
+  expires: new Date(Date.now() + FARCASTER_SIGNER_TTL_SECONDS * 1000),
+});
+
 @ApiTags('Auth')
 @Controller('/auth')
 export class AuthController {
   constructor(
     private _authService: AuthService,
-    private _emailService: EmailService
+    private _emailService: EmailService,
+    private _farcasterSignerService: FarcasterSignerService
   ) {}
 
   @Get('/can-register')
@@ -42,6 +67,8 @@ export class AuthController {
     };
   }
 
+  @UseGuards(ThrottlerFarcasterLoginGuard)
+  @Throttle({ default: { limit: 30, ttl: 3600000 } })
   @Post('/register')
   async register(
     @Req() req: Request,
@@ -52,6 +79,14 @@ export class AuthController {
     @AcceptLanguage() acceptLanguage: string
   ) {
     try {
+      const farcaster = body.provider === FARCASTER;
+      if (farcaster) {
+        await this._farcasterSignerService.claimLoginCode(
+          body.providerToken,
+          req?.cookies?.[FARCASTER_LOGIN_COOKIE]
+        );
+      }
+
       const getOrgFromCookie = this._authService.getOrgFromCookie(
         req?.cookies?.org
       );
@@ -64,6 +99,10 @@ export class AuthController {
         getOrgFromCookie,
         acceptLanguage
       );
+
+      if (farcaster) {
+        await this.consumeFarcasterLogin(body.providerToken, response);
+      }
 
       const activationRequired =
         body.provider === 'LOCAL' && this._emailService.hasProvider();
@@ -118,6 +157,8 @@ export class AuthController {
     }
   }
 
+  @UseGuards(ThrottlerFarcasterLoginGuard)
+  @Throttle({ default: { limit: 30, ttl: 3600000 } })
   @Post('/login')
   async login(
     @Req() req: Request,
@@ -127,6 +168,14 @@ export class AuthController {
     @UserAgent() userAgent: string
   ) {
     try {
+      const farcaster = body.provider === FARCASTER;
+      if (farcaster) {
+        await this._farcasterSignerService.claimLoginCode(
+          body.providerToken,
+          req?.cookies?.[FARCASTER_LOGIN_COOKIE]
+        );
+      }
+
       const getOrgFromCookie = this._authService.getOrgFromCookie(
         req?.cookies?.org
       );
@@ -138,6 +187,10 @@ export class AuthController {
         userAgent,
         getOrgFromCookie
       );
+
+      if (farcaster) {
+        await this.consumeFarcasterLogin(body.providerToken, response);
+      }
 
       response.cookie('auth', jwt, {
         domain: getCookieUrlFromDomain(process.env.FRONTEND_URL!),
@@ -209,6 +262,44 @@ export class AuthController {
     return this._authService.oauthLink(provider, query);
   }
 
+  // Login com Farcaster (upstream #2078/#2080): rotas publicas que criam e
+  // consultam um managed signer na Neynar. Cada POST cria um signer (custo na
+  // conta da Neynar): limite por cliente + teto global, gate do login no
+  // service e vinculo ao navegador por cookie httpOnly com nonce aleatorio. O
+  // navegador so recebe um requestId opaco.
+  @UseGuards(ThrottlerRealIpGuard)
+  @Throttle({ default: { limit: 30, ttl: 3600000 } })
+  @Post('/farcaster/signer')
+  async farcasterSigner(@Res({ passthrough: true }) response: Response) {
+    const { body, nonce } = await this._farcasterSignerService.startLogin();
+    if (nonce) {
+      response.cookie(FARCASTER_LOGIN_COOKIE, nonce, farcasterCookieOptions());
+    }
+    return body;
+  }
+
+  // o modal consulta a cada 2 s por ate 10 min; o requestId vai no corpo
+  @UseGuards(ThrottlerRealIpGuard)
+  @Throttle({ default: { limit: 1000, ttl: 3600000 } })
+  @Post('/farcaster/signer/status')
+  async farcasterSignerStatus(
+    @Req() req: Request,
+    @Body() body: FarcasterSignerStatusDto
+  ) {
+    return this._farcasterSignerService.loginStatus(
+      body.requestId,
+      req?.cookies?.[FARCASTER_LOGIN_COOKIE]
+    );
+  }
+
+  // uso unico: apaga o registro e o cookie do vinculo
+  private async consumeFarcasterLogin(code: unknown, response: Response) {
+    await this._farcasterSignerService.consumeLogin(code);
+    response.clearCookie(FARCASTER_LOGIN_COOKIE, {
+      domain: getCookieUrlFromDomain(process.env.FRONTEND_URL!),
+    });
+  }
+
   @Post('/activate')
   async activate(
     @Body('code') code: string,
@@ -269,21 +360,40 @@ export class AuthController {
     return response.redirect(302, `${scheme}?${params.toString()}`);
   }
 
+  @UseGuards(ThrottlerFarcasterLoginGuard)
+  @Throttle({ default: { limit: 30, ttl: 3600000 } })
   @Post('/oauth/:provider/exists')
   async oauthExists(
+    @Req() req: Request,
     @Body('code') code: string,
     @Body('redirect_uri') redirect_uri: string,
     @Param('provider') provider: string,
     @Res({ passthrough: false }) response: Response
   ) {
+    // Farcaster: o code (requestId opaco) so vale no navegador que criou o
+    // signer, e e rejeitado antes de qualquer chamada a Neynar
+    const farcaster = provider?.toUpperCase() === FARCASTER;
+    if (farcaster) {
+      await this._farcasterSignerService.claimLoginCode(
+        code,
+        req?.cookies?.[FARCASTER_LOGIN_COOKIE]
+      );
+    }
+
     const { jwt, token } = await this._authService.checkExists(
       provider,
       code,
       redirect_uri
     );
 
+    // conta nova: o mesmo code segue para o /auth/register (consumido la)
     if (token) {
+      if (farcaster) await this._farcasterSignerService.releaseLoginClaim(code);
       return response.json({ token });
+    }
+
+    if (farcaster) {
+      await this.consumeFarcasterLogin(code, response);
     }
 
     response.cookie('auth', jwt, {

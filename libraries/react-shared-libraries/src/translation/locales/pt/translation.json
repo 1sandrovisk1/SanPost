@@ -13,7 +13,6 @@
   "automation_emoji_objects": "Objetos",
   "automation_emoji_symbols": "Símbolos",
   "automation_emoji_flags": "Bandeiras",
-
   "automation_stage_selected_one": "{count} selecionada",
   "automation_stage_keywords_pending": "Defina a palavra-chave",
   "automation_stage_variations_one": "{count} variação",
@@ -2803,5 +2802,16 @@
   "tiktok_business_max_pictures": "Você pode selecionar até 35 fotos",
   "credentials_tiktok_business_app_id_placeholder": "Cole o Client ID (App ID) do app do TikTok for Business",
   "credentials_tiktok_business_secret_placeholder": "Cole o Client Secret do app do TikTok for Business",
-  "credentials_tiktok_business_hint": "Use o app criado no portal TikTok API for Business (não o app do TikTok for Developers). Cadastre a URL de callback exatamente como aparece abaixo, com a barra no final."
+  "credentials_tiktok_business_hint": "Use o app criado no portal TikTok API for Business (não o app do TikTok for Developers). Cadastre a URL de callback exatamente como aparece abaixo, com a barra no final.",
+  "farcaster_scan_instructions": "Escaneie o QR code com o celular ou copie o link e abra no celular; depois aprove o pedido de acesso no app do Farcaster.",
+  "farcaster_copy_link": "Copiar link do Farcaster",
+  "farcaster_waiting_for_approval": "Aguardando sua aprovação...",
+  "farcaster_signer_revoked": "A aprovação do Farcaster foi revogada. Tente de novo.",
+  "farcaster_signer_failed": "Não foi possível iniciar a conexão com o Farcaster",
+  "farcaster_approval_timeout": "A aprovação do Farcaster expirou. Tente de novo.",
+  "farcaster_not_configured": "O Farcaster não está configurado nesta instância. Peça ao administrador para definir as variáveis da Neynar.",
+  "farcaster_qr_alt": "QR code para aprovar o acesso no app do Farcaster",
+  "farcaster_neynar_unavailable": "O Farcaster está indisponível nesta instância (conta da Neynar). Avise o administrador.",
+  "farcaster_rate_limited": "Muitas tentativas de conexão com o Farcaster. Aguarde alguns minutos e tente de novo.",
+  "farcaster_session_invalid": "Esta aprovação do Farcaster não é mais válida. Feche e tente de novo."
 }

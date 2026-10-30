@@ -978,6 +978,98 @@ nativo — leva `auth_code`/`state` a terceiro) e saída das `@Tool` de provider
 (`musicSearch`/`locationSearch`, como as demais) entregue ao agente MCP sem o
 invólucro `<source>` de dado não confiável.
 
+### Farcaster — Neynar managed signers (28/10/2026)
+
+Branch `feat/farcaster-neynar-2026-10`. Portados #2078 (`6dbaadb1`) e #2080
+(`9b06ea22`): o SIWN (janela da Neynar + `postMessage`) dá lugar a managed
+signers — o backend cria o signer, assina o `SignedKeyRequest` (EIP-712) com
+`NEYNAR_APP_MNEMONIC` e registra; o modal mostra QR + "Copiar link" e consulta o
+status até a aprovação. Saíram `nayner.auth.button.tsx`, o CSS do
+`@neynar/react` e `NEYNAR_LOGIN_URL`; entraram `NEYNAR_APP_FID`,
+`NEYNAR_APP_MNEMONIC`, `NEYNAR_SPONSOR_SIGNERS` e
+`docs/operations/farcaster-neynar.md`. O commit posterior no provider
+(`4c835138`, `makeSecureId`) já estava no fork.
+
+Divergências:
+- Chamadas à Neynar sem o `@neynar/nodejs-sdk`, no host fixo: escritas
+  (signer, cast, busca) por `this.fetch`, leituras de status por
+  `ssrfSafeFetch` com o status traduzido em motivo estável (400/403/404 →
+  `invalid_signer`, 401 → `key_refused`, 402 → `no_credits`, 429 →
+  `rate_limited`; nunca `RefreshToken`/500); timeout de 30 s em todas.
+  `handleErrors`: só mensagem com "signer"/"revoked" → `refresh-token` (canal
+  "precisa reconectar" com motivo curado, via `refreshToken` que lança
+  `FARCASTER_RECONNECT_MESSAGE`); 401/402/403 genérico → `bad-body`
+  (chave/créditos/plano da instância não desconectam todos os canais);
+  502/503/504 → `retry`; busca de canais engole falha em `[]`. Falhas de
+  escrita voltam ao Temporal sem `signer_uuid`/assinatura no corpo.
+- **Registro server-side dos signers** (`farcaster.signer.registry.ts`, Redis
+  `farcaster:signer:<requestId>`, 15 min): o navegador recebe só um
+  `requestId` opaco (`makeSecureId(32)`), consultado por POST com corpo. Login:
+  nonce aleatório em cookie httpOnly (`farcaster_login`, flags do cookie
+  `auth`) com hash no Redis, exigido no status e na troca do code
+  (`/auth/oauth/FARCASTER/exists`, `/auth/login`, `/auth/register`). Canal:
+  org + usuário + perfil + `state` do `/social/wrapcast` (o POST confere que o
+  state é da org/perfil de quem chama; o status exige a mesma org/usuário; o
+  `social-connect` exige o mesmo state, repassado ao `authenticate`). Uso
+  único (`DEL` = 1) ao concluir; code fora do registro é recusado antes da
+  Neynar. O code aprovado vai pela aba (`sessionStorage`), nunca pela URL.
+  Substitui o "fix login state" do upstream, que depende do cookie
+  `oauth_state` (`14c3a2f8`) que o fork não tem.
+- Rotas: canal por rotas **autenticadas** `/integrations/farcaster/signer`
+  (+ `/status`), limitadas por org + usuário (`ThrottlerOrgUserGuard`) — o
+  upstream usa as públicas também no canal. Login pelas públicas
+  `/auth/farcaster/signer` (+ `/status`), com `ThrottlerRealIpGuard` (porte do
+  upstream + IP validado com `net.isIP` + teto global 10× por rota sem
+  sobrescrever os `X-RateLimit-*`). Gate do login (`NEYNAR_CLIENT_ID`, 404) e
+  limite também na troca do code (`ThrottlerFarcasterLoginGuard`, só para
+  provider `FARCASTER`). Tudo via `FarcasterSignerService`.
+- Patrocínio (`NEYNAR_SPONSOR_SIGNERS`) só na rota autenticada do canal; o
+  login nunca patrocina.
+- `authenticate` relê signer e perfil na Neynar (perfil ausente falha claro);
+  `getUser` do login devolve `false` para signer não aprovado (antes
+  `{ id: '' }` deixava o registro seguir com `providerId` vazio) — tipo de
+  `AuthProviderAbstract.getUser` ampliado.
+- Credenciais da instância (env), não por workspace: o signer só vale com a
+  chave que o criou e o post não tem credencial por workspace; registrado no
+  `CLAUDE.md` de social (pitfall 22). `generateAuthUrl` não lê mais
+  `NEYNAR_CLIENT_ID` (`farcaster||<state>`).
+- `qrcode`/`@types/qrcode` entraram à mão no `package.json`/lockfile (o
+  `pnpm add` re-resolvia `@opentelemetry/api` 1.9 → 1.10; `qrcode@1.5.4` já
+  estava no lockfile como transitiva). `@neynar/react` fica no `package.json`
+  sem uso e `@neynar/nodejs-sdk` sem import — remoção no PR de dependências.
+- "Reconectar canal" de providers web3 (Farcaster, Telegram, Moltbook) abria
+  `window.location.href = nonce`; agora usa o hook `useOpenWeb3` (o mesmo do
+  Adicionar canal), com id estável de modal e trava contra o clique duplo do
+  "!" (que criava dois signers).
+
+Canais conectados pelo SIWN: nada é migrado; seguem publicando com o
+`signer_uuid` salvo (só `NEYNAR_SECRET_KEY` é necessária) enquanto a chave for
+do mesmo app da Neynar. Signer revogado ou chave de outro app → post falha com
+o motivo, canal marcado para reconexão com notificação e evento em Status.
+
+Revisões: `code-reviewer` e `security-auditor` (rodados pelo coordenador).
+Auditoria: 3 HIGH (signer sem vínculo ao navegador/org — relay e CSRF de login
+por link; troca do code sem gate/limite e 404 da Neynar virando 500;
+patrocínio na rota pública) e 4 MEDIUM (`signer_uuid` nos details do Temporal,
+texto do mnemonic, tracker do limite e signer do login com escrita) corrigidos
+no segundo commit. Code review: modal sem id no reconectar (dois signers por
+clique), 403 genérico desconectando canais, falhas permanentes em polling
+mudo, `X-RateLimit-*` sobrescritos, perfil vazio salvo — corrigidos.
+
+Riscos que ficam (documentados em `docs/operations/farcaster-neynar.md`):
+quem cria o pedido e manda o QR para outra pessoa aprovar entra/conecta a conta
+de quem aprovou (inerente ao fluxo por QR; o vínculo impede roubo/reuso do
+code, não o phishing de consentimento); a Neynar não revoga managed signers
+pela API, então o signer do login segue aprovado até o usuário revogar no app
+(a instância não o guarda e o code é de uso único); o limite por IP depende do
+proxy sobrescrever o `x-forwarded-for` (Traefik em produção faz).
+
+Follow-ups: remover `@neynar/react` e `@neynar/nodejs-sdk` no PR de
+dependências; CSRF do login Google (`state: 'login'` constante, fora deste
+PR); limite de 2 embeds por cast da Neynar não é validado no compositor (a
+Neynar recusa com `bad-body`); corpo exato do erro de signer revogado na Neynar
+não está documentado — conferir no teste de revogação em produção.
+
 ## Apêndice — classificação 1 por 1 (171 PRs + 74 commits diretos)
 
 Legenda: **P0** segurança (nesta branch) · **ADOPT** cherry-pick/porte leve ·

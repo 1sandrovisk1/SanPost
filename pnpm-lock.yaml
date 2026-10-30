@@ -569,6 +569,9 @@ importers:
       posthog-js:
         specifier: ^1.178.0
         version: 1.359.1
+      qrcode:
+        specifier: ^1.5.4
+        version: 1.5.4
       react:
         specifier: 19.2.4
         version: 19.2.4
@@ -780,6 +783,9 @@ importers:
       '@types/node-telegram-bot-api':
         specifier: ^0.64.7
         version: 0.64.14
+      '@types/qrcode':
+        specifier: ^1.5.5
+        version: 1.5.5
       '@types/react':
         specifier: 19.1.8
         version: 19.1.8
@@ -8360,6 +8366,9 @@ packages:
 
   '@types/prop-types@15.7.15':
     resolution: {integrity: sha512-F6bEyamV9jKGAFBEmlQnesRPGOQqS2+Uwi0Em15xenOxHaf2hv6L8YCVn3rPdPJOiJfPiCnLIRyvwVaqMY3MIw==}
+
+  '@types/qrcode@1.5.5':
+    resolution: {integrity: sha512-CdfBi/e3Qk+3Z/fXYShipBT13OJ2fDO2Q2w5CIP5anLTLIndQG9z6P1cnm+8zCWSpm5dnxMFd/uREtb0EXuQzg==}
 
   '@types/qs@6.15.0':
     resolution: {integrity: sha512-JawvT8iBVWpzTrz3EGw9BTQFg3BQNmwERdKE22vlTxawwtbyUSlMppvZYKLZzB5zgACXdXxbD3m1bXaMqP/9ow==}
@@ -27507,6 +27516,10 @@ snapshots:
   '@types/prismjs@1.26.6': {}
 
   '@types/prop-types@15.7.15': {}
+
+  '@types/qrcode@1.5.5':
+    dependencies:
+      '@types/node': 22.12.0
 
   '@types/qs@6.15.0': {}
 

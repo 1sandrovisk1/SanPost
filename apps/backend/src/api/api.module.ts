@@ -59,6 +59,7 @@ import { AuthProviderManager } from '@gitroom/backend/services/auth/providers/pr
 import { GithubProvider } from '@gitroom/backend/services/auth/providers/github.provider';
 import { GoogleProvider } from '@gitroom/backend/services/auth/providers/google.provider';
 import { FarcasterProvider } from '@gitroom/backend/services/auth/providers/farcaster.provider';
+import { FarcasterSignerService } from '@gitroom/nestjs-libraries/integrations/social/farcaster.signer.service';
 import { WalletProvider } from '@gitroom/backend/services/auth/providers/wallet.provider';
 import { OauthProvider } from '@gitroom/backend/services/auth/providers/oauth.provider';
 import { FacebookAutomationsController, FacebookAutomationsWebhookController } from './routes/facebook-automations.controller';
@@ -140,6 +141,7 @@ const authenticatedController = [
     GithubProvider,
     GoogleProvider,
     FarcasterProvider,
+    FarcasterSignerService,
     WalletProvider,
     OauthProvider,
   ],

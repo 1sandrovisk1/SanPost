@@ -13,7 +13,6 @@
   "automation_emoji_objects": "Objects",
   "automation_emoji_symbols": "Symbols",
   "automation_emoji_flags": "Flags",
-
   "automation_stage_selected_one": "{count} selected",
   "automation_stage_keywords_pending": "Set a keyword",
   "automation_stage_variations_one": "{count} variation",
@@ -2803,5 +2802,16 @@
   "tiktok_business_max_pictures": "You can select up to 35 pictures",
   "credentials_tiktok_business_app_id_placeholder": "Paste the TikTok for Business app Client ID",
   "credentials_tiktok_business_secret_placeholder": "Paste the TikTok for Business app Client Secret",
-  "credentials_tiktok_business_hint": "Use the app created in the TikTok API for Business portal (not the TikTok for Developers app). Register the callback URL exactly as shown below, including the trailing slash."
+  "credentials_tiktok_business_hint": "Use the app created in the TikTok API for Business portal (not the TikTok for Developers app). Register the callback URL exactly as shown below, including the trailing slash.",
+  "farcaster_scan_instructions": "Scan the QR code with your phone, or copy the link and open it on your phone, then approve the access request in the Farcaster app.",
+  "farcaster_copy_link": "Copy Farcaster link",
+  "farcaster_waiting_for_approval": "Waiting for your approval...",
+  "farcaster_signer_revoked": "The Farcaster approval was revoked, please try again",
+  "farcaster_signer_failed": "Failed to start the Farcaster connection",
+  "farcaster_approval_timeout": "Farcaster approval timed out, please try again",
+  "farcaster_not_configured": "Farcaster is not configured on this instance. Ask the administrator to set the Neynar variables.",
+  "farcaster_qr_alt": "QR code to approve the access in the Farcaster app",
+  "farcaster_neynar_unavailable": "Farcaster is unavailable on this instance (Neynar account). Let the administrator know.",
+  "farcaster_rate_limited": "Too many Farcaster connection attempts. Wait a few minutes and try again.",
+  "farcaster_session_invalid": "This Farcaster approval is no longer valid. Close it and try again."
 }
