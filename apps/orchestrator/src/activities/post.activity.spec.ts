@@ -405,3 +405,37 @@ describe('PostActivity - PublishedWithError', () => {
   });
 });
 
+describe('PostActivity Zernio aceito', () => {
+  it('retorna aceite para tornar resultado duravel antes da escrita de suporte', async () => {
+    const { activity, provider, integrationService, postService } =
+      buildActivity();
+    integrationService.getIntegrationById.mockResolvedValue({
+      ...integration,
+      providerIdentifier: 'zernio-tiktok',
+    } as any);
+    provider.postPending.mockResolvedValue([
+      {
+        id: 'post-1',
+        postId: 'zernio-accepted',
+        releaseURL: '',
+        status: 'pending',
+        pendingData: { postId: 'zernio-accepted' },
+      },
+    ]);
+    await activity.postSocialPending('org-1', 'integration-1', [post] as any);
+    expect(postService.updatePublishedRelease).not.toHaveBeenCalled();
+    expect(provider.checkPostStatus).not.toHaveBeenCalled();
+  });
+  it('atividade de suporte repete apenas a escrita sem enviar novamente', async () => {
+    const { activity, provider, postService } = buildActivity();
+    postService.updatePublishedRelease.mockRejectedValueOnce(
+      new Error('db temporarily offline')
+    );
+    await expect(
+      activity.recordAcceptedPost('org-1', 'post-1', 'remote', '')
+    ).rejects.toThrow('db temporarily offline');
+    await activity.recordAcceptedPost('org-1', 'post-1', 'remote', '');
+    expect(postService.updatePublishedRelease).toHaveBeenCalledTimes(2);
+    expect(provider.postPending).not.toHaveBeenCalled();
+  });
+});

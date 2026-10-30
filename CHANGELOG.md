@@ -7,6 +7,13 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 
 ## [Unreleased]
 
+### Melhorado — publicação V112 e atualização automática
+
+- Novos agendamentos de todos os canais, inclusive Zernio, usam V112 e consultam a credencial atual do canal na publicação, sem configurar IDs ou variáveis de ativação na stack.
+- A atualização migra automaticamente workflows antigos que comprovadamente ainda aguardam uma publicação futura, preservando datas e conteúdo. Publicados, passados, rascunhos e execuções que já iniciaram o envio não são recriados. A migração é retomável e registra os casos adiados.
+- Publicações via Zernio aguardam confirmação real da plataforma. Resultados parciais ou incertos preservam a referência aceita e exigem confirmação explícita antes de um novo envio.
+
+
 ### Corrigido — testes do RC 0.7.0-rc.2 em produção (28/10/2026)
 
 - **Tags do post pelo painel:** desde o PR #327 a tag escolhida no editor não era gravada (o painel envia o nome da tag e o backend passou a exigir o id), e criar uma tag nova pelo próprio editor quebrava o salvamento. A tag agora é encontrada pelo id (API/MCP) ou pelo nome (painel), sempre dentro do perfil.

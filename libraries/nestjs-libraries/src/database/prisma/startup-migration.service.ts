@@ -1,3 +1,5 @@
+import { PostWorkflowMigrationService } from './posts/post-workflow-migration.service';
+import { summarizeError } from '@gitroom/nestjs-libraries/services/error.summary';
 import {
   Injectable,
   Logger,
@@ -18,7 +20,8 @@ export class StartupMigrationService
   constructor(
     private readonly prisma: PrismaService,
     private readonly repostService: RepostService,
-    private readonly refreshIntegrationService: RefreshIntegrationService
+    private readonly refreshIntegrationService: RefreshIntegrationService,
+    private readonly postWorkflowMigration: PostWorkflowMigrationService
   ) {}
 
   async onModuleInit() {
@@ -39,12 +42,20 @@ export class StartupMigrationService
   async onApplicationBootstrap() {
     await this.reconcileRepostWorkflows();
     await this.reconcileRefreshTokensCron();
+    try {
+      await this.postWorkflowMigration.ensureMigrationWorkflow();
+    } catch (error) {
+      this.logger.warn(
+        `reconcilePostWorkflowsV112 falhou: ${summarizeError(error)}`
+      );
+    }
   }
 
   private async cleanupExpiredScheduledAutomationEvents() {
     try {
       const where = { expiresAt: { lt: new Date(Date.now() - 7 * 86400000) } };
-      if (!await this.prisma.scheduledAutomationEvent.count({ where })) return;
+      if (!(await this.prisma.scheduledAutomationEvent.count({ where })))
+        return;
       await this.prisma.scheduledAutomationEvent.deleteMany({ where });
     } catch {
       this.logger.warn('Scheduled automation capture cleanup unavailable.');
@@ -405,7 +416,11 @@ export class StartupMigrationService
         );
         if (extraClaims.length) {
           this.logger.warn(
-            `Skool integration ${row.id} (org ${row.organizationId}) carried unexpected claims in legacy JWT cookies: ${extraClaims.join(', ')} — possible tampering; claims dropped on conversion.`
+            `Skool integration ${row.id} (org ${
+              row.organizationId
+            }) carried unexpected claims in legacy JWT cookies: ${extraClaims.join(
+              ', '
+            )} — possible tampering; claims dropped on conversion.`
           );
         }
 

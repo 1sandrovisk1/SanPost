@@ -3,6 +3,7 @@ import {
   defineSignal,
   proxyActivities,
   setHandler,
+  patched,
   sleep,
   startChild,
 } from '@temporalio/workflow';
@@ -71,6 +72,13 @@ const {
     backoffCoefficient: 1,
     initialInterval: '2 minutes',
   },
+});
+
+// Repetir apenas a escrita de um aceite duravel, nunca a publicacao.
+const { recordAcceptedPost } = proxyActivities<PostActivity>({
+  taskQueue: 'main',
+  startToCloseTimeout: '1 minute',
+  retry: { initialInterval: '10 seconds', maximumInterval: '1 minute' },
 });
 
 const poke = defineSignal('poke');
@@ -247,6 +255,17 @@ export async function postWorkflowV112({
   const resolvePending = async (
     pending: PostResponse
   ): Promise<PostResponse | false> => {
+    if (
+      post.integration.providerIdentifier.startsWith('zernio-') &&
+      patched('zernio-accepted-reference-v1')
+    ) {
+      await recordAcceptedPost(
+        organizationId,
+        pending.id,
+        pending.postId,
+        pending.releaseURL
+      );
+    }
     let pendingData = pending.pendingData;
     let consecutiveErrors = 0;
 

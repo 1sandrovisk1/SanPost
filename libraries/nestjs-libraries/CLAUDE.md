@@ -188,6 +188,10 @@ For encrypting sensitive values (OAuth tokens, AI keys, messaging tokens): use t
 
 18. **Symptom:** a post saved for several channels opens alone in the editor, or a comment created by an agent disappears when the batch is saved → **Cause:** batches (`Post.batchId`, upstream `a194e3f4`) are written only on roots/values saved through `createOrUpdatePost`, and `PostManagementRepository.write` children may predate the batch. **Fix:** `createOrUpdatePost(state, orgId, date, body, tags, inter?, profileId?, batchId?)` — `profileId` stays the 7th positional argument and `batchId` the 8th (never swap them); the existing batch is looked up by `body.group` (the editor regenerates value ids) before the loop. `PostsService.createPost` creates one batch per `effectiveProfileId` and only for >1 channel (channels without a profile never batch). `PostsRepository.getPostsByBatch` finds ROOTS by `batchId` (anchor profile, live channel) and loads whole chains by `group` + `integrationId`; `getPostsByGroup` returns them as `siblings` after a strict profile filter and before `updateMedia`. `toPublicPost` is a denylist — it drops `batchId` explicitly; `managedPostVersion` ignores `batchId`; new post-management children inherit `root.batchId`. The public API strips `posts[].date`/`batchId` (`PostsService.stripEditorOnlyFields`).
 
+## Automatic V112 migration
+
+Bootstrap also ensures `migrate-post-workflows-v112` through `PostWorkflowMigrationService.ensureMigrationWorkflow()` with `USE_EXISTING`. Candidates come from `PostWorkflowMigrationRepository`: future, unpublished QUEUE roots only. Replacement requires a pending initial timer with a 30-minute margin, a clean final history and a fixed legacy runId. Never reuse `PostsService.startWorkflow`, reset by visibility query, or terminate a concurrent winner. Logs use `[v112-migration]` and `reconcilePostWorkflowsV112 falhou`. QUEUE posts with a real releaseId already represent an accepted asynchronous submission; rescheduling also requires `republish: true`.
+
 ## Commands
 
 ```bash

@@ -2,13 +2,17 @@
 
 ## Status
 
-Base incremental implementada com rollout opt-in. O runtime padrão de produção
-permanece em `postWorkflowV102`; `postWorkflowV112` só recebe novas execuções
-quando um canário é ativado explicitamente.
+V112 é o padrão para todos os novos agendamentos, incluindo Zernio. Variáveis
+`POST_WORKFLOW_V112_*` antigas são ignoradas. O singleton de migração recupera
+agendamentos legados futuros em espera segura, sem alterar datas/conteúdo.
+Os contratos atuais, limites e procedimento estão no
+[runbook de atualização](../operations/temporal-v112-atualizacao-automatica.md).
 
-Origem analisada: sequência upstream até `3e6206f7` (workflow V1.1.2). A
-implementação será adaptada às invariantes do Multipost; não será feito
-cherry-pick do pipeline upstream.
+As seções de decisão abaixo registram o rollout inicial de setembro de 2026,
+superado pela promoção global e migração automática aprovada em 30/10/2026.
+V101/V102 continuam registrados para históricos e execuções que estão drenando.
+A origem adaptada do upstream continua sendo V1.1.2; os contratos de segurança,
+isolamento por perfil, SSRF e criptografia do fork permanecem obrigatórios.
 
 ## Contexto
 
