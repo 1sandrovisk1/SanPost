@@ -31,7 +31,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { RepeatComponent } from '@gitroom/frontend/components/launches/repeat.component';
 import { TagsComponent } from '@gitroom/frontend/components/launches/tags.component';
 import { useToaster } from '@gitroom/react/toaster/toaster';
-import { countLength } from '@gitroom/helpers/utils/count.length';
+import { countLength, countPostContent } from '@gitroom/helpers/utils/count.length';
 import { deleteDialog } from '@gitroom/react/helpers/delete.dialog';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
@@ -562,15 +562,8 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
         }
 
         const sliceNeeded = checkAllValid.filter((p: any) => {
-          return p.values.some((a: any) => {
-            const strip = stripHtmlValidation('normal', a.content, true);
-            // mesma regra do contador: no X a URL pesa 23 e no Threads conta
-            // bytes; o max() com o tamanho bruto bloqueava posts do X com URL
-            // que a rede aceita.
-            const totalCharacters = countLength(
-              p?.integration?.identifier || '',
-              strip
-            );
+          return p.values.some((a: any, index: number) => {
+            const totalCharacters = countPostContent(p?.integration?.identifier || '', a.content, p.settings, index);
 
             return totalCharacters > (p.maximumCharacters || 1000000);
           });

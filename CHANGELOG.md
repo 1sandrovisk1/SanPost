@@ -7,6 +7,11 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 
 ## [Unreleased]
 
+### Adicionado — X Articles
+
+- Canal nativo do X permite criar artigos com título, capa, formatação e imagens da biblioteca, escolhendo rascunho no X ou publicação. Compositor, contador, API e MCP distinguem artigos de tweets e preservam os limites das respostas; rascunho de artigo com respostas e seleção incompatível em Zernio são recusados antes do envio.
+- Falhas capturadas após criar o rascunho preservam seu ID/URL e encerram sem repetição automática. Imagens têm confinamento ao diretório de uploads, proteção SSRF e limites de bytes/pixels. Workflows existentes e credenciais por perfil preservados.
+
 ### Adicionado — áudio de Reels, fundos do Facebook e Tumblr
 
 - Instagram com Facebook Login: busca de músicas/áudios originais, escolha persistida no compositor e controle independente do volume do áudio e do vídeo. Disponível para um único Reel MP4; stories, carrosséis, Instagram Login e Zernio recusam essa opção antes do agendamento.

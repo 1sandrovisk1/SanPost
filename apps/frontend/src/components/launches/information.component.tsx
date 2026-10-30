@@ -65,7 +65,8 @@ export const InformationComponent: FC<{
   // Texto sem HTML: quando informado, cada rede conta do seu jeito (X pesa
   // pelo twitter-text, Threads em bytes UTF-8). Sem ele, vale `totalChars`.
   text?: string;
-}> = ({ totalChars, totalAllowedChars, chars, isPicture, text }) => {
+  article?: boolean;
+}> = ({ totalChars, totalAllowedChars, chars, isPicture, text, article }) => {
   const t = useT();
   const { isGlobal, current, selectedIntegrations, internal } = useLaunchStore(
     useShallow((state) => ({
@@ -78,8 +79,8 @@ export const InformationComponent: FC<{
 
   const countFor = useCallback(
     (identifier?: string) =>
-      text === undefined ? totalChars : countLength(identifier || '', text),
-    [text, totalChars]
+      text === undefined ? totalChars : countLength(identifier || '', text, article ? {post_type:'article'} : undefined),
+    [text, totalChars, article]
   );
 
   const currentChars = useMemo(() => {

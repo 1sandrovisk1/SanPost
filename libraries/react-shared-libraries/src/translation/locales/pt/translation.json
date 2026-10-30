@@ -2964,5 +2964,18 @@
   "facebook_preset_219266485227663": "Magenta",
   "facebook_preset_1289741387813798": "Vermelho escuro",
   "facebook_preset_1365883126823705": "Azul",
-  "tumblr_single_post": "Tumblr aceita um único post, sem blocos de comentários. Remova os blocos extras para este canal."
+  "tumblr_single_post": "Tumblr aceita um único post, sem blocos de comentários. Remova os blocos extras para este canal.",
+  "x_post_format": "Formato da publicação",
+  "x_format_post": "Post",
+  "x_format_article": "Artigo",
+  "x_article_native_only": "Artigos exigem uma conexão nativa do X.",
+  "x_use_regular_post": "Usar post comum",
+  "x_article_title": "Título do artigo",
+  "x_article_destination": "Enviar artigo para o X",
+  "x_article_save_draft": "Salvar rascunho no X",
+  "x_article_publish": "Publicar artigo",
+  "x_article_cover": "Capa do artigo",
+  "x_article_cover_hint": "Capa opcional, separada das imagens no corpo do artigo.",
+  "x_article_requirements": "Exige acesso a Articles na conta e no aplicativo do X. Salvar rascunho envia ao X sem publicar; rascunhos de artigo não podem ter respostas.",
+  "x_article_invalid": "Confira título, imagens e limites de texto do artigo; remova as respostas de artigos em rascunho."
 }

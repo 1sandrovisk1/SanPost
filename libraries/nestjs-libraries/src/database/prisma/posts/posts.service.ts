@@ -1,3 +1,4 @@
+import { xArticleError } from '../../../integrations/social/x.article';
 import { instagramAudioError } from '../../../integrations/social/instagram.audio';
 import type { InstagramDto } from '../../../dtos/posts/providers-settings/instagram.dto';
 import { createHash } from 'crypto';
@@ -1264,12 +1265,17 @@ export class PostsService {
   private async assertSocialExtras(orgId: string, body: CreatePostDto) {
     if (body.type === 'draft') return;
     for (const post of body.posts || []) {
-      const settings = post.settings as InstagramDto & {
+      const settings = post.settings as Omit<
+        Partial<InstagramDto>,
+        'post_type'
+      > & {
+        post_type?: string;
         text_format_preset_id?: string;
       };
       if (
         settings?.audio == null &&
         !settings?.text_format_preset_id &&
+        settings?.post_type !== 'article' &&
         post.value?.length <= 1
       )
         continue;
@@ -1282,9 +1288,20 @@ export class PostsService {
         integration.providerIdentifier,
         post.value?.length || 0
       );
+      if (settings?.post_type === 'article') {
+        const error = xArticleError(
+          settings,
+          post.value.map((p) => p.image || []),
+          post.value.map((p) => p.content),
+          integration.providerIdentifier === 'x',
+          JSON.parse(integration.additionalSettings || '[]')
+        );
+        if (error) throw new BadRequestException(error);
+      }
+
       if (settings?.audio != null) {
         const error = instagramAudioError(
-          settings,
+          settings as Partial<InstagramDto>,
           post.value?.[0]?.image || [],
           integration.providerIdentifier === 'instagram'
         );
@@ -1582,6 +1599,43 @@ export class PostsService {
         getPostById.group
       );
       this.assertTumblrThread('tumblr', chain.length);
+    }
+
+    if (action === 'schedule' || getPostById.state === 'QUEUE') {
+      let settings: any;
+      try {
+        settings = JSON.parse(getPostById.settings || '{}');
+      } catch {
+        throw new BadRequestException('Configuração do post inválida.');
+      }
+      if (settings.post_type === 'article') {
+        if (getPostById.integration.providerIdentifier !== 'x')
+          throw new BadRequestException(
+            'Artigos exigem uma conexão nativa do X.'
+          );
+        const chain = await this.getPostsRecursively(
+          getPostById.id,
+          false,
+          orgId,
+          true
+        );
+        if (!chain.length)
+          throw new BadRequestException('Artigo não encontrado.');
+        let media: { path: string }[][];
+        try {
+          media = chain.map((p) => JSON.parse(p.image || '[]'));
+        } catch {
+          throw new BadRequestException('Mídia do artigo inválida.');
+        }
+        const error = xArticleError(
+          settings,
+          media,
+          chain.map((p) => p.content),
+          true,
+          JSON.parse(getPostById.integration.additionalSettings || '[]')
+        );
+        if (error) throw new BadRequestException(error);
+      }
     }
 
     // schedule: Set status to QUEUE and change date (reschedule the post)

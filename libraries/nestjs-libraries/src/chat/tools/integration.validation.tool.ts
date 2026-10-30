@@ -40,6 +40,7 @@ export class IntegrationValidationTool implements AgentToolInterface {
           maxLength: z
             .number()
             .describe('The maximum length of a post / comment'),
+          articleMaxLength: z.number().optional().describe('Native X Article body limit; replies retain maxLength.'),
           settings: z
             .any()
             .describe('List of settings need to be passed to schedule a post'),
@@ -95,6 +96,7 @@ export class IntegrationValidationTool implements AgentToolInterface {
           output: {
             rules: rules[integration.identifier],
             maxLength,
+            ...(integration.identifier === 'x' ? { articleMaxLength: integration.maxLength(input.isPremium, {post_type: 'article'}) } : {}),
             settings: !schemas ? 'No additional settings required' : schemas,
             tools: tools[integration.identifier],
           },

@@ -1,3 +1,5 @@
+import { articleContentState, articleImageUrls, xArticleError, xMaximumLength } from './x.article';
+import { xArticleImage } from './x.article.media';
 import { TweetV2, TwitterApi } from 'twitter-api-v2';
 import {
   AnalyticsData,
@@ -9,7 +11,7 @@ import {
 } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
 import { lookup } from 'mime-types';
 import sharp from 'sharp';
-import { SocialAbstract } from '@gitroom/nestjs-libraries/integrations/social.abstract';
+import { BadBody, PublishedWithError, RefreshToken, SocialAbstract } from '@gitroom/nestjs-libraries/integrations/social.abstract';
 import { Plug } from '@gitroom/helpers/decorators/plug.decorator';
 import { Integration } from '@prisma/client';
 import { timer } from '@gitroom/helpers/utils/timer';
@@ -22,7 +24,7 @@ import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorato
 import { AuthService } from '@gitroom/helpers/auth/auth.service';
 
 @Rules(
-  'X can have maximum 4 pictures, or maximum one video, it can also be without attachments'
+  'X regular posts allow at most 4 pictures or one video. Native X Articles use post_type=article, article_title and article_status=draft|published. Write the article body as HTML with headings, lists, bold, underline, links and own library img URLs. Optional article_cover is separate from body images. At most 32 images including cover; images only. A draft on X is an external action without a public tweet and cannot have replies. Published articles allow tweet replies with regular limits.'
 )
 export class XProvider extends SocialAbstract implements SocialProvider {
   identifier = 'x';
@@ -33,11 +35,15 @@ export class XProvider extends SocialAbstract implements SocialProvider {
   toolTip =
     'You will be logged in into your current account, if you would like a different account, change it first on X';
 
-  editor = 'normal' as const;
+  editor = 'html' as const;
+
+  inlineImages(settings?: any) {
+    return settings?.post_type === 'article';
+  }
   dto = XDto;
 
-  maxLength(isTwitterPremium: boolean) {
-    return isTwitterPremium ? 4000 : 200;
+  maxLength(premium?: unknown, settings?: any) {
+    return xMaximumLength(premium, settings);
   }
 
   override handleErrors(body: string):
@@ -57,10 +63,15 @@ export class XProvider extends SocialAbstract implements SocialProvider {
     if (body.includes('"title":"Unauthorized"')) {
       return {
         type: 'refresh-token',
-        value: 'X rejected the connected account, please reconnect your account',
+        value:
+          'X rejected the connected account, please reconnect your account',
       };
     }
-    if (body.includes('This user is not allowed to post a video longer than 10 minutes')) {
+    if (
+      body.includes(
+        'This user is not allowed to post a video longer than 10 minutes'
+      )
+    ) {
       return {
         type: 'bad-body',
         value:
@@ -84,7 +95,8 @@ export class XProvider extends SocialAbstract implements SocialProvider {
     if (body.includes('Your media IDs are invalid')) {
       return {
         type: 'bad-body',
-        value: 'X rejected the attached media, please re-upload the media and try again',
+        value:
+          'X rejected the attached media, please re-upload the media and try again',
       };
     }
     if (body.includes('not authorized to create or publish articles')) {
@@ -570,6 +582,188 @@ export class XProvider extends SocialAbstract implements SocialProvider {
     }, {} as Record<string, string[]>);
   }
 
+  private toTweetText(message: string) {
+    return stripHtmlValidation(
+      'normal',
+      message,
+      true,
+      false,
+      !/<\/?[a-z][\s\S]*>/i.test(message)
+    );
+  }
+
+  private externalId(value: unknown): string | undefined {
+    return (typeof value === 'string' && /^\d{1,40}$/.test(value)) ||
+      (typeof value === 'number' && Number.isSafeInteger(value) && value > 0)
+      ? String(value)
+      : undefined;
+  }
+
+  private async postArticle(
+    accessToken: string,
+    posts: PostDetails<XDto>[],
+    integration?: Integration
+  ): Promise<PostResponse[]> {
+    const [post] = posts;
+    const premium = integration?.additionalSettings
+      ? JSON.parse(integration.additionalSettings).some(
+          (p: any) => p.title === 'Verified' && p.value === true
+        )
+      : false;
+    const error = xArticleError(
+      post.settings,
+      posts.map((p) => p.media || []),
+      posts.map((p) => p.message),
+      true,
+      premium
+    );
+    if (error) throw new BadBody(this.identifier, '{}', '{}', error);
+    const client = await this.getClient(accessToken, integration);
+    const inline = articleImageUrls(post.message);
+    const attachments = (post.media || []).map((m) => m.path);
+    const cover = post.settings.article_cover?.path;
+    const paths = [
+      ...new Set([...inline, ...attachments, ...(cover ? [cover] : [])]),
+    ];
+    if (paths.length > 32)
+      throw new BadBody(
+        this.identifier,
+        '{}',
+        '{}',
+        'Use até 32 imagens no artigo, incluindo a capa.'
+      );
+    const images = new Map<string, string>();
+    const deadline = Date.now() + 240000;
+    for (const path of paths) {
+      if (Date.now() > deadline)
+        throw new BadBody(
+          this.identifier,
+          '{}',
+          '{}',
+          'O preparo das imagens do artigo excedeu o prazo.'
+        );
+      const buffer = await xArticleImage(path);
+      try {
+        const media = await client.v1.post(
+          'media/upload.json',
+          {
+            media_data: buffer.toString('base64'),
+            media_category: 'tweet_image',
+          },
+          {
+            prefix: 'https://upload.twitter.com/1.1/',
+            timeout: 60000,
+            forceBodyMode: 'url',
+          }
+        );
+        const mediaId = media?.media_id_string;
+        const id = this.externalId(mediaId);
+        if (!id) throw new Error();
+        images.set(path, id);
+      } catch {
+        throw new BadBody(
+          this.identifier,
+          '{}',
+          '{}',
+          'X recusou uma imagem do artigo. Confira o formato e o acesso do aplicativo.'
+        );
+      }
+    }
+    const options = {
+      prefix: 'https://api.x.com/2/',
+      timeout: 60000,
+      forceBodyMode: 'json' as const,
+    };
+    let draft: any;
+    try {
+      draft = await client.v2.post(
+        'articles/draft',
+        {
+          title: post.settings.article_title,
+          content_state: articleContentState(
+            post.message,
+            attachments.map((path) => images.get(path)!),
+            Object.fromEntries(inline.map((path) => [path, images.get(path)!]))
+          ),
+          ...(cover
+            ? {
+                cover_media: {
+                  media_category: 'tweet_image',
+                  media_id: images.get(cover),
+                },
+              }
+            : {}),
+        },
+        options
+      );
+    } catch (error) {
+      if ((error as any)?.code === 401)
+        throw new RefreshToken(
+          this.identifier,
+          '{}',
+          '{}',
+          'Reconecte o canal do X.'
+        );
+      throw new BadBody(
+        this.identifier,
+        '{}',
+        '{}',
+        'Não foi possível confirmar o rascunho do artigo. Confira os rascunhos no X antes de reenviar; verifique o acesso a Articles da conta e do aplicativo.'
+      );
+    }
+    const draftId = this.externalId(draft?.data?.id);
+    const draftsUrl = 'https://x.com/i/articles';
+    if (!draftId)
+      throw new BadBody(
+        this.identifier,
+        '{}',
+        '{}',
+        'X não confirmou o artigo. Confira os rascunhos antes de reenviar.'
+      );
+    if (draft?.errors?.length)
+      throw new PublishedWithError(
+        this.identifier,
+        post.id,
+        draftId,
+        draftsUrl,
+        'X retornou erro junto do rascunho criado. Confira o artigo no X antes de reenviar.'
+      );
+    if (post.settings.article_status === 'draft')
+      return [
+        {
+          id: post.id,
+          postId: draftId,
+          releaseURL: draftsUrl,
+          status: 'posted',
+        },
+      ];
+    try {
+      const published: any = await client.v2.post(
+        `articles/${draftId}/publish`,
+        undefined,
+        options
+      );
+      const postId = this.externalId(published?.data?.post_id);
+      if (!postId || published?.errors?.length) throw new Error();
+      return [
+        {
+          id: post.id,
+          postId,
+          releaseURL: `https://x.com/i/status/${postId}`,
+          status: 'posted',
+        },
+      ];
+    } catch {
+      throw new PublishedWithError(
+        this.identifier,
+        post.id,
+        draftId,
+        draftsUrl,
+        'O rascunho do artigo foi criado, mas não foi possível confirmar a publicação. Confira no X antes de reenviar.'
+      );
+    }
+  }
+
   async post(
     id: string,
     accessToken: string,
@@ -588,6 +782,8 @@ export class XProvider extends SocialAbstract implements SocialProvider {
     }>[],
     integration?: Integration
   ): Promise<PostResponse[]> {
+    if ((postDetails[0]?.settings as any)?.post_type === 'article')
+      return this.postArticle(accessToken, postDetails as any, integration);
     const client = await this.getClient(accessToken, integration);
     const {
       data: { username },
@@ -605,7 +801,7 @@ export class XProvider extends SocialAbstract implements SocialProvider {
     const media_ids = (uploadAll[firstPost.id] || []).filter((f) => f);
 
     const tweetPayload = this.buildTweetPayload({
-      text: firstPost.message,
+      text: this.toTweetText(firstPost.message),
       media_ids,
       settings: firstPost?.settings || {},
     });
@@ -639,6 +835,7 @@ export class XProvider extends SocialAbstract implements SocialProvider {
     }>[],
     integration: Integration
   ): Promise<PostResponse[]> {
+    if (postDetails.some(p => articleImageUrls(p.message).length)) throw new BadBody(this.identifier, '{}', '{}', 'Use anexos para imagens nas respostas do artigo, sem imagens inline.');
     const client = await this.getClient(accessToken, integration);
     const {
       data: { username },
@@ -658,7 +855,7 @@ export class XProvider extends SocialAbstract implements SocialProvider {
     const replyToId = lastCommentId || postId;
 
     const tweetPayload = this.buildTweetPayload({
-      text: commentPost.message,
+      text: this.toTweetText(commentPost.message),
       media_ids,
       settings: commentPost?.settings || {},
       replyToId,

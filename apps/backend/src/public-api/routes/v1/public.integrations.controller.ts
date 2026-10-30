@@ -693,6 +693,7 @@ export class PublicIntegrationsController {
       output: {
         rules: rules[integration.identifier],
         maxLength,
+        ...(integration.identifier === 'x' ? { articleMaxLength: integration.maxLength(verified, {post_type: 'article'}) } : {}),
         settings: !schemas ? 'No additional settings required' : schemas,
         tools: tools[integration.identifier],
       },
