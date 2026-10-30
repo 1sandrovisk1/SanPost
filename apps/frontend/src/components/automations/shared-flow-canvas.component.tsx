@@ -1,4 +1,5 @@
 'use client';
+import { useFlowTheme } from './shared-flow-theme';
 import { PrivateMessageVariations } from './shared-private-variations.component';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -60,20 +61,7 @@ export function SharedFlowCanvas({
 }) {
   const t = useT();
   const messenger = getTriggerType(definition) === 'messenger_message';
-  const [colorMode, setColorMode] = useState<'dark' | 'light'>('dark');
-  useEffect(() => {
-    const sync = () =>
-      setColorMode(
-        document.body.classList.contains('light') ? 'light' : 'dark'
-      );
-    sync();
-    const observer = new MutationObserver(sync);
-    observer.observe(document.body, {
-      attributes: true,
-      attributeFilter: ['class'],
-    });
-    return () => observer.disconnect();
-  }, []);
+  const colorMode = useFlowTheme();
   const currentDefinition = useRef(definition);
   currentDefinition.current = definition;
   const publish = (graph: CommentDefinition) => {

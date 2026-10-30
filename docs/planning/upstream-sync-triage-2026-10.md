@@ -1105,7 +1105,7 @@ Divergências (mais estritas que o upstream):
 - **Editor também filtra.** O nó `image` e o HTML colado só aceitam mídia da
   instância (prefixos de `useVariables()`); imagem de fora é descartada com
   aviso (`inline_image_not_from_media_library`).
-- **X fora.** O fork não tem X Articles (`173f92ed`, opcional na triagem de
+- **X fora no porte inicial.** Atualizado em 30/10: X Articles foi incorporado depois; ver `docs/operations/x-articles.md`. Na etapa inicial o fork não tinha X Articles (`173f92ed`, opcional na triagem de
   agosto); a parte do X (`inlineMediaIds`, upload das figuras do artigo,
   `inlineImages` do composer do X e a frase do `@Rules`) não se aplica. Tweet
   segue texto puro.

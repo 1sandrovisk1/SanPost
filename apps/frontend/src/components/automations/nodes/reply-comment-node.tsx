@@ -6,26 +6,37 @@ import { useT } from '@gitroom/react/translation/get.transation.service.client';
 
 export const ReplyCommentNode: FC<NodeProps> = memo(({ data, selected }) => {
   const t = useT();
-  const config = typeof data?.config === 'string'
-    ? (() => { try { return JSON.parse(data.config as string); } catch { return {}; } })()
-    : (data?.config || {});
-  const message = config.messages?.[0] || config.message || config.template || '';
+  const config =
+    typeof data?.config === 'string'
+      ? (() => {
+          try {
+            return JSON.parse(data.config as string);
+          } catch {
+            return {};
+          }
+        })()
+      : data?.config || {};
+  const message =
+    config.messages?.[0] || config.message || config.template || '';
 
   return (
     <div
-      className={`rounded-[8px] border-2 px-[16px] py-[12px] min-w-[200px] ${
-        selected ? 'border-blue-400' : 'border-blue-600'
-      }`}
-      style={{ background: 'rgba(59, 130, 246, 0.15)' }}
+      className="automation-node automation-color-comment rounded-[8px] border-2 px-[16px] py-[12px] min-w-[200px]"
+      data-selected={!!selected}
     >
-      <Handle type="target" position={Position.Top} className="!bg-blue-400" />
+      <Handle
+        type="target"
+        position={Position.Top}
+        className="automation-node-handle"
+      />
       <div className="flex items-center gap-[8px] mb-[4px]">
         <svg
           width="16"
           height="16"
           viewBox="0 0 24 24"
           fill="none"
-          stroke="#3b82f6"
+          stroke="currentColor"
+          className="automation-accent"
           strokeWidth="2"
         >
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
@@ -35,12 +46,20 @@ export const ReplyCommentNode: FC<NodeProps> = memo(({ data, selected }) => {
         </span>
       </div>
       {message && (
-        <p className="text-[12px] text-customColor18 truncate max-w-[180px]">{message}</p>
+        <p className="text-[12px] text-customColor18 truncate max-w-[180px]">
+          {message}
+        </p>
       )}
       {config.messages?.length > 1 && (
-        <p className="text-xs text-newTextColor/60">{config.messages.length} {t('shared_reply_variations_count')}</p>
+        <p className="text-xs text-newTextColor/60">
+          {config.messages.length} {t('shared_reply_variations_count')}
+        </p>
       )}
-      <Handle type="source" position={Position.Bottom} className="!bg-blue-400" />
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        className="automation-node-handle"
+      />
     </div>
   );
 });

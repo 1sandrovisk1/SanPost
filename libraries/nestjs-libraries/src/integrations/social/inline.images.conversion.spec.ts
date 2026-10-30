@@ -69,12 +69,29 @@ describe('conversao do conteudo com imagem inline por provider', () => {
     expect(convert(new ListmonkProvider(), foreign)).toBe('<p>a</p>');
   });
 
-  // o fork nao tem o artigo do X (173f92ed): tweet nunca leva <img>
-  it('X segue texto puro, mesmo com post_type article nas settings', () => {
+  it.each([undefined, {}, { post_type: 'post' }])(
+    'X normal remove a imagem e preserva HTML para conversao no sink (%j)',
+    (settings) => {
+      const x: SocialProvider = new XProvider();
+      expect(x.editor).toBe('html');
+      expect(x.inlineImages?.(settings)).toBe(false);
+      expect(convert(x, content, settings)).toBe('<p>Titulo</p><p>Corpo</p>');
+    }
+  );
+
+  it('X article preserva a imagem propria no lugar e a formatacao', () => {
     const x: SocialProvider = new XProvider();
-    expect(x.inlineImages).toBeUndefined();
-    expect(convert(x, content, { post_type: 'article' })).toBe(
-      'Titulo\nCorpo'
+    const settings = { post_type: 'article' };
+    expect(x.editor).toBe('html');
+    expect(x.inlineImages?.(settings)).toBe(true);
+    expect(convert(x, content, settings)).toBe(content);
+  });
+
+  it('X article remove imagem externa sem perder imagem propria nem texto', () => {
+    const mixed = `${content}<img src="https://rastreio.exemplo.net/p.gif" onerror="x()"><p>Final</p>`;
+
+    expect(convert(new XProvider(), mixed, { post_type: 'article' })).toBe(
+      `${content}<p>Final</p>`
     );
   });
 

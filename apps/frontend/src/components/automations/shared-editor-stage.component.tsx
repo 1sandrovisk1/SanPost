@@ -1,22 +1,13 @@
 'use client';
 import { useId, useState, type ReactNode } from 'react';
-const styles = {
-  account: 'border-rose-300/50 border-l-rose-500 bg-rose-500/[0.045]',
-  origin: 'border-blue-300/50 border-l-blue-500 bg-blue-500/[0.045]',
-  conditions: 'border-amber-300/50 border-l-amber-500 bg-amber-500/[0.045]',
-  public: 'border-emerald-300/50 border-l-emerald-500 bg-emerald-500/[0.045]',
-  private: 'border-violet-300/50 border-l-violet-500 bg-violet-500/[0.045]',
-  followers: 'border-pink-300/50 border-l-pink-500 bg-pink-500/[0.045]',
-  extras: 'border-teal-300/50 border-l-teal-500 bg-teal-500/[0.045]',
-};
-const accents = {
-  account: 'text-rose-600 dark:text-rose-300',
-  origin: 'text-blue-600 dark:text-blue-300',
-  conditions: 'text-amber-700 dark:text-amber-300',
-  public: 'text-emerald-700 dark:text-emerald-300',
-  private: 'text-violet-600 dark:text-violet-300',
-  followers: 'text-pink-600 dark:text-pink-300',
-  extras: 'text-teal-700 dark:text-teal-300',
+const colors = {
+  account: 'trigger',
+  origin: 'media',
+  conditions: 'condition',
+  public: 'comment',
+  private: 'dm',
+  followers: 'follow',
+  extras: 'extras',
 };
 const paths = {
   account: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM5 21v-2a7 7 0 0 1 14 0v2',
@@ -36,7 +27,7 @@ export function AutomationEditorStage({
   summary,
   children,
 }: {
-  kind: keyof typeof styles;
+  kind: keyof typeof colors;
   step: number;
   title: string;
   summary?: string;
@@ -47,7 +38,7 @@ export function AutomationEditorStage({
   return (
     <section
       aria-label={title}
-      className={`rounded-xl border border-l-4 ${styles[kind]}`}
+      className={`automation-stage automation-color-${colors[kind]} rounded-xl border border-l-4`}
     >
       <h2>
         <button
@@ -57,17 +48,17 @@ export function AutomationEditorStage({
           aria-controls={id}
           aria-describedby={summary ? `${id}-summary` : undefined}
           onClick={() => setOpen(!open)}
-          className="flex w-full items-center gap-3 rounded-lg px-3 py-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-btnPrimary"
+          className="flex w-full items-center gap-3 rounded-lg px-3 py-4 text-left"
         >
           <span
             aria-hidden="true"
-            className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-newBgColorInner text-xs font-semibold ${accents[kind]}`}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-newBgColorInner text-xs font-semibold automation-ink"
           >
             {step}
           </span>
           <svg
             aria-hidden="true"
-            className={`h-6 w-6 shrink-0 ${accents[kind]}`}
+            className="h-6 w-6 shrink-0 automation-accent"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -83,16 +74,16 @@ export function AutomationEditorStage({
           {summary && (
             <span
               id={`${id}-summary`}
-              className={`max-w-[40%] truncate rounded-full bg-newBgColorInner px-2 py-1 text-[11px] font-medium ${accents[kind]}`}
+              className="max-w-[40%] truncate rounded-full bg-newBgColorInner px-2 py-1 text-[11px] font-medium automation-ink"
             >
               {summary}
             </span>
           )}
           <svg
             aria-hidden="true"
-            className={`h-4 w-4 shrink-0 transition-transform ${
-              accents[kind]
-            } ${open ? 'rotate-180' : ''}`}
+            className={`h-4 w-4 shrink-0 transition-transform automation-accent ${
+              open ? 'rotate-180' : ''
+            }`}
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -102,7 +93,11 @@ export function AutomationEditorStage({
           </svg>
         </button>
       </h2>
-      <div id={id} hidden={!open} className="px-3 pb-4 space-y-3">
+      <div
+        id={id}
+        hidden={!open}
+        className="automation-stage-content mx-3 mb-3 rounded-lg bg-newBgColorInner p-3 space-y-3"
+      >
         {children}
       </div>
     </section>

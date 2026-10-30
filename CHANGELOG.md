@@ -36,6 +36,10 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 - Calendário compartilha o backend de arraste entre montagens, preservando o arraste de texto/imagens dentro do editor. Discord distingue token do bot recusado de reconexão do canal.
 - Preview com comentários mantém imagens próprias e remove imagens externas. V112 recusa também canais desativados antes de decifrar credenciais ou publicar.
 
+### Melhorado — paleta das etapas de automação (30/10/2026)
+
+- Os construtores V1/V2 acompanham a troca do tema da página sem remontar o canvas, corrigindo texto escuro sobre fundo escuro no V1.
+- Grupos usam ardósia, azul, âmbar, esmeralda, violeta e ciano, com fundo suave constante e campos sobre superfície interna. Nós, paleta e minimapa do construtor compartilham as cores equivalentes, inclusive o badge de seguidores; seleção e foco usam a própria identidade. Tema escuro tem fundos e textos auxiliares adaptados para leitura.
 
 ### Melhorado — publicação V112 e atualização automática
 

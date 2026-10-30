@@ -1,4 +1,5 @@
 'use client';
+import { useFlowTheme } from './shared-flow-theme';
 
 import {
   FC,
@@ -77,7 +78,7 @@ const REVERSE_NODE_TYPE_MAP: Record<string, string> = {
 const NODE_TOOLBAR_CONFIG = [
   {
     type: 'trigger',
-    color: '#22c55e',
+    color: 'var(--automation-trigger)',
     labelKey: 'node_trigger',
     label: 'Trigger',
     descKey: 'node_trigger_desc',
@@ -85,7 +86,7 @@ const NODE_TOOLBAR_CONFIG = [
   },
   {
     type: 'condition',
-    color: '#eab308',
+    color: 'var(--automation-condition)',
     labelKey: 'node_condition',
     label: 'Condition',
     descKey: 'node_condition_desc',
@@ -93,7 +94,7 @@ const NODE_TOOLBAR_CONFIG = [
   },
   {
     type: 'replyComment',
-    color: '#3b82f6',
+    color: 'var(--automation-comment)',
     labelKey: 'node_reply',
     label: 'Reply Comment',
     descKey: 'node_reply_desc',
@@ -101,7 +102,7 @@ const NODE_TOOLBAR_CONFIG = [
   },
   {
     type: 'sendDm',
-    color: '#a855f7',
+    color: 'var(--automation-dm)',
     labelKey: 'node_dm',
     label: 'Send DM',
     descKey: 'node_dm_desc',
@@ -109,7 +110,7 @@ const NODE_TOOLBAR_CONFIG = [
   },
   {
     type: 'delay',
-    color: '#f97316',
+    color: 'var(--automation-delay)',
     labelKey: 'node_delay',
     label: 'Delay',
     descKey: 'node_delay_desc',
@@ -123,6 +124,7 @@ interface FlowEditorProps {
 }
 
 const FlowEditorInner: FC<FlowEditorProps> = ({ id, workspace }) => {
+  const colorMode = useFlowTheme();
   const t = useT();
   const { screenToFlowPosition } = useReactFlow();
   const fetchApi = useFetch();
@@ -662,6 +664,7 @@ const FlowEditorInner: FC<FlowEditorProps> = ({ id, workspace }) => {
           {/* Canvas */}
           <div className="flex-1 min-w-0 relative min-h-[500px] lg:min-h-0">
             <ReactFlow
+              colorMode={colorMode}
               nodes={nodes}
               edges={edges}
               onNodesChange={onNodesChange}
@@ -691,15 +694,15 @@ const FlowEditorInner: FC<FlowEditorProps> = ({ id, workspace }) => {
                 nodeColor={(n) => {
                   switch (n.type) {
                     case 'trigger':
-                      return '#22c55e';
+                      return 'var(--automation-trigger)';
                     case 'condition':
-                      return '#eab308';
+                      return 'var(--automation-condition)';
                     case 'replyComment':
-                      return '#3b82f6';
+                      return 'var(--automation-comment)';
                     case 'sendDm':
-                      return '#a855f7';
+                      return 'var(--automation-dm)';
                     case 'delay':
-                      return '#6b7280';
+                      return 'var(--automation-delay)';
                     default:
                       return '#999';
                   }
