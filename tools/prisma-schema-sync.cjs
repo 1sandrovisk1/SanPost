@@ -1,4 +1,4 @@
-/** Additive boot sync. Preserve dynamic knowledge tables; never accept data loss. */
+/** Guarded boot sync. Preserve knowledge tables; never accept generic data loss. */
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -65,6 +65,117 @@ function assertAdditiveSql(sql) {
   }
 }
 
+// Mastra 1.25 replaces its legacy experiment/item uniqueness with attempt-aware
+// uniqueness. Recognize only the exact Prisma plan, then check the actual index
+// under the same lock/transaction as the replacement. The SDK reads legacy
+// NULL attempts as zero; normalize only that field before retiring uniqueness.
+const LEGACY_DROP = 'DROP INDEX "idx_experiment_results_exp_item"';
+const EXPERIMENT_REPLACEMENT =
+  'CREATE UNIQUE INDEX "idx_experiment_results_exp_item_attempt" ON "mastra_experiment_results"("experimentId", "itemId", "attempt")';
+
+function experimentIndexGuard(name, definition) {
+  // Both arguments are fixed constants below, never introspected SQL or input.
+  return `DO $guard$ BEGIN
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_index i
+      JOIN pg_class x ON x.oid = i.indexrelid
+      JOIN pg_namespace n ON n.oid = x.relnamespace
+      JOIN pg_am a ON a.oid = x.relam
+      WHERE n.nspname = 'public' AND x.relname = '${name}'
+        AND i.indrelid = 'public.mastra_experiment_results'::regclass
+        AND i.indisunique AND i.indisvalid AND i.indisready AND i.indislive
+        AND NOT i.indisprimary AND NOT i.indisreplident
+        AND a.amname = 'btree' AND i.indpred IS NULL AND i.indexprs IS NULL
+        AND i.indnatts = i.indnkeyatts
+        AND pg_get_indexdef(i.indexrelid) = '${definition}'
+        AND NOT EXISTS (SELECT 1 FROM pg_constraint c WHERE c.conindid = i.indexrelid)
+    ) THEN
+      RAISE EXCEPTION 'Indice de experimentos inesperado; migracao cancelada';
+    END IF;
+  END $guard$;`;
+}
+
+function buildSyncPlan(sql) {
+  const statements = sql
+    .replace(/^\s*--.*$/gm, '')
+    .split(';')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const legacyDrops = statements.filter((s) => s === LEGACY_DROP).length;
+  if (!legacyDrops) {
+    assertAdditiveSql(sql);
+    return 'BEGIN;\n' + sql + '\nCOMMIT;\n';
+  }
+  if (
+    legacyDrops !== 1 ||
+    statements.filter((s) => s === EXPERIMENT_REPLACEMENT).length !== 1
+  ) {
+    throw new Error(
+      'Plano legado de experimentos inesperado; sincronizacao cancelada.'
+    );
+  }
+  const additive = statements
+    .filter((s) => s !== LEGACY_DROP)
+    .map((s) => s + ';')
+    .join('\n');
+  assertAdditiveSql(additive);
+  const oldGuard = experimentIndexGuard(
+    'idx_experiment_results_exp_item',
+    'CREATE UNIQUE INDEX idx_experiment_results_exp_item ON public.mastra_experiment_results USING btree ("experimentId", "itemId")'
+  );
+  const newGuard = experimentIndexGuard(
+    'idx_experiment_results_exp_item_attempt',
+    'CREATE UNIQUE INDEX idx_experiment_results_exp_item_attempt ON public.mastra_experiment_results USING btree ("experimentId", "itemId", attempt)'
+  );
+  return `BEGIN;
+SET LOCAL lock_timeout = '5s';
+SET LOCAL statement_timeout = '120s';
+DO $guard$ BEGIN
+  IF current_schema() IS DISTINCT FROM 'public' THEN
+    RAISE EXCEPTION 'Schema de experimentos inesperado; migracao cancelada';
+  END IF;
+END $guard$;
+LOCK TABLE public.mastra_experiment_results IN ACCESS EXCLUSIVE MODE;
+${oldGuard}
+DO $guard$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_class t WHERE t.oid = 'public.mastra_experiment_results'::regclass
+      AND t.relkind = 'r' AND NOT t.relispartition
+      AND NOT t.relrowsecurity AND NOT t.relforcerowsecurity
+  ) OR (SELECT count(*) FROM pg_attribute a
+    WHERE a.attrelid = 'public.mastra_experiment_results'::regclass
+      AND a.attname IN ('experimentId', 'itemId') AND a.attnotnull
+      AND a.attnum > 0 AND NOT a.attisdropped) <> 2
+    OR EXISTS (SELECT 1 FROM pg_inherits WHERE inhparent = 'public.mastra_experiment_results'::regclass
+      OR inhrelid = 'public.mastra_experiment_results'::regclass)
+    OR EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid = 'public.mastra_experiment_results'::regclass AND NOT tgisinternal)
+    OR EXISTS (SELECT 1 FROM pg_rewrite WHERE ev_class = 'public.mastra_experiment_results'::regclass)
+  THEN
+    RAISE EXCEPTION 'Tabela de experimentos personalizada; migracao revisada necessaria';
+  END IF;
+END $guard$;
+${additive}
+${newGuard}
+DO $guard$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_attribute a
+    WHERE a.attrelid = 'public.mastra_experiment_results'::regclass
+      AND a.attname = 'attempt' AND a.atttypid = 'pg_catalog.int4'::regtype
+      AND NOT a.attisdropped AND a.attgenerated = '' AND a.attidentity = '')
+  THEN
+    RAISE EXCEPTION 'Coluna attempt inesperada; migracao cancelada';
+  END IF;
+END $guard$;
+UPDATE public.mastra_experiment_results SET "attempt" = 0 WHERE "attempt" IS NULL;
+DO $guard$ BEGIN
+  IF EXISTS (SELECT 1 FROM public.mastra_experiment_results WHERE "attempt" IS NULL) THEN
+    RAISE EXCEPTION 'Normalizacao de attempt incompleta; migracao cancelada';
+  END IF;
+END $guard$;
+DROP INDEX public."idx_experiment_results_exp_item";
+COMMIT;
+`;
+}
+
 function main() {
   const root = path.resolve(__dirname, '..');
   const schema = path.join(
@@ -121,9 +232,8 @@ function main() {
       ],
       'Inspecao do plano'
     );
-    assertAdditiveSql(sql);
     const planFile = path.join(tempDir, 'additive.sql');
-    fs.writeFileSync(planFile, 'BEGIN;\n' + sql + '\nCOMMIT;\n', {
+    fs.writeFileSync(planFile, buildSyncPlan(sql), {
       mode: 0o600,
     });
     checked(
@@ -136,7 +246,7 @@ function main() {
       'Geracao do cliente (banco ja atualizado)'
     );
     process.stdout.write(
-      'Schema atualizado sem operacoes destrutivas; tabelas de conhecimento preservadas.\n'
+      'Schema atualizado com plano validado; tabelas de conhecimento preservadas.\n'
     );
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
@@ -144,7 +254,7 @@ function main() {
   }
 }
 
-module.exports = { buildPreservedSchema, assertAdditiveSql };
+module.exports = { buildPreservedSchema, assertAdditiveSql, buildSyncPlan };
 if (require.main === module) {
   try {
     main();

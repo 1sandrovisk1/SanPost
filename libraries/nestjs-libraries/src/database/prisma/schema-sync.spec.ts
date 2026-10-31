@@ -1,6 +1,7 @@
 const {
   buildPreservedSchema,
   assertAdditiveSql,
+  buildSyncPlan,
 } = require('../../../../../tools/prisma-schema-sync.cjs');
 
 const canonical =
@@ -48,5 +49,58 @@ describe('sincronizacao de schema sem perda de dados', () => {
       )
     ).not.toThrow();
     expect(() => assertAdditiveSql('UPDATE "User" SET "id"=1;')).toThrow();
+  });
+});
+
+describe('migracao do indice legado de experimentos Mastra', () => {
+  const oldDrop = 'DROP INDEX "idx_experiment_results_exp_item";';
+  const replacement =
+    'CREATE UNIQUE INDEX "idx_experiment_results_exp_item_attempt" ON "mastra_experiment_results"("experimentId", "itemId", "attempt");';
+  const addColumn =
+    'ALTER TABLE "mastra_experiment_results" ADD COLUMN "attempt" INTEGER;';
+  it('mantem a transacao aditiva normal sem excecao de indice', () => {
+    expect(buildSyncPlan(addColumn)).toBe(
+      'BEGIN;\n' + addColumn + '\nCOMMIT;\n'
+    );
+    expect(() => assertAdditiveSql(oldDrop)).toThrow();
+  });
+  it('substitui so o indice legado conhecido, criando o novo antes de remover', () => {
+    const plan = buildSyncPlan(
+      '-- DropIndex\n' + oldDrop + '\n' + addColumn + '\n' + replacement
+    );
+    expect(plan).toContain(
+      'LOCK TABLE public.mastra_experiment_results IN ACCESS EXCLUSIVE MODE'
+    );
+    expect(plan).toContain('pg_get_indexdef');
+    expect(plan).toContain('pg_constraint');
+    expect(plan).toContain(
+      'UPDATE public.mastra_experiment_results SET "attempt" = 0 WHERE "attempt" IS NULL;'
+    );
+    expect(plan).toContain('pg_trigger');
+    expect(plan).toContain('pg_rewrite');
+    expect(plan).toContain('relrowsecurity');
+    expect(plan.indexOf(replacement)).toBeLessThan(
+      plan.indexOf('DROP INDEX public."idx_experiment_results_exp_item";')
+    );
+    expect(plan).not.toContain('CASCADE');
+    expect(plan).toMatch(/^BEGIN;/);
+    expect(plan).toMatch(/COMMIT;\n$/);
+  });
+  it.each([
+    oldDrop,
+    oldDrop + oldDrop + replacement,
+    oldDrop + replacement + replacement,
+    oldDrop + replacement + 'DROP TABLE "Post";',
+    oldDrop + replacement + 'DROP INDEX "custom_index";',
+    oldDrop +
+      replacement +
+      'ALTER TABLE "Post" ALTER COLUMN "id" TYPE INTEGER;',
+    oldDrop +
+      'CREATE UNIQUE INDEX "idx_experiment_results_exp_item_attempt" ON "Post"("id");',
+    oldDrop +
+      'CREATE UNIQUE INDEX "idx_experiment_results_exp_item_attempt" ON "mastra_experiment_results"("experimentId", "itemId", "attempt") WHERE "attempt" IS NOT NULL;',
+    'DROP INDEX "IDX_EXPERIMENT_RESULTS_EXP_ITEM";' + replacement,
+  ])('recusa plano fora da migracao exata: %s', (sql) => {
+    expect(() => buildSyncPlan(sql)).toThrow();
   });
 });
