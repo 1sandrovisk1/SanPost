@@ -1,8 +1,8 @@
 <p align="center">
-  <img alt="Robô MultiPost Logo" src="apps/frontend/public/logo-text.svg" width="280"/>
+  <img alt="Robô SanPost Logo" src="apps/frontend/public/logo-text.svg" width="280"/>
 </p>
 
-<h2 align="center">Robô MultiPost</h2>
+<h2 align="center">Robô SanPost</h2>
 <p align="center">Agendador de redes sociais self-hosted para a comunidade Automação Sem Limites</p>
 
 <p align="center">
@@ -35,7 +35,7 @@
 
 ## O que é
 
-O Robô MultiPost é um agendador de redes sociais self-hosted com suporte a **33+ canais**. Baseado no [Postiz](https://github.com/gitroomhq/postiz-app) (open-source, AGPL-3.0), foi adaptado para rodar em VPS com Docker, focado no público brasileiro da comunidade Automação Sem Limites.
+O Robô SanPost é um agendador de redes sociais self-hosted com suporte a **33+ canais**. Baseado no [Postiz](https://github.com/gitroomhq/postiz-app) (open-source, AGPL-3.0), foi adaptado para rodar em VPS com Docker, focado no público brasileiro da comunidade Automação Sem Limites.
 
 Principais recursos:
 - Agendamento de posts via calendário para múltiplas redes
@@ -59,7 +59,7 @@ Instagram, Facebook, X (Twitter), LinkedIn, TikTok, YouTube, Pinterest, Threads,
 
 ## Instalação rápida (Docker Compose)
 
-O Robô MultiPost precisa de **5 serviços** rodando simultaneamente:
+O Robô SanPost precisa de **5 serviços** rodando simultaneamente:
 
 1. **App** — backend (NestJS) + frontend (Next.js) em um único container
 2. **PostgreSQL 17** — banco de dados principal
@@ -71,10 +71,10 @@ O Robô MultiPost precisa de **5 serviços** rodando simultaneamente:
 
 ```bash
 # 1. Baixar o arquivo de configuração
-curl -o docker-compose.yml https://raw.githubusercontent.com/maiconramos/robo-multipost/main/docker-compose.yaml
+curl -o docker-compose.yml https://raw.githubusercontent.com/maiconramos/robo-SanPost/main/docker-compose.yaml
 
 # 2. Baixar o arquivo de variáveis de ambiente
-curl -o .env.example https://raw.githubusercontent.com/maiconramos/robo-multipost/main/.env.example
+curl -o .env.example https://raw.githubusercontent.com/maiconramos/robo-SanPost/main/.env.example
 
 # 3. Criar seu arquivo de variáveis de ambiente
 cp .env.example .env
@@ -117,7 +117,7 @@ Para atualizar para uma versão específica, edite o `docker-compose.yml` e alte
 
 ## Multi-Tenancy (Organizacoes e Perfis)
 
-O Robo MultiPost suporta multi-tenancy em 3 niveis: **Usuario > Organizacao > Perfil**. Isso permite desde uso individual ate agencias gerenciando multiplos clientes com equipes e permissoes isoladas.
+O Robo SanPost suporta multi-tenancy em 3 niveis: **Usuario > Organizacao > Perfil**. Isso permite desde uso individual ate agencias gerenciando multiplos clientes com equipes e permissoes isoladas.
 
 Para o guia completo com exemplos de casos de uso, consulte a [documentacao de Multi-Tenancy](docs/multi-tenancy.md).
 
@@ -129,7 +129,7 @@ Para o guia completo de configuracao (App Meta, webhook, credenciais por perfil)
 
 ## Integração com n8n
 
-O Robô MultiPost possui API pública disponível em `/api/`. Você pode usar essa API para integrar com o n8n e automatizar seus fluxos de publicação.
+O Robô SanPost possui API pública disponível em `/api/`. Você pode usar essa API para integrar com o n8n e automatizar seus fluxos de publicação.
 
 - Suporte a webhooks para eventos de publicação
 - Compatível com o node do n8n para Postiz (`n8n-nodes-postiz`)
