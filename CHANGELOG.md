@@ -7,6 +7,10 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 
 ## [Unreleased]
 
+### Corrigido — atualização do banco Mastra
+
+- Boot reconhece a migração exata do índice legado de experimentos, que bloqueava a RC.5 em bancos existentes. Confere catálogo e tabela vazia, cria o substituto antes de remover o antigo na mesma transação e mantém a recusa de qualquer outra operação destrutiva.
+
 ### Adicionado — X Articles
 
 - Canal nativo do X permite criar artigos com título, capa, formatação e imagens da biblioteca, escolhendo rascunho no X ou publicação. Compositor, contador, API e MCP distinguem artigos de tweets e preservam os limites das respostas; rascunho de artigo com respostas e seleção incompatível em Zernio são recusados antes do envio.
