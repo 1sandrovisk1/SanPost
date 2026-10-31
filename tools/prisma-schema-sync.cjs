@@ -52,6 +52,14 @@ function assertAdditiveSql(sql) {
     .map((s) => s.trim())
     .filter(Boolean);
   for (const statement of statements) {
+    // Pre-0.5.3 databases lack this additive enum member. Keep this exception
+    // exact: arbitrary ALTER TYPE (including renames) stays rejected. PG17
+    // makes the new member usable after this plan's COMMIT.
+    if (
+      statement ===
+      'ALTER TYPE "RepostDestinationFormat" ADD VALUE \'FACEBOOK_STORY\''
+    )
+      continue;
     if (
       /\b(DROP|TRUNCATE|ALTER\s+COLUMN|RENAME)\b/i.test(statement) ||
       !/^(CREATE\s+(TABLE|TYPE|(?:UNIQUE\s+)?INDEX)|ALTER\s+TABLE\s+"[^"]+"\s+ADD\s+(COLUMN|CONSTRAINT))\b/i.test(

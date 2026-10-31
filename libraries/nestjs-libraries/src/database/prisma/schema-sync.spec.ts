@@ -50,6 +50,21 @@ describe('sincronizacao de schema sem perda de dados', () => {
     ).not.toThrow();
     expect(() => assertAdditiveSql('UPDATE "User" SET "id"=1;')).toThrow();
   });
+  it('aceita o acrescimo exato do formato Facebook Story desde a versao 0.5', () => {
+    const sql =
+      'ALTER TYPE "RepostDestinationFormat" ADD VALUE \'FACEBOOK_STORY\';';
+    expect(() => assertAdditiveSql(sql)).not.toThrow();
+    expect(buildSyncPlan(sql)).toBe('BEGIN;\n' + sql + '\nCOMMIT;\n');
+  });
+  it.each([
+    'ALTER TYPE "Other" ADD VALUE \'FACEBOOK_STORY\';',
+    'ALTER TYPE "RepostDestinationFormat" ADD VALUE \'UNKNOWN\';',
+    "ALTER TYPE \"RepostDestinationFormat\" RENAME VALUE 'INSTAGRAM_STORY' TO 'FACEBOOK_STORY';",
+    "ALTER TYPE \"RepostDestinationFormat\" ADD VALUE 'FACEBOOK_STORY' BEFORE 'X_POST';",
+    'ALTER TYPE "RepostDestinationFormat" ADD VALUE \'FACEBOOK_STORY\'; DROP TABLE "Post";',
+  ])('recusa mudanca de enum fora do acrescimo conhecido: %s', (sql) => {
+    expect(() => buildSyncPlan(sql)).toThrow();
+  });
 });
 
 describe('migracao do indice legado de experimentos Mastra', () => {
