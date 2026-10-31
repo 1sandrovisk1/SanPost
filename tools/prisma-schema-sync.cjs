@@ -67,7 +67,8 @@ function assertAdditiveSql(sql) {
 
 // Mastra 1.25 replaces its legacy experiment/item uniqueness with attempt-aware
 // uniqueness. Recognize only the exact Prisma plan, then check the actual index
-// and an empty table under the same lock/transaction as the replacement.
+// under the same lock/transaction as the replacement. The SDK reads legacy
+// NULL attempts as zero; normalize only that field before retiring uniqueness.
 const LEGACY_DROP = 'DROP INDEX "idx_experiment_results_exp_item"';
 const EXPERIMENT_REPLACEMENT =
   'CREATE UNIQUE INDEX "idx_experiment_results_exp_item_attempt" ON "mastra_experiment_results"("experimentId", "itemId", "attempt")';
@@ -137,12 +138,39 @@ END $guard$;
 LOCK TABLE public.mastra_experiment_results IN ACCESS EXCLUSIVE MODE;
 ${oldGuard}
 DO $guard$ BEGIN
-  IF EXISTS (SELECT 1 FROM public.mastra_experiment_results LIMIT 1) THEN
-    RAISE EXCEPTION 'Experimentos existentes exigem migracao revisada; sincronizacao cancelada';
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_class t WHERE t.oid = 'public.mastra_experiment_results'::regclass
+      AND t.relkind = 'r' AND NOT t.relispartition
+      AND NOT t.relrowsecurity AND NOT t.relforcerowsecurity
+  ) OR (SELECT count(*) FROM pg_attribute a
+    WHERE a.attrelid = 'public.mastra_experiment_results'::regclass
+      AND a.attname IN ('experimentId', 'itemId') AND a.attnotnull
+      AND a.attnum > 0 AND NOT a.attisdropped) <> 2
+    OR EXISTS (SELECT 1 FROM pg_inherits WHERE inhparent = 'public.mastra_experiment_results'::regclass
+      OR inhrelid = 'public.mastra_experiment_results'::regclass)
+    OR EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid = 'public.mastra_experiment_results'::regclass AND NOT tgisinternal)
+    OR EXISTS (SELECT 1 FROM pg_rewrite WHERE ev_class = 'public.mastra_experiment_results'::regclass)
+  THEN
+    RAISE EXCEPTION 'Tabela de experimentos personalizada; migracao revisada necessaria';
   END IF;
 END $guard$;
 ${additive}
 ${newGuard}
+DO $guard$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_attribute a
+    WHERE a.attrelid = 'public.mastra_experiment_results'::regclass
+      AND a.attname = 'attempt' AND a.atttypid = 'pg_catalog.int4'::regtype
+      AND NOT a.attisdropped AND a.attgenerated = '' AND a.attidentity = '')
+  THEN
+    RAISE EXCEPTION 'Coluna attempt inesperada; migracao cancelada';
+  END IF;
+END $guard$;
+UPDATE public.mastra_experiment_results SET "attempt" = 0 WHERE "attempt" IS NULL;
+DO $guard$ BEGIN
+  IF EXISTS (SELECT 1 FROM public.mastra_experiment_results WHERE "attempt" IS NULL) THEN
+    RAISE EXCEPTION 'Normalizacao de attempt incompleta; migracao cancelada';
+  END IF;
+END $guard$;
 DROP INDEX public."idx_experiment_results_exp_item";
 COMMIT;
 `;

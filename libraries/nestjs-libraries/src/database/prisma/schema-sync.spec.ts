@@ -74,8 +74,11 @@ describe('migracao do indice legado de experimentos Mastra', () => {
     expect(plan).toContain('pg_get_indexdef');
     expect(plan).toContain('pg_constraint');
     expect(plan).toContain(
-      'IF EXISTS (SELECT 1 FROM public.mastra_experiment_results LIMIT 1)'
+      'UPDATE public.mastra_experiment_results SET "attempt" = 0 WHERE "attempt" IS NULL;'
     );
+    expect(plan).toContain('pg_trigger');
+    expect(plan).toContain('pg_rewrite');
+    expect(plan).toContain('relrowsecurity');
     expect(plan.indexOf(replacement)).toBeLessThan(
       plan.indexOf('DROP INDEX public."idx_experiment_results_exp_item";')
     );

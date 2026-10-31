@@ -9,7 +9,7 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 
 ### Corrigido — atualização do banco Mastra
 
-- Boot reconhece a migração exata do índice legado de experimentos, que bloqueava a RC.5 em bancos existentes. Confere catálogo e tabela vazia, cria o substituto antes de remover o antigo na mesma transação e mantém a recusa de qualquer outra operação destrutiva.
+- Boot reconhece a migração exata do índice legado de experimentos, que bloqueava a RC.5 em bancos existentes. Confere catálogo e tabela padrão do SDK, preserva registros existentes e normaliza apenas tentativas nulas para zero, como o SDK. Cria o substituto antes de remover o antigo na mesma transação e mantém a recusa de qualquer outra operação destrutiva ou estrutura personalizada.
 
 ### Adicionado — X Articles
 

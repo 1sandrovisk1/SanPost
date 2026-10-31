@@ -64,13 +64,6 @@ CREATE UNIQUE INDEX "idx_experiment_results_exp_item_attempt" ON "mastra_experim
       id TEXT PRIMARY KEY, "experimentId" TEXT NOT NULL, "itemId" TEXT NOT NULL
     ); ${oldIndex}`);
     await reject(
-      'existing experiment rows',
-      "INSERT INTO mastra_experiment_results VALUES ('fixture','e','i')",
-      "DELETE FROM mastra_experiment_results WHERE id='fixture'",
-      /Experimentos existentes/,
-      1
-    );
-    await reject(
       'same name on another table',
       `DROP INDEX idx_experiment_results_exp_item;
        CREATE TABLE unrelated ("experimentId" TEXT, "itemId" TEXT);
@@ -104,7 +97,83 @@ CREATE UNIQUE INDEX "idx_experiment_results_exp_item_attempt" ON "mastra_experim
       'RESET search_path; DROP SCHEMA proof_other;',
       /Schema de experimentos inesperado/
     );
+    await reject(
+      'nullable legacy keys',
+      'ALTER TABLE mastra_experiment_results ALTER COLUMN "itemId" DROP NOT NULL;',
+      'ALTER TABLE mastra_experiment_results ALTER COLUMN "itemId" SET NOT NULL;',
+      /Tabela de experimentos personalizada/
+    );
+    await reject(
+      'custom update trigger',
+      `CREATE FUNCTION proof_trigger() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$;
+       CREATE TRIGGER custom_update BEFORE UPDATE ON mastra_experiment_results FOR EACH ROW EXECUTE FUNCTION proof_trigger();`,
+      'DROP TRIGGER custom_update ON mastra_experiment_results; DROP FUNCTION proof_trigger();',
+      /Tabela de experimentos personalizada/
+    );
+    await reject(
+      'custom rewrite rule',
+      'CREATE RULE custom_update AS ON UPDATE TO mastra_experiment_results DO INSTEAD NOTHING;',
+      'DROP RULE custom_update ON mastra_experiment_results;',
+      /Tabela de experimentos personalizada/
+    );
+    await reject(
+      'row-level security',
+      'ALTER TABLE mastra_experiment_results ENABLE ROW LEVEL SECURITY;',
+      'ALTER TABLE mastra_experiment_results DISABLE ROW LEVEL SECURITY;',
+      /Tabela de experimentos personalizada/
+    );
+    await reject(
+      'inherited table',
+      'CREATE TABLE proof_child () INHERITS (mastra_experiment_results);',
+      'DROP TABLE proof_child;',
+      /Tabela de experimentos personalizada/
+    );
     await client.query(buildSyncPlan(sql));
+    assert.equal(
+      (
+        await client.query(
+          'SELECT count(*)::int AS n FROM mastra_experiment_results'
+        )
+      ).rows[0].n,
+      0
+    );
+    console.log('PASS empty legacy upgrade');
+    // Recreate a partial legacy upgrade with existing NULL and non-NULL attempts.
+    await client.query(`DROP INDEX idx_experiment_results_exp_item_attempt;
+      ${oldIndex}
+      INSERT INTO mastra_experiment_results VALUES ('legacy-null','e1','i',NULL),('legacy-seven','e2','i',7);`);
+    const before = (
+      await client.query(
+        'SELECT id,"experimentId","itemId" FROM mastra_experiment_results ORDER BY id'
+      )
+    ).rows;
+    const partial = sql.replace(
+      'ALTER TABLE "mastra_experiment_results" ADD COLUMN "attempt" INTEGER;',
+      ''
+    );
+    await client.query(buildSyncPlan(partial));
+    assert.deepEqual(
+      (
+        await client.query(
+          'SELECT id,"experimentId","itemId" FROM mastra_experiment_results ORDER BY id'
+        )
+      ).rows,
+      before
+    );
+    assert.deepEqual(
+      (
+        await client.query(
+          'SELECT id,attempt FROM mastra_experiment_results ORDER BY id'
+        )
+      ).rows,
+      [
+        { id: 'legacy-null', attempt: 0 },
+        { id: 'legacy-seven', attempt: 7 },
+      ]
+    );
+    console.log(
+      'PASS populated partial upgrade preserves IDs/payload and normalizes NULL only'
+    );
     assert.equal(
       (
         await client.query(
@@ -127,12 +196,12 @@ CREATE UNIQUE INDEX "idx_experiment_results_exp_item_attempt" ON "mastra_experim
           'SELECT count(*)::int AS n FROM mastra_experiment_results'
         )
       ).rows[0].n,
-      0
+      2
     );
     await client.query(buildSyncPlan('-- This is an empty migration.'));
     await client.query(buildSyncPlan('-- This is an empty migration.'));
     console.log(
-      'PASS empty legacy upgrade, replacement definition, row preservation and repeat boot.'
+      'PASS replacement definition, row preservation and repeat boot.'
     );
   } finally {
     client.release();

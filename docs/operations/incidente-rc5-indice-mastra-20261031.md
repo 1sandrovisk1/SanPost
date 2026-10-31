@@ -20,16 +20,22 @@ Os 1.544 posts, 28 canais e seis perfis mantiveram contagens e hashes idênticos
 
 O backup deste atendimento está em `/root/multipost-backups/rc5-boot-incident-20261031T150803Z/database-before.dump`, com permissões restritas. Os schemas, planos, checksum e provas ficam no mesmo diretório privado. Não armazenar DATABASE_URL ou credenciais em documentação/logs.
 
-## Correção para próximos upgrades
+## Correção para próximos upgrades — RC.6
 
-O patch de código para próximos upgrades faz o boot reconhecer somente essa migração legada conhecida, com verificações de catálogo e tabela vazia dentro da transação. O índice novo é criado antes da remoção do antigo. `assertAdditiveSql` continua recusando DROP genérico e mudanças destrutivas; todo o restante do plano continua passando por esse validador.
+O patch reconhece somente essa migração legada conhecida. O catálogo e as dependências são conferidos dentro da transação, com lock exclusivo. A tabela deve ser uma tabela comum do SDK, com as duas chaves não nulas e sem herança, particionamento, RLS, triggers de usuário ou regras de reescrita. Uma estrutura inesperada interrompe a operação.
 
-Se a tabela contiver resultados de experimentos, se o índice tiver outra definição/dependência ou se aparecer outro comando não aditivo, a atualização continua interrompida e exige uma migração específica revisada. Não usar `--accept-data-loss` ou rollback cego para RC.4: a imagem antiga sincroniza o schema de modo destrutivo e pode remover tabelas novas.
+Depois de criar e verificar o índice novo, confere `attempt` como inteiro normal e transforma somente valores NULL em zero. O SDK já interpreta NULL como tentativa zero na leitura e no upsert; IDs, conteúdo e demais campos permanecem iguais. Valores de tentativa já preenchidos são preservados. O índice antigo só é removido depois dessas etapas, sem CASCADE. O lock e a unicidade antiga por par asseguram que essa normalização não produza colisões no índice novo.
+
+`assertAdditiveSql` continua recusando DROP e UPDATE genéricos. O UPDATE é um comando fixo emitido apenas nessa migração validada, não uma permissão para aceitar alterações vindas do diff.
+
+Se houver outra definição/dependência, estrutura personalizada ou outro comando não aditivo, a atualização continua interrompida e exige revisão. Não usar `--accept-data-loss` ou rollback cego para RC.4: a imagem antiga sincroniza o schema de modo destrutivo e pode remover tabelas novas.
 
 ## Regressões reproduzíveis
 
-`schema-sync.spec.ts` cobre os planos aceitos/recusados e mantém o validador genérico fechado. `tools/mastra-legacy-index-proof.cjs` exige banco vazio descartável em loopback, sem query de conexão, com nome `multipost_schema_proof_*`. Cria apenas fixtures e confere recusa de tabela preenchida, nome de índice em outra tabela, índice parcial, índice de constraint, dependência de chave estrangeira e search_path diferente. Após cada recusa, verifica rollback, preservação de linhas e ausência de coluna/índice do upgrade. Por fim executa a migração válida e duas transações de boot vazio. Não executar contra produção.
+`schema-sync.spec.ts` cobre os planos aceitos/recusados e mantém o validador genérico fechado. `tools/mastra-legacy-index-proof.cjs` exige banco vazio descartável em loopback, sem query de conexão, com nome `multipost_schema_proof_*`. Cria fixtures e executa dez recusas reais: índice em outra tabela, parcial, pertencente a constraint, dependência FK, search_path diferente, chaves legadas anuláveis, trigger, regra de reescrita, RLS e herança. Após cada recusa, confere rollback, linhas preservadas e ausência de coluna/índice novos. Testa upgrade vazio e parcial populado, preservando IDs/conteúdo e tentativa 7, normalizando só NULL para 0, seguido de duas transações de boot vazio.
 
-A restauração deste atendimento manteve a imagem RC.5 original. O patch do repositório precisa integrar uma próxima imagem para corrigir automaticamente outras instalações com o mesmo legado; a migração manual já recuperou esta VPS.
+`tools/mastra-storage-proof.cjs` agora inclui a tabela e o índice criados pelo SDK antigo, com um resultado salvo antes do upgrade. O comando real de boot deve preservar todos os campos originais e acrescentar `attempt=0`. Um upsert real do SDK deve reutilizar o mesmo ID, sem criar linha extra. Memória, vetores, índices HNSW, 45 tabelas Mastra e duas sincronizações repetidas continuam conferidos. As duas provas só podem usar bancos locais descartáveis.
 
-Resultados do patch: 20 testes Jest aprovados; seis casos de catálogo/linhas recusados no PostgreSQL real com rollback e estado preservado; upgrade automático usando o backup real em banco isolado passou, assim como a segunda execução do comando real de boot. O container descartável e os arquivos temporários de conexão são removidos ao concluir a validação.
+A recuperação deste atendimento manteve a imagem RC.5 original. A correção é destinada à RC.6 e à atualização do canal `:prerelease`, para que outras instalações recebam a migração no boot.
+
+Resultados: 20 testes Jest aprovados; dez recusas PostgreSQL com rollback; upgrade vazio/populado e repetição; prova completa de memória/vetores/SDK com dado legado e upsert real. O ensaio anterior com o backup real também passou antes da recuperação da VPS. Nenhum teste adicional de SDK usou o banco de produção.

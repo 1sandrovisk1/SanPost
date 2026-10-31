@@ -9,6 +9,8 @@ const { spawnSync } = require('node:child_process');
 
 async function main() {
   const url = new URL(process.env.QA_DATABASE_URL || 'invalid:');
+  assert(['postgres:', 'postgresql:'].includes(url.protocol));
+  assert(!url.search, 'Proof refuses connection query overrides.');
   assert(
     ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname),
     'Use only a disposable loopback database.'
@@ -73,6 +75,23 @@ async function main() {
       CREATE TABLE kb_proof(id SERIAL PRIMARY KEY,vector_id TEXT UNIQUE NOT NULL,embedding vector(3),metadata JSONB);
       INSERT INTO kb_proof(vector_id,embedding,metadata) VALUES ('legacy','[1,0,0]','{"before":true}');
       CREATE INDEX kb_proof_hnsw ON kb_proof USING hnsw(embedding vector_cosine_ops);`);
+    // Runtime-created legacy SDK table/index, absent from the old Prisma schema.
+    await pool.query(`CREATE TABLE mastra_experiment_results (
+      id TEXT PRIMARY KEY, "experimentId" TEXT NOT NULL, "itemId" TEXT NOT NULL,
+      "itemDatasetVersion" INTEGER, input JSONB NOT NULL, output JSONB,
+      "groundTruth" JSONB, error JSONB, "startedAt" TIMESTAMP(6) NOT NULL,
+      "completedAt" TIMESTAMP(6) NOT NULL, "retryCount" INTEGER NOT NULL,
+      "traceId" TEXT, status TEXT, tags JSONB, "createdAt" TIMESTAMP(6) NOT NULL,
+      "startedAtZ" TIMESTAMPTZ DEFAULT now(), "completedAtZ" TIMESTAMPTZ DEFAULT now(),
+      "createdAtZ" TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE UNIQUE INDEX idx_experiment_results_exp_item ON mastra_experiment_results("experimentId","itemId");
+    CREATE INDEX idx_experiment_results_experimentid ON mastra_experiment_results("experimentId");
+    INSERT INTO mastra_experiment_results (id,"experimentId","itemId",input,output,"startedAt","completedAt","retryCount","createdAt")
+      VALUES ('legacy-result','legacy-experiment','legacy-item','{"message":"before"}','{"answer":"before"}',now(),now(),2,now());`);
+    const legacyBefore = (
+      await pool.query('SELECT * FROM mastra_experiment_results')
+    ).rows[0];
     const hnswBefore = (
       await pool.query(
         "SELECT indexdef FROM pg_indexes WHERE indexname='kb_proof_hnsw'"
@@ -85,6 +104,38 @@ async function main() {
     });
     await store.init();
     await store.init();
+    const legacyAfter = (
+      await pool.query('SELECT * FROM mastra_experiment_results')
+    ).rows[0];
+    for (const key of Object.keys(legacyBefore))
+      assert.deepEqual(
+        legacyAfter[key],
+        legacyBefore[key],
+        `Legacy experiment field changed: ${key}`
+      );
+    assert.equal(legacyAfter.attempt, 0);
+    const experiments = await store.getStore('experiments');
+    const upserted = await experiments.upsertExperimentResult({
+      experimentId: legacyAfter.experimentId,
+      itemId: legacyAfter.itemId,
+      input: legacyAfter.input,
+      output: legacyAfter.output,
+      startedAt: legacyAfter.startedAtZ,
+      completedAt: legacyAfter.completedAtZ,
+      retryCount: legacyAfter.retryCount,
+    });
+    assert.equal(upserted.id, 'legacy-result');
+    assert.equal(upserted.attempt, 0);
+    assert.equal(
+      Number(
+        (await pool.query('SELECT count(*) FROM mastra_experiment_results'))
+          .rows[0].count
+      ),
+      1
+    );
+    console.log(
+      'PASS populated legacy experiment preserves all original fields; SDK upsert keeps ID/count.'
+    );
     const memory = await store.getStore('memory');
     assert.equal(
       (await memory.getThreadById({ threadId: 'legacy' })).title,
