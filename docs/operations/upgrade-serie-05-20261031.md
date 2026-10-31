@@ -12,6 +12,8 @@ Para cada schema aplica o DDL antigo, grava organização, usuário, vínculo de
 
 Essa evidência cobre compatibilidade de schema e armazenamento das estruturas oficiais. Não equivale a uma garantia universal sobre APIs externas, históricos Temporal de qualquer idade, schemas personalizados ou instalações com serviços incompatíveis. Backup e preservação das chaves e volumes existentes continuam necessários antes da atualização. Não trocar `JWT_SECRET`, `ENCRYPTION_KEY`, banco, Redis ou namespace Temporal durante o upgrade.
 
+Resultado antes da RC.7: matriz PostgreSQL 17 aprovada para 48 tags, agrupadas em 8 schemas distintos, incluindo as sete versões estáveis 0.5.0–0.5.6. As dez recusas reais e os upgrades vazio/populado do índice Mastra também passaram. [CI do código integrado](https://github.com/maiconramos/robo-multipost/actions/runs/41222392909) aprovado: 3.255 testes e os três builds de produção em Node 22.23.4; 41 testes anteriormente desativados preservados. Nenhum deploy de produção integra esta correção.
+
 ## Editor e responsividade
 
 O compositor novo está ligado diretamente ao fluxo de criar/editar post; não exige variável de ativação. A maior diferença visual aparece até 1025 px: cabeçalho móvel, alternância entre edição/preview, painéis inferiores para canais/configurações/data/tags/recorrência e toolbar adaptada ao teclado. No desktop o desenho continua semelhante. O porte não corresponde a uma reformulação responsiva de todas as telas do aplicativo.
