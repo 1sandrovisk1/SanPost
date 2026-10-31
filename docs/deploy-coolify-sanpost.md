@@ -35,7 +35,7 @@ O Coolify detecta as variaveis do Compose e gera valores persistentes para:
 
 Variaveis a informar manualmente:
 - `SANPOST_PUBLIC_URL` (obrigatoria);
-- `SANPOST_DISABLE_REGISTRATION` (padrao `false`): depois de criar a primeira conta, mude para `true` para impedir cadastro aberto.
+- `SANPOST_DISABLE_REGISTRATION` (padrao `false`): mantenha `false` durante o primeiro cadastro. Se estiver `true`, o backend permite autocadastro somente quando ainda nao existe nenhuma organizacao; em banco ja inicializado o cadastro retorna `Registration is disabled`. Para recuperar uma instalacao ja inicializada sem conta acessivel, defina temporariamente `false`, redeploy, crie/recupere a conta e volte para `true`.
 
 As credenciais de integracoes de redes sociais devem ser fornecidas somente quando forem usadas, nas configuracoes adequadas.
 
@@ -54,7 +54,7 @@ A rede `temporal-network` nao possui mais nome fixo; o Compose usa redes isolada
 3. Execute **Deploy** e acompanhe os logs de build.
 4. Verifique que PostgreSQL e Redis ficam saudaveis e o Temporal esta operacional.
 5. Acesse o dominio por HTTPS, crie o administrador, teste login e envio/consulta de upload.
-6. Apos criar a conta, coloque `SANPOST_DISABLE_REGISTRATION=true` e faca Redeploy.
+6. Apos criar a conta, coloque `SANPOST_DISABLE_REGISTRATION=true` e faca Redeploy. Para uma instalacao ja inicializada sem conta acessivel, siga a instrucao temporaria na secao de variaveis.
 7. Verifique se os volumes persistem apos reiniciar a stack.
 
 Se houver erro `failed to bind`, cheque as portas publicadas no **Show Deployable Compose** (nenhuma porta do SanPost deve estar vinculada ao host).

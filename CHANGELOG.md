@@ -7,6 +7,10 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 
 ## [Unreleased]
 
+### Alterado
+
+- Identidade de acesso SanPost, removida a opção de autenticação OIDC genérica, textos da tela de login em português e links locais para Termos de Uso e Política de Privacidade. Adicionadas páginas legais próprias e esclarecido no guia do Coolify como liberar cadastro em instalações já inicializadas.
+
 ### Corrigido — atualização desde a série 0.5
 
 - Sincronização do banco aceita o acréscimo exato dos cinco formatos de repost adicionados durante a série 0.5, incluindo `FACEBOOK_STORY` para bancos anteriores à 0.5.3. Outras alterações de enum e operações destrutivas continuam bloqueadas. Prova local descartável cobre os schemas distintos das tags 0.5, com dados existentes, inicialização do Mastra e boots repetidos.

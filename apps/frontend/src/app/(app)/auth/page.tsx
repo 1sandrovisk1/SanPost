@@ -6,12 +6,11 @@ import { Metadata } from 'next';
 import { isGeneralServerSide } from '@gitroom/helpers/utils/is.general.server.side';
 import Link from 'next/link';
 import { getT } from '@gitroom/react/translation/get.translation.service.backend';
-import { LoginWithOidc } from '@gitroom/frontend/components/auth/login.with.oidc';
 export const metadata: Metadata = {
-  title: `${isGeneralServerSide() ? 'Robô MultiPost' : 'Gitroom'} Register`,
+  title: `${isGeneralServerSide() ? 'SanPost' : 'Gitroom'} Cadastro`,
   description: '',
 };
-export default async function Auth(params: {searchParams: Promise<{provider: string}>}) {
+export default async function Auth() {
   const t = await getT();
   // Convite presente (cookie `org`, setado pelo proxy a partir do `?org=`):
   // esconde o campo Empresa (convidado nao cria workspace proprio).
@@ -23,10 +22,9 @@ export default async function Auth(params: {searchParams: Promise<{provider: str
     const canRegister =
       hasInvite ||
       (await (await internalFetch('/auth/can-register')).json()).register;
-    if (!canRegister && !(await params?.searchParams)?.provider) {
+    if (!canRegister) {
       return (
         <div className="flex flex-col flex-1">
-          <LoginWithOidc />
           <div className="text-center">
             {t('registration_is_disabled', 'Registration is disabled')}
             <br />
