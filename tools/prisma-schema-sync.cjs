@@ -45,6 +45,17 @@ function buildPreservedSchema(canonical, introspected) {
   return canonical + (kept.length ? '\n\n' + kept.join('\n\n') + '\n' : '');
 }
 
+// Immutable additions shipped during the 0.5 series; no arbitrary enum DDL.
+const LEGACY_REPOST_ENUM_ADDITIONS = new Set(
+  [
+    'FACEBOOK_STORY',
+    'LINKEDIN_POST',
+    'X_POST',
+    'THREADS_POST',
+    'PINTEREST_PIN',
+  ].map((value) => `ALTER TYPE "RepostDestinationFormat" ADD VALUE '${value}'`)
+);
+
 function assertAdditiveSql(sql) {
   const statements = sql
     .replace(/^\s*--.*$/gm, '')
@@ -52,14 +63,8 @@ function assertAdditiveSql(sql) {
     .map((s) => s.trim())
     .filter(Boolean);
   for (const statement of statements) {
-    // Pre-0.5.3 databases lack this additive enum member. Keep this exception
-    // exact: arbitrary ALTER TYPE (including renames) stays rejected. PG17
-    // makes the new member usable after this plan's COMMIT.
-    if (
-      statement ===
-      'ALTER TYPE "RepostDestinationFormat" ADD VALUE \'FACEBOOK_STORY\''
-    )
-      continue;
+    // PG17 makes these new members usable after this plan's COMMIT.
+    if (LEGACY_REPOST_ENUM_ADDITIONS.has(statement)) continue;
     if (
       /\b(DROP|TRUNCATE|ALTER\s+COLUMN|RENAME)\b/i.test(statement) ||
       !/^(CREATE\s+(TABLE|TYPE|(?:UNIQUE\s+)?INDEX)|ALTER\s+TABLE\s+"[^"]+"\s+ADD\s+(COLUMN|CONSTRAINT))\b/i.test(

@@ -56,7 +56,12 @@ async function main() {
       'Proof requires an initially empty database.'
     );
     const tags = run('git', ['tag', '-l', 'v0.5*']).trim().split('\n');
-    assert(tags.includes('v0.5.0') && tags.includes('v0.5.6'));
+    for (let patch = 0; patch <= 6; patch++) {
+      assert(
+        tags.includes(`v0.5.${patch}`),
+        'All seven stable 0.5 tags are required.'
+      );
+    }
     const groups = new Map();
     for (const tag of tags) {
       assert(/^v0\.5\.\d+(?:-rc\.\d+)?$/.test(tag));
@@ -71,6 +76,7 @@ async function main() {
     }
     let first = true;
     for (const { schema, tags: represented } of groups.values()) {
+      console.log('START schema group:', represented.join(', '));
       if (!first) {
         // Only this initially empty, explicitly disposable loopback DB is reset.
         await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
@@ -165,9 +171,15 @@ async function main() {
   }
 }
 
-main().catch(() => {
+main().catch((error) => {
   console.error(
     '0.5 upgrade proof failed. Inspect only the disposable local fixture.'
+  );
+  // Fixture data only; never print connection URLs or subprocess stderr.
+  console.error(
+    String(error.message)
+      .replace(/\w+:\/\/\S+/g, '[url]')
+      .split('\n')[0]
   );
   process.exitCode = 1;
 });

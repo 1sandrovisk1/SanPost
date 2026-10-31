@@ -50,12 +50,20 @@ describe('sincronizacao de schema sem perda de dados', () => {
     ).not.toThrow();
     expect(() => assertAdditiveSql('UPDATE "User" SET "id"=1;')).toThrow();
   });
-  it('aceita o acrescimo exato do formato Facebook Story desde a versao 0.5', () => {
-    const sql =
-      'ALTER TYPE "RepostDestinationFormat" ADD VALUE \'FACEBOOK_STORY\';';
-    expect(() => assertAdditiveSql(sql)).not.toThrow();
-    expect(buildSyncPlan(sql)).toBe('BEGIN;\n' + sql + '\nCOMMIT;\n');
-  });
+  it.each([
+    'FACEBOOK_STORY',
+    'LINKEDIN_POST',
+    'X_POST',
+    'THREADS_POST',
+    'PINTEREST_PIN',
+  ])(
+    'aceita o acrescimo exato do formato legado %s desde a versao 0.5',
+    (value) => {
+      const sql = `ALTER TYPE "RepostDestinationFormat" ADD VALUE '${value}';`;
+      expect(() => assertAdditiveSql(sql)).not.toThrow();
+      expect(buildSyncPlan(sql)).toBe('BEGIN;\n' + sql + '\nCOMMIT;\n');
+    }
+  );
   it.each([
     'ALTER TYPE "Other" ADD VALUE \'FACEBOOK_STORY\';',
     'ALTER TYPE "RepostDestinationFormat" ADD VALUE \'UNKNOWN\';',

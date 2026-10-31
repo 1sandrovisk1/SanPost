@@ -2,7 +2,7 @@
 
 A RC.6 corrigiu a troca do índice legado do Mastra, mas isso não equivalia a uma validação do salto direto de todas as versões 0.5. A comparação das sete tags estáveis encontrou outra recusa no boot de bancos 0.5.0, 0.5.1 e 0.5.2: `ALTER TYPE "RepostDestinationFormat" ADD VALUE 'FACEBOOK_STORY'`. O valor surgiu na 0.5.3 e é aditivo.
 
-O sincronizador passa a reconhecer somente essa instrução exata. Mantém a transação, a recusa de outras alterações de enum, de tabelas desconhecidas, de SQL destrutivo e as verificações da migração legada do Mastra. PostgreSQL 17 permite adicionar o valor dentro da transação; seu uso deve ocorrer depois do commit. Nenhum default do plano usa esse valor antes do commit.
+As primeiras RCs da 0.5.0 também não tinham `LINKEDIN_POST`, `X_POST`, `THREADS_POST` e `PINTEREST_PIN`. O sincronizador passa a reconhecer somente as cinco instruções exatas de acréscimo desses formatos conhecidos. Mantém a transação, a recusa de outras alterações de enum, de tabelas desconhecidas, de SQL destrutivo e as verificações da migração legada do Mastra. PostgreSQL 17 permite adicionar os valores dentro da transação; seu uso deve ocorrer depois do commit. Nenhum default do plano usa esses valores antes do commit.
 
 ## Prova reproduzível
 
