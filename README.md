@@ -145,10 +145,6 @@ O Robô SanPost possui API pública disponível em `/api/`. Você pode usar essa
 - **Orquestração:** Temporal.io
 - **IA:** Mastra framework + MCP
 
-## Desenvolvimento local
-
-Para instruções detalhadas de setup local (desenvolvimento e produção), consulte o arquivo [validacao-dev.md](validacao-dev.md) na raiz do repositório.
-
 ## Créditos
 
 Este projeto é um fork do [Postiz](https://github.com/gitroomhq/postiz-app), desenvolvido pela equipe do GitRoom HQ, licenciado sob AGPL-3.0.
