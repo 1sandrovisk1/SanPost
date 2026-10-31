@@ -98,7 +98,7 @@ services:
       SLACK_ID: ''
       SLACK_SECRET: ''
       SLACK_SIGNING_SECRET: ''
-      MASTODON_URL: 'https://mastodon.social'
+      MASTODON_URL: ''
       MASTODON_CLIENT_ID: ''
       MASTODON_CLIENT_SECRET: ''
       TELEGRAM_BOT_NAME: ''
