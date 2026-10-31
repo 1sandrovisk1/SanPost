@@ -7,6 +7,10 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 
 ## [Unreleased]
 
+### Corrigido — atualização desde a série 0.5
+
+- Sincronização do banco aceita o acréscimo exato dos cinco formatos de repost adicionados durante a série 0.5, incluindo `FACEBOOK_STORY` para bancos anteriores à 0.5.3. Outras alterações de enum e operações destrutivas continuam bloqueadas. Prova local descartável cobre os schemas distintos das tags 0.5, com dados existentes, inicialização do Mastra e boots repetidos.
+
 ### Corrigido — atualização do banco Mastra
 
 - Boot reconhece a migração exata do índice legado de experimentos, que bloqueava a RC.5 em bancos existentes. Confere catálogo e tabela padrão do SDK, preserva registros existentes e normaliza apenas tentativas nulas para zero, como o SDK. Cria o substituto antes de remover o antigo na mesma transação e mantém a recusa de qualquer outra operação destrutiva ou estrutura personalizada.
