@@ -477,6 +477,7 @@ const CredentialForm: React.FC<CredentialFormProps> = ({
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; error?: string } | null>(null);
   const [discoveredModels, setDiscoveredModels] = useState<CatalogModel[]>([]);
+  const [discoverError, setDiscoverError] = useState('');
   const [discovering, setDiscovering] = useState(false);
   const [form, setForm] = useState<FormState>(emptyState);
 
@@ -542,14 +543,20 @@ const CredentialForm: React.FC<CredentialFormProps> = ({
 
   const updateField = useCallback(
     <K extends keyof FormState>(key: K, value: FormState[K]) => {
-      if (key === 'provider' || key === 'apiKey') setDiscoveredModels([]);
+      if (key === 'provider' || key === 'apiKey') {
+        setDiscoveredModels([]);
+        setDiscoverError('');
+      }
       setForm((prev) => ({ ...prev, [key]: value }));
     },
     []
   );
 
   const updateOption = useCallback((key: string, value: any) => {
-    if (key === 'apiBaseURL') setDiscoveredModels([]);
+    if (key === 'apiBaseURL') {
+      setDiscoveredModels([]);
+      setDiscoverError('');
+    }
     setForm((prev) => ({
       ...prev,
       options: { ...prev.options, [key]: value },
@@ -563,6 +570,7 @@ const CredentialForm: React.FC<CredentialFormProps> = ({
       return;
     }
     setDiscovering(true);
+    setDiscoverError('');
     try {
       const response = await fetch(`/ai/catalog/${kind}/discover`, {
         method: 'POST',
@@ -576,7 +584,9 @@ const CredentialForm: React.FC<CredentialFormProps> = ({
       toaster.show(`${available.length} modelo(s) liberado(s) carregado(s).`, 'success');
       if (!available.some((item) => item.id === form.model)) updateField('model', available[0].id);
     } catch (error) {
-      toaster.show(error instanceof Error ? error.message : 'Falha ao listar modelos.', 'warning');
+      const message = error instanceof Error ? error.message : 'Falha ao listar modelos.';
+      setDiscoverError(message);
+      toaster.show(message, 'warning');
     } finally {
       setDiscovering(false);
     }
@@ -920,6 +930,11 @@ const CredentialForm: React.FC<CredentialFormProps> = ({
         <Button onClick={handleDiscoverModels} loading={discovering} disabled={isLocked} secondary={true as any}>
           {t('ai_provider_discover_models', 'Carregar modelos liberados')}
         </Button>
+      )}
+      {discoverError && (form.provider === 'custom' || (form.provider === 'sanpost-api' && kind === 'IMAGE')) && (
+        <div role="alert" className="rounded-[8px] border border-red-500/40 bg-red-500/10 px-[12px] py-[10px] text-[13px] text-red-300">
+          {discoverError}
+        </div>
       )}
       {form.provider && (
         <DynamicOptions

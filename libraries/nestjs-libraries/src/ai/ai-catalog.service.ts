@@ -68,7 +68,26 @@ export class AiCatalogService {
       } catch { continue; }
       if (response.ok || response.status !== 404) break;
     }
-    if (!response?.ok) throw new HttpException(`A API não listou os modelos (HTTP ${response?.status ?? 'sem resposta'}). Verifique URL, chave e rota de catálogo.`, 502);
+    if (!response?.ok) {
+      let detail = '';
+      if (response) {
+        const raw = await response.text().catch(() => '');
+        try {
+          const body = JSON.parse(raw) as { error?: { message?: string } | string; message?: string };
+          detail = typeof body.error === 'string' ? body.error : body.error?.message ?? body.message ?? '';
+        } catch {
+          detail = raw.slice(0, 180);
+        }
+      }
+      const safeDetail = detail
+        .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer ***')
+        .replace(/rapi_[A-Za-z0-9_-]+/g, 'rapi_***')
+        .slice(0, 180);
+      throw new HttpException(
+        `A API não listou os modelos (HTTP ${response?.status ?? 'sem resposta'}).${safeDetail ? ` ${safeDetail}` : ' Verifique URL, chave e rota de catálogo.'}`,
+        502
+      );
+    }
     const json = await response.json() as { data?: Array<Record<string, any>>; models?: Array<Record<string, any>> };
     const list = Array.isArray(json.data) ? json.data : Array.isArray(json.models) ? json.models : [];
     const models: CatalogModel[] = list.flatMap((item) => {

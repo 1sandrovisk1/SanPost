@@ -7,6 +7,10 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 
 ## [Unreleased]
 
+### Melhorias
+
+- Falhas ao carregar modelos agora ficam visiveis na tela e exibem detalhes seguros do gateway para facilitar o diagnostico.
+
 ### Adicionado
 
 - Configuração de endpoints OpenAI compatíveis para texto e imagens. Vídeo e busca web podem usar a API SanPost no padrão versionado de `004.API`; as rotas de vídeo e busca ainda precisam estar publicadas no gateway para responder.
