@@ -200,7 +200,7 @@ export class QuickCreateFlowDto {
 
   @ApiPropertyOptional({
     description:
-      'ID interno Post.id retornado ao agendar no MultiPost. Obrigatório no modo scheduled; comentários de Feed/Reels apenas.',
+      'ID interno Post.id retornado ao agendar no SanPost. Obrigatório no modo scheduled; comentários de Feed/Reels apenas.',
   })
   @IsOptional()
   @IsString()

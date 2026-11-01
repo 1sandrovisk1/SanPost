@@ -3,7 +3,7 @@ import { Forgot } from '@gitroom/frontend/components/auth/forgot';
 import { Metadata } from 'next';
 import { isGeneralServerSide } from '@gitroom/helpers/utils/is.general.server.side';
 export const metadata: Metadata = {
-  title: `${isGeneralServerSide() ? 'Robô MultiPost' : 'Gitroom'} Forgot Password`,
+  title: `${isGeneralServerSide() ? 'Robô SanPost' : 'SanPost'} Forgot Password`,
   description: '',
 };
 export default async function Auth() {

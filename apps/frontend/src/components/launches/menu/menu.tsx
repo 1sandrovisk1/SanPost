@@ -36,7 +36,7 @@ import copy from 'copy-to-clipboard';
 import { Input } from '@gitroom/react/form/input';
 import { Button } from '@gitroom/react/form/button';
 
-// nome do canal so no Robo MultiPost, sem mudar na plataforma (upstream #2190)
+// nome do canal so no SanPost, sem mudar na plataforma (upstream #2190)
 const RenameChannelModal: FC<{
   name: string;
   id: string;

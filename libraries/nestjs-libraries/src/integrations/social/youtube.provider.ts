@@ -329,7 +329,7 @@ export class YoutubeProvider extends SocialAbstract implements SocialProvider {
     }`;
 
     if (text.includes('invalid_rapt')) {
-      return 'A política de sessão do Google Workspace da sua organização invalidou o acesso. Peça ao administrador do Google Workspace para marcar o Robô MultiPost como app confiável e ativar "Isentar apps confiáveis" (https://support.google.com/a/answer/9368756) e reconecte o canal.';
+      return 'A política de sessão do Google Workspace da sua organização invalidou o acesso. Peça ao administrador do Google Workspace para marcar o Robô SanPost como app confiável e ativar "Isentar apps confiáveis" (https://support.google.com/a/answer/9368756) e reconecte o canal.';
     }
 
     return undefined;

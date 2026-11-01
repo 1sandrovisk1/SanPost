@@ -30,7 +30,7 @@ export class FlowChannelDto {
     | 'all'
     | 'next_publication'
     | 'scheduled';
-  @ApiPropertyOptional({ description: 'Post.id interno de um agendamento MultiPost.' })
+  @ApiPropertyOptional({ description: 'Post.id interno de um agendamento SanPost.' })
   @IsOptional() @IsString() @MaxLength(80) scheduledPostId?: string;
   @ApiProperty({ type: [String], maxItems: 100 })
   @IsArray()

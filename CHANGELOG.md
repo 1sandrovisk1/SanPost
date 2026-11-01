@@ -14,6 +14,7 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 
 ### Alterado
 
+- Marca da interface, da autenticação e dos textos de ajuda atualizada para SanPost. Login com Google ocultado; provedores já configurados continuam disponíveis.
 - Identidade de acesso SanPost, removida a opção de autenticação OIDC genérica, textos da tela de login em português e links locais para Termos de Uso e Política de Privacidade. Adicionadas páginas legais próprias e esclarecido no guia do Coolify como liberar cadastro em instalações já inicializadas.
 - Corrigido o layout raiz das páginas legais para que Termos de Uso e Política de Privacidade sejam compilados pelo Next.js como rotas públicas independentes.
 - Temporal passa a usar a configuração dinâmica embutida na imagem oficial, evitando a falha causada pelo arquivo customizado ausente no container do Coolify.

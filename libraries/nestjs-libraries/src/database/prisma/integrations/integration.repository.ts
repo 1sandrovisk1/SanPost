@@ -112,7 +112,7 @@ export class IntegrationRepository {
     });
   }
 
-  // nome so no Robo MultiPost; vazio volta ao nome da plataforma (upstream #2190)
+  // nome so no SanPost; vazio volta ao nome da plataforma (upstream #2190)
   updateCustomName(org: string, id: string, name: string) {
     return this._integration.model.integration.update({
       select: { id: true },

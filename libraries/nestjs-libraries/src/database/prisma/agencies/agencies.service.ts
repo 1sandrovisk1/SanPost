@@ -37,21 +37,21 @@ export class AgenciesService {
     if (action === 'approve') {
       await this._notificationService.sendEmail(
         agency?.user?.email!,
-        'Your Agency has been approved and added to Multipost 🚀',
+        'Your Agency has been approved and added to SanPost 🚀',
         `
 <html lang="en">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Your Agency has been approved and added to Multipost 🚀</title>
+    <title>Your Agency has been approved and added to SanPost 🚀</title>
 </head>
 
 <body style="font-family: Arial, sans-serif; margin: 0; padding: 0;">
   Hi there, <br /><br />
-  Your agency ${agency?.name} has been added to Multipost!<br />
+  Your agency ${agency?.name} has been added to SanPost!<br />
   You can <a href="https://postiz.com/agencies/${agency?.slug}">check it here</a><br />
-  It will appear on the main agency of Multipost in the next 24 hours.<br /><br />
+  It will appear on the main agency of SanPost in the next 24 hours.<br /><br />
 </body>
 </html>`
       );
@@ -73,7 +73,7 @@ export class AgenciesService {
 
 <body style="font-family: Arial, sans-serif; margin: 0; padding: 0;">
   Hi there, <br /><br />
-  Your agency ${agency?.name} has been declined to Multipost!<br />
+  Your agency ${agency?.name} has been declined to SanPost!<br />
   If you think we have made a mistake, please reply to this email and let us know
 </body>
 </html>`

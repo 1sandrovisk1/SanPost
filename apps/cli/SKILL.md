@@ -1,6 +1,6 @@
-# Robô MultiPost — Skill de Agente
+# Robô SanPost — Skill de Agente
 
-Você controla uma instância **self-hosted do Robô MultiPost** (agendador de redes
+Você controla uma instância **self-hosted do Robô SanPost** (agendador de redes
 sociais, fork do Postiz) pela CLI `multipost`. Cada comando roda no shell e devolve
 **JSON no stdout**. Em erro, devolve JSON no stderr (`{"ok":false,"error":...}`) e
 sai com código 1 — então sempre cheque o exit code e parseie a saída.
@@ -22,7 +22,7 @@ Comece sempre validando: `multipost is-connected` → `{ "connected": true }`.
 - **Post**: publicação (agendada, imediata `now`, ou `draft`).
 - **Flow (automação de comentário)**: alguém comenta uma palavra-chave num post do
   Instagram → o sistema responde e/ou manda um link no direct. **Exclusivo do
-  MultiPost.**
+  SanPost.**
 
 ## 3. Fluxo recomendado
 

@@ -1,4 +1,4 @@
--- Nome do canal so no Robo MultiPost (upstream #2190) e indice de
+-- Nome do canal so no SanPost (upstream #2190) e indice de
 -- UserOrganization por organizacao (upstream 7229c338). Aditivo e idempotente:
 -- o stack padrao aplica por `prisma db push`; o overlay local, que so roda
 -- `prisma validate`, aplica este arquivo.

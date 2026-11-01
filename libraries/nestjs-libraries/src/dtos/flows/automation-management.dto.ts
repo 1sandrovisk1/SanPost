@@ -32,7 +32,7 @@ export class AutomationConfigurationDto extends OmitType(QuickCreateFlowDto, [
 ] as const) {
   @ApiProperty({
     description:
-      'ID interno do canal Instagram ou da Página Facebook no MultiPost. Obtido em options?resource=channels.',
+      'ID interno do canal Instagram ou da Página Facebook no SanPost. Obtido em options?resource=channels.',
   })
   override integrationId: string;
   @ApiPropertyOptional({
@@ -184,7 +184,7 @@ export const automationConfigurationShape = {
     .enum(['all', 'specific', 'next_publication', 'scheduled'])
     .optional()
     .describe(
-      'Para agendados MultiPost use scheduled e o Post.id interno. Messenger só all.'
+      'Para agendados SanPost use scheduled e o Post.id interno. Messenger só all.'
     ),
   postIds: ids().optional(),
   storyIds: ids(64).optional(),

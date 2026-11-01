@@ -7,7 +7,7 @@ import { isGeneralServerSide } from '@gitroom/helpers/utils/is.general.server.si
 import Link from 'next/link';
 import { getT } from '@gitroom/react/translation/get.translation.service.backend';
 export const metadata: Metadata = {
-  title: `${isGeneralServerSide() ? 'SanPost' : 'Gitroom'} Cadastro`,
+  title: `${isGeneralServerSide() ? 'SanPost' : 'SanPost'} Cadastro`,
   description: '',
 };
 export default async function Auth() {

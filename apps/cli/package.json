@@ -1,7 +1,7 @@
 {
   "name": "@robo-multipost/agent",
   "version": "0.1.0",
-  "description": "CLI/skill do Robô MultiPost para agentes de IA (posts, integrações, automações de comentário e mídia) — funciona em qualquer instância self-hosted.",
+  "description": "CLI/skill do Robô SanPost para agentes de IA (posts, integrações, automações de comentário e mídia) — funciona em qualquer instância self-hosted.",
   "bin": {
     "multipost": "bin/multipost.js"
   },

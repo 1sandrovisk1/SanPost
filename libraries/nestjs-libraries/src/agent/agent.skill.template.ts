@@ -10,9 +10,9 @@
  */
 export function buildAgentSkillMarkdown(apiUrl: string): string {
   const base = (apiUrl || '').replace(/\/+$/, '');
-  return `# Robô MultiPost — Guia de Agente
+  return `# Robô SanPost — Guia de Agente
 
-Você opera uma instância **self-hosted do Robô MultiPost** (agendador de redes
+Você opera uma instância **self-hosted do Robô SanPost** (agendador de redes
 sociais, fork do Postiz com automações de comentário "flows"). Este documento é a
 referência completa para um agente de IA controlar esta instância.
 

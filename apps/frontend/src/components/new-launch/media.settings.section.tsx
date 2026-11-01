@@ -71,7 +71,7 @@ export const MediaSettingsSection: FC = () => {
             data-tooltip-class-name="!max-w-[400px] break-words"
             data-tooltip-content={t(
               'media_settings_section_tooltip',
-              'Thumbnails apply to videos in the main post and are sent to every channel that supports them. YouTube may ignore them on videos it treats as Shorts (vertical, up to 3 minutes) without failing the publish, and requires a phone-verified channel for custom thumbnails. If YouTube rejects the thumbnail the video is still published, and Robô MultiPost cannot check eligibility in advance.'
+              'Thumbnails apply to videos in the main post and are sent to every channel that supports them. YouTube may ignore them on videos it treats as Shorts (vertical, up to 3 minutes) without failing the publish, and requires a phone-verified channel for custom thumbnails. If YouTube rejects the thumbnail the video is still published, and Robô SanPost cannot check eligibility in advance.'
             )}
             role="img"
             aria-label={t(

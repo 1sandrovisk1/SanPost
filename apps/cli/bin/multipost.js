@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * Robô MultiPost — CLI/skill para agentes de IA.
+ * Robô SanPost — CLI/skill para agentes de IA.
  *
  * Wrapper fino e sem dependências sobre a API pública (/public/v1/*) de uma
  * instância self-hosted. Inclui automações de comentário (flows), que o CLI
@@ -231,7 +231,7 @@ const commands = {
   'is-connected': async () => out(await request('GET', '/public/v1/is-connected')),
 };
 
-const HELP = `Robô MultiPost — CLI para agentes
+const HELP = `Robô SanPost — CLI para agentes
 
 Config (env):
   MULTIPOST_API_KEY (ou POSTIZ_API_KEY)   chave de API (org ou perfil)

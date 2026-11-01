@@ -2,7 +2,7 @@ import { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 
 export const metadata: Metadata = {
-  title: 'Robô MultiPost - Agent',
+  title: 'Robô SanPost - Agent',
   description: '',
 };
 

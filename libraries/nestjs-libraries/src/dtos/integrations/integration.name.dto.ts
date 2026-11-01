@@ -1,6 +1,6 @@
 import { IsDefined, IsString, MaxLength } from 'class-validator';
 
-// nome do canal so no Robo MultiPost; vazio volta ao nome da plataforma
+// nome do canal so no SanPost; vazio volta ao nome da plataforma
 // (upstream #2190)
 export class IntegrationNameDto {
   @IsString()
