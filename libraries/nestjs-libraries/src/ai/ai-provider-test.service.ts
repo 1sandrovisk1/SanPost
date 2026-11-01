@@ -108,7 +108,7 @@ export class AiProviderTestService {
   private async testSanPost(apiKey: string, options?: Record<string, unknown>): Promise<AiProviderTestResult> {
     const baseURL = options?.apiBaseURL;
     if (typeof baseURL !== 'string') return { ok: false, error: 'Configure a URL base da API SanPost.' };
-    const res = await fetch(`${baseURL.replace(/\\/+$/, '')}/v1/models`, {
+    const res = await fetch(`${baseURL.replace(/\/+$/, '')}/v1/models`, {
       headers: { Authorization: `Bearer ${apiKey}` },
       signal: AbortSignal.timeout(15000),
     });

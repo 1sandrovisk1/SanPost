@@ -226,7 +226,7 @@ export class AiImageService {
     }
     let response: Response;
     try {
-      response = await fetch(`${baseURL.replace(/\\/+$/, '')}/v1/images/generations`, {
+      response = await fetch(`${baseURL.replace(/\/+$/, '')}/v1/images/generations`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ model, prompt, aspect_ratio: aspectRatio, n: options.numImages ?? 1, references, enhance_prompt: true, style: null, fast: false }),
