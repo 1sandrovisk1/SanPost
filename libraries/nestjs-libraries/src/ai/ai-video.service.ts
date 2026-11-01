@@ -179,6 +179,12 @@ export class AiVideoService {
       profileId
     );
 
+    const finalPrompt = await this.maybeEnrichPrompt(
+      organizationId,
+      input,
+      profileId
+    );
+
     if (credential.provider === 'sanpost-api') {
       return this.generateSanPostApi(credential, input, finalPrompt);
     }
@@ -188,12 +194,6 @@ export class AiVideoService {
         400
       );
     }
-
-    const finalPrompt = await this.maybeEnrichPrompt(
-      organizationId,
-      input,
-      profileId
-    );
 
     // Quando o admin nao escolheu modelo explicitamente, defaulta para
     // Veo 3.1 Lite (mais economico). Service usa este `model` em todas as
