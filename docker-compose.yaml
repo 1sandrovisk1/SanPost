@@ -4,6 +4,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.dev
+      args:
+        NEXT_PUBLIC_BACKEND_URL: '${SANPOST_PUBLIC_URL:?Configure a URL publica HTTPS no Coolify}/api'
     restart: always
     environment:
       # === Required Settings

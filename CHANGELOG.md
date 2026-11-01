@@ -7,6 +7,10 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 
 ## [Unreleased]
 
+### Corrigido
+
+- Build Docker agora recebe `NEXT_PUBLIC_BACKEND_URL` derivado de `SANPOST_PUBLIC_URL`; sem o argumento de build, o navegador podia chamar `localhost:3000` em vez da API publica.
+
 ### Alterado
 
 - Identidade de acesso SanPost, removida a opção de autenticação OIDC genérica, textos da tela de login em português e links locais para Termos de Uso e Política de Privacidade. Adicionadas páginas legais próprias e esclarecido no guia do Coolify como liberar cadastro em instalações já inicializadas.

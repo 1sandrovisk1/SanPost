@@ -18,10 +18,12 @@ O servico `postiz` usa `build.context: .` e `dockerfile: Dockerfile.dev`: o prim
 
 1. Escolha um dominio HTTPS, por exemplo `https://sanpost.sanchatflow.com` (apenas exemplo, precisa estar configurado no Cloudflare).
 2. Em **Coolify > SanPost > Domains**, adicione o dominio **somente para o servico `postiz`**, com porta **interna 5000**.
-3. Em **Environment Variables**, defina `SANPOST_PUBLIC_URL` com a mesma URL (sem barra final).
+3. Em **Environment Variables**, defina `SANPOST_PUBLIC_URL` com a mesma URL (sem barra final). O Compose usa essa origem para o `NEXT_PUBLIC_BACKEND_URL` do container e tambem como argumento de build, pois o Next.js grava variaveis `NEXT_PUBLIC_*` no bundle do navegador durante a compilacao.
 4. No Cloudflare Tunnel, direcione o hostname ao **proxy HTTP interno do Coolify (porta 80)**, conforme as rotas ja existentes no servidor. Nao aponte para 5000, 7233 ou 8080 no host.
 
 O Compose nao publica nenhuma porta no servidor. A UI do Temporal permanece interna (`temporal-ui:8080`) e o Temporal SDK usa `temporal:7233`.
+
+Ao alterar `SANPOST_PUBLIC_URL`, faca um deploy que reconstrua a imagem do servico `postiz`; reiniciar somente o container nao atualiza a URL gravada no bundle frontend.
 
 ## 3. Segredos gerados pelo Coolify
 
