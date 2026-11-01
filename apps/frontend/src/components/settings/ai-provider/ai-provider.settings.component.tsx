@@ -110,6 +110,7 @@ export const AiProviderSettingsSection: React.FC = () => {
           providers={[
             { value: 'openrouter', label: 'OpenRouter' },
             { value: 'openai', label: 'OpenAI' },
+            { value: 'custom', label: 'Compatível com OpenAI' },
           ]}
         />
 
@@ -124,6 +125,7 @@ export const AiProviderSettingsSection: React.FC = () => {
           providers={[
             { value: 'openrouter', label: 'OpenRouter' },
             { value: 'openai', label: 'OpenAI' },
+            { value: 'custom', label: 'Compatível com OpenAI' },
           ]}
         />
 
@@ -132,10 +134,13 @@ export const AiProviderSettingsSection: React.FC = () => {
           title={t('ai_provider_video_title', 'Vídeo')}
           description={t(
             'ai_provider_video_desc',
-            'Geração de vídeo via KieAI (Seedance 2.0, Veo 3.1).'
+            'Geração pela API SanPost ou por provedor de vídeo compatível.'
           )}
           icon={<VideoIcon />}
-          providers={[{ value: 'kieai', label: 'KieAI' }]}
+          providers={[
+            { value: 'sanpost-api', label: 'SanPost API (padrão)' },
+            { value: 'kieai', label: 'KieAI' },
+          ]}
         />
 
         <AiKindCard
@@ -143,10 +148,13 @@ export const AiProviderSettingsSection: React.FC = () => {
           title={t('ai_provider_web_search_title', 'Web Search')}
           description={t(
             'ai_provider_web_search_desc',
-            'Busca de contexto na web por tópico ou URL.'
+            'Busca na web pela API SanPost ou Tavily.'
           )}
           icon={<SearchIcon />}
-          providers={[{ value: 'tavily', label: 'Tavily' }]}
+          providers={[
+            { value: 'sanpost-api', label: 'SanPost API (padrão)' },
+            { value: 'tavily', label: 'Tavily' },
+          ]}
         />
       </div>
     </div>

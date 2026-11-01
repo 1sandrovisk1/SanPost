@@ -72,6 +72,30 @@ export class AiWebSearchService {
       'WEB_SEARCH',
       profileId
     );
+    if (credential.provider === 'sanpost-api') {
+      const credOpts = (credential.options ?? {}) as WebSearchOptions;
+      if (!credOpts.apiBaseURL) throw new HttpException('Configure uma URL base da API SanPost.', 400);
+      const response = await fetch(`${credOpts.apiBaseURL.replace(/\/+$/, '')}/v1/web/search`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${credential.apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query, limit: opts.maxResults ?? credOpts.maxResults ?? 5,
+          region: 'br', language: 'pt-BR',
+          ...(opts.days ? { recency: `${opts.days}d` } : {}), safe_search: true,
+        }),
+        signal: AbortSignal.timeout(TAVILY_TIMEOUT_MS),
+      });
+      if (!response.ok) throw new HttpException(`API SanPost busca recusou a solicitação (HTTP ${response.status}).`, 502);
+      const result = await response.json() as { query?: string; results?: Array<{ title?: string; url?: string; snippet?: string; source?: string; published_at?: string }> };
+      return {
+        query: result.query ?? query,
+        results: (result.results ?? []).map((item) => ({
+          title: item.title ?? '', url: item.url ?? '', content: item.snippet ?? '',
+          score: 0, rawContent: item.snippet ?? '',
+          ...(item.published_at ? { publishedDate: item.published_at } : {}),
+        })),
+      } as TavilySearchResponse;
+    }
     if (credential.provider !== 'tavily') {
       throw new HttpException(
         `Provider sem suporte para web search: ${credential.provider}`,

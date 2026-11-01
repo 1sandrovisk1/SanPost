@@ -1,4 +1,6 @@
 {
+  "ai_provider_base_url": "URL base da API",
+  "ai_provider_model_name": "Informe o identificador do modelo",
   "automation_text_tools": "Ferramentas de texto",
   "automation_text_count": "Caracteres",
   "automation_text_limit": "A inserção ultrapassa o limite de caracteres.",

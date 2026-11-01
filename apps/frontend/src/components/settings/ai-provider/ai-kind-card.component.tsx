@@ -582,6 +582,27 @@ const CredentialForm: React.FC<CredentialFormProps> = ({
       );
       return;
     }
+    if (
+      (form.provider === 'custom' ||
+        (kind === 'VIDEO' && form.provider === 'sanpost-api')) &&
+      !form.model.trim()
+    ) {
+      toaster.show(
+        t('ai_provider_model_name', 'Informe o identificador do modelo'),
+        'warning'
+      );
+      return;
+    }
+    if (
+      (form.provider === 'custom' || form.provider === 'sanpost-api') &&
+      !form.options.apiBaseURL
+    ) {
+      toaster.show(
+        t('ai_provider_base_url', 'URL base da API'),
+        'warning'
+      );
+      return;
+    }
 
     const sanitizedOptions = sanitizeOptions(kind, form.provider, form.options);
     setSaving(true);
@@ -765,10 +786,19 @@ const CredentialForm: React.FC<CredentialFormProps> = ({
         )}
       </FieldRow>
 
-      {form.provider && kind !== 'WEB_SEARCH' && (
+      {form.provider && kind !== 'WEB_SEARCH' && form.provider !== 'sanpost-api' && (
         <>
           <FieldRow label={t('ai_provider_model', 'Modelo principal')}>
-            {kind === 'VIDEO' && form.provider === 'kieai' ? (
+            {form.provider === 'custom' || (kind === 'VIDEO' && form.provider === 'sanpost-api') ? (
+              <input
+                type="text"
+                className="bg-newBgColorInner h-[42px] border-newTableBorder border rounded-[8px] px-[16px] outline-none text-[14px] w-full"
+                value={form.model}
+                disabled={isLocked}
+                placeholder={t('ai_provider_model_name', 'Informe o identificador do modelo')}
+                onChange={(e) => updateField('model', e.target.value)}
+              />
+            ) : kind === 'VIDEO' && form.provider === 'kieai' ? (
               // Para VIDEO+kieai o backend NAO tem fallback aceitavel: a
               // chamada precisa de um model exato (Seedance vs Veo tem
               // payloads diferentes). Escondemos a opcao vazia "Default
@@ -824,6 +854,18 @@ const CredentialForm: React.FC<CredentialFormProps> = ({
         </>
       )}
 
+      {(form.provider === 'custom' || form.provider === 'sanpost-api') && (
+        <FieldRow label={t('ai_provider_base_url', 'URL base da API')}>
+          <input
+            type="url"
+            className="bg-newBgColorInner h-[42px] border-newTableBorder border rounded-[8px] px-[16px] outline-none text-[14px] w-full"
+            value={form.options.apiBaseURL ?? ''}
+            disabled={saving}
+            placeholder={form.provider === 'sanpost-api' ? 'https://api.exemplo.com' : 'https://api.provedor.com/v1'}
+            onChange={(e) => updateOption('apiBaseURL', e.target.value)}
+          />
+        </FieldRow>
+      )}
       {form.provider && (
         <DynamicOptions
           kind={kind}

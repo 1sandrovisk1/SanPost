@@ -157,6 +157,11 @@ export class AiClientFactory {
           baseURL: undefined,
           model,
         };
+      case 'custom': {
+        const baseURL = (credential.options as TextOptions | null)?.apiBaseURL;
+        if (!baseURL) throw new HttpException('Configure a URL base da API compatível.', 400);
+        return { provider: 'custom', apiKey: credential.apiKey, baseURL, model };
+      }
       default:
         throw new HttpException(
           `Provider sem suporte para chat: ${credential.provider}`,
@@ -235,6 +240,11 @@ export class AiClientFactory {
         const provider = createOpenAI({ apiKey: credential.apiKey });
         return provider(modelId);
       }
+      case 'custom': {
+        const baseURL = (credential.options as TextOptions | null)?.apiBaseURL;
+        if (!baseURL) throw new HttpException('Configure uma URL base da API compatível.', 400);
+        return createOpenAI({ apiKey: credential.apiKey, baseURL })(modelId);
+      }
       default:
         throw new HttpException(
           `Provider sem suporte para texto: ${credential.provider}`,
@@ -266,6 +276,12 @@ export class AiClientFactory {
       }
       case 'openai': {
         const provider = createOpenAI({ apiKey: credential.apiKey });
+        return provider.imageModel(modelId);
+      }
+      case 'custom': {
+        const baseURL = (credential.options as ImageOptions | null)?.apiBaseURL;
+        if (!baseURL) throw new HttpException('Configure a URL base da API de imagens compatível.', 400);
+        const provider = createOpenAI({ apiKey: credential.apiKey, baseURL });
         return provider.imageModel(modelId);
       }
       default:

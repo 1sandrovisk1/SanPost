@@ -11,7 +11,7 @@ const TAVILY_SEARCH_URL = 'https://api.tavily.com/search';
 
 @Injectable()
 export class AiProviderTestService {
-  async test(provider: string, apiKey: string): Promise<AiProviderTestResult> {
+  async test(provider: string, apiKey: string, options?: Record<string, unknown>): Promise<AiProviderTestResult> {
     if (!apiKey) {
       return { ok: false, error: 'API key vazia.' };
     }
@@ -22,6 +22,12 @@ export class AiProviderTestService {
           return await this.testOpenRouter(apiKey);
         case 'openai':
           return await this.testOpenAi(apiKey);
+        case 'custom': {
+          const baseURL = options?.apiBaseURL;
+          if (typeof baseURL !== 'string') return { ok: false, error: 'Configure a URL base da API.' };
+          const res = await fetch(`${baseURL.replace(/\/$/, '')}/models`, { headers: { Authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(15000) });
+          return res.ok ? { ok: true } : { ok: false, error: `API compatível retornou ${res.status}.` };
+        }
         case 'tavily':
           return await this.testTavily(apiKey);
         case 'kieai':
@@ -29,6 +35,8 @@ export class AiProviderTestService {
           // como valida na hora do save, falhas reais aparecem na primeira
           // geracao real.
           return { ok: true };
+        case 'sanpost-api':
+          return { ok: true, error: 'Chave salva; validação ficará disponível quando a rota do gateway estiver ativa.' };
         default:
           return {
             ok: false,

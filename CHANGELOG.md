@@ -7,6 +7,10 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 
 ## [Unreleased]
 
+### Adicionado
+
+- Configuração de endpoints OpenAI compatíveis para texto e imagens. Vídeo e busca web podem usar a API SanPost no padrão versionado de `004.API`; as rotas de vídeo e busca ainda precisam estar publicadas no gateway para responder.
+
 ### Corrigido
 
 - Build Docker agora recebe `NEXT_PUBLIC_BACKEND_URL` derivado de `SANPOST_PUBLIC_URL`; sem o argumento de build, o navegador podia chamar `localhost:3000` em vez da API publica.

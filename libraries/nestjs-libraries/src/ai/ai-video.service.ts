@@ -179,9 +179,12 @@ export class AiVideoService {
       profileId
     );
 
+    if (credential.provider === 'sanpost-api') {
+      return this.generateSanPostApi(credential, input, finalPrompt);
+    }
     if (credential.provider !== 'kieai') {
       throw new HttpException(
-        `Provider sem suporte para video: ${credential.provider}. Apenas 'kieai' e suportado.`,
+        `Provider sem suporte para video: ${credential.provider}.`,
         400
       );
     }
@@ -216,6 +219,47 @@ export class AiVideoService {
       `Modelo de video desconhecido em credencial: ${model}.`,
       400
     );
+  }
+
+  private async generateSanPostApi(
+    credential: ResolvedAiCredential,
+    input: GenerateVideoInput,
+    prompt: string
+  ): Promise<GeneratedVideo> {
+    const options = (credential.options ?? {}) as VideoOptions;
+    if (!options.apiBaseURL) throw new HttpException('Configure a URL base da API SanPost.', 400);
+    const base = options.apiBaseURL.replace(/\/+$/, '');
+    const response = await fetch(`${base}/v1/videos/generations`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${credential.apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: credential.model, prompt,
+        duration_seconds: options.durationSeconds ?? DEFAULT_DURATION,
+        aspect_ratio: input.aspectRatio ?? DEFAULT_ASPECT_RATIO,
+        resolution: options.resolution ?? DEFAULT_RESOLUTION,
+        audio: options.audio ?? false, n: 1,
+        references: input.referenceImageUrl ? [input.referenceImageUrl] : [],
+      }),
+      signal: AbortSignal.timeout(KIE_REQUEST_TIMEOUT_MS),
+    });
+    if (!response.ok) throw new HttpException(`API SanPost video recusou a solicitação (HTTP ${response.status}).`, 502);
+    const accepted = await response.json() as { task_id?: string; status_url?: string };
+    if (!accepted.task_id || !accepted.status_url) throw new HttpException('API SanPost não retornou task_id/status_url.', 502);
+    const statusUrl = new URL(accepted.status_url, `${base}/`);
+    if (statusUrl.origin !== new URL(base).origin) throw new HttpException('API SanPost retornou status_url inválida.', 502);
+    for (let i = 0; i < MAX_POLL_ITERATIONS; i++) {
+      await timer(POLL_INTERVAL_MS);
+      const poll = await fetch(statusUrl, { headers: { Authorization: `Bearer ${credential.apiKey}` }, signal: AbortSignal.timeout(KIE_REQUEST_TIMEOUT_MS) });
+      if (!poll.ok) continue;
+      const data = await poll.json() as { status?: string; result?: { videos?: Array<{ url?: string }> }; error?: { message?: string } };
+      if (data.status === 'failed') throw new HttpException(data.error?.message ?? 'Geração de vídeo falhou na API SanPost.', 502);
+      if (data.status === 'completed') {
+        const url = data.result?.videos?.[0]?.url;
+        if (!url) throw new HttpException('API SanPost concluiu sem retornar URL do vídeo.', 502);
+        return { url, model: credential.model ?? '', taskId: accepted.task_id, provider: credential.provider, credentialId: credential.id };
+      }
+    }
+    throw new HttpException('Tempo limite aguardando vídeo da API SanPost.', 504);
   }
 
   private async maybeEnrichPrompt(

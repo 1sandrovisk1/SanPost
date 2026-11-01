@@ -1,4 +1,6 @@
 {
+  "ai_provider_base_url": "API base URL",
+  "ai_provider_model_name": "Enter the model identifier",
   "automation_text_tools": "Text tools",
   "automation_text_count": "Characters",
   "automation_text_limit": "This insertion exceeds the character limit.",

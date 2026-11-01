@@ -12,6 +12,7 @@ export const TextOptionsSchema = z
     allowFallbacks: z.boolean().optional(),
     maxPricePromptUSD: z.number().nonnegative().optional(),
     maxPriceCompletionUSD: z.number().nonnegative().optional(),
+    apiBaseURL: z.string().url().optional(),
   })
   .strict();
 
@@ -22,6 +23,7 @@ export const ImageOptionsSchema = z
     quality: z.enum(['low', 'medium', 'high', 'auto']).optional(),
     imageSize: z.enum(['0.5K', '1K', '2K', '4K']).optional(),
     numImages: z.number().int().min(1).max(4).optional(),
+    apiBaseURL: z.string().url().optional(),
   })
   .strict();
 
@@ -35,6 +37,7 @@ export const VideoOptionsSchema = z
     durationSeconds: z.number().int().min(4).max(15).optional(),
     /** Gerar audio junto com o video. Aplicavel apenas a Seedance 2 (full). */
     audio: z.boolean().optional(),
+    apiBaseURL: z.string().url().optional(),
   })
   .strict();
 
@@ -45,6 +48,7 @@ export const WebSearchOptionsSchema = z
     maxResults: z.number().int().min(1).max(20).optional(),
     depth: z.enum(['basic', 'advanced']).optional(),
     includeRawContent: z.boolean().optional(),
+    apiBaseURL: z.string().url().optional(),
   })
   .strict();
 

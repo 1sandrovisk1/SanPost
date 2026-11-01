@@ -250,7 +250,8 @@ export class AiCredentialService {
 
     const result = await this._testService.test(
       credential.provider,
-      credential.apiKey
+      credential.apiKey,
+      (credential.options ?? {}) as Record<string, unknown>
     );
 
     try {

@@ -21,8 +21,6 @@ const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
   '.gif': 'image/gif',
 };
 
-const OPENAI_IMAGE_GEN_URL = 'https://api.openai.com/v1/images/generations';
-const OPENAI_IMAGE_EDIT_URL = 'https://api.openai.com/v1/images/edits';
 const OPENROUTER_CHAT_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
 const DEFAULT_OPENAI_MODEL = 'gpt-image-2';
@@ -146,7 +144,8 @@ export class AiImageService {
     let base64: string;
     let modelUsed: string;
 
-    if (credential.provider === 'openai') {
+    if (credential.provider === 'openai' || credential.provider === 'custom') {
+      if (credential.provider === 'custom' && !options.apiBaseURL) throw new HttpException('Configure uma URL base compatível.', 400);
       modelUsed = credential.model ?? DEFAULT_OPENAI_MODEL;
       base64 =
         mode === 'I2I'
@@ -156,14 +155,16 @@ export class AiImageService {
               prompt,
               opts.referenceImageUrl as string,
               options,
-              aspectRatio
+              aspectRatio,
+              options.apiBaseURL
             )
           : await this.generateOpenAi(
               credential.apiKey,
               modelUsed,
               prompt,
               options,
-              aspectRatio
+              aspectRatio,
+              options.apiBaseURL
             );
     } else if (credential.provider === 'openrouter') {
       modelUsed = credential.model ?? DEFAULT_OPENROUTER_MODEL;
@@ -198,7 +199,8 @@ export class AiImageService {
     model: string,
     prompt: string,
     options: ImageOptions,
-    aspectRatio: AiAspectRatio
+    aspectRatio: AiAspectRatio,
+    baseURL?: string
   ): Promise<string> {
     const size = ASPECT_TO_OPENAI_SIZE[aspectRatio];
 
@@ -214,7 +216,7 @@ export class AiImageService {
 
     let res: Response;
     try {
-      res = await fetch(OPENAI_IMAGE_GEN_URL, {
+      res = await fetch(`${(baseURL ?? 'https://api.openai.com/v1').replace(/\/$/, '')}/images/generations`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${apiKey}`,
@@ -347,7 +349,8 @@ export class AiImageService {
     prompt: string,
     referenceImageUrl: string,
     options: ImageOptions,
-    aspectRatio: AiAspectRatio
+    aspectRatio: AiAspectRatio,
+    baseURL?: string
   ): Promise<string> {
     // 1. Baixa a imagem de referencia. /v1/images/edits exige PNG/WebP;
     //    o usuario e responsavel por fornecer URL com formato compativel.
@@ -383,7 +386,7 @@ export class AiImageService {
     // 3. POST. NAO setamos Content-Type: o fetch detecta o boundary do FormData.
     let res: Response;
     try {
-      res = await fetch(OPENAI_IMAGE_EDIT_URL, {
+      res = await fetch(`${(baseURL ?? 'https://api.openai.com/v1').replace(/\/$/, '')}/images/edits`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${apiKey}`,

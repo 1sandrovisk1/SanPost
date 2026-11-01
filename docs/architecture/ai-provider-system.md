@@ -604,6 +604,12 @@ Cobertura atual:
 
 ---
 
+## Conectores configuráveis SanPost
+
+Texto e imagem aceitam o provider `custom`, compatível com a API OpenAI, usando `options.apiBaseURL` e o nome de modelo informado na credencial. A URL base e a chave são específicas por workspace/perfil e a chave continua criptografada.
+
+Vídeo e busca web aceitam `sanpost-api` e usam os contratos documentados em `D:\004.API\docs\API_STANDARD.md`: `POST /v1/videos/generations` com polling de `status_url`, e `POST /v1/web/search`. A URL base é configurada no card. O gateway atualmente documenta esses contratos como planejados; publicar as rotas é necessário antes de usar esses dois conectores. O conector SanPost de busca retorna snippets e não oferece extração de páginas; para `extract`, mantenha Tavily configurado.
+
 ## 14. Pontos de entrada para mudancas comuns
 
 | Mudanca | Onde mexer |
