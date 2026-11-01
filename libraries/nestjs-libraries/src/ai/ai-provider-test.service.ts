@@ -25,8 +25,16 @@ export class AiProviderTestService {
         case 'custom': {
           const baseURL = options?.apiBaseURL;
           if (typeof baseURL !== 'string') return { ok: false, error: 'Configure a URL base da API.' };
-          const res = await fetch(`${baseURL.replace(/\/$/, '')}/models`, { headers: { Authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(15000) });
-          return res.ok ? { ok: true } : { ok: false, error: `API compatível retornou ${res.status}.` };
+          const base = baseURL.replace(/\/+$/, '');
+          const endpoints = base.endsWith('/v1') ? [`${base}/models`] : [`${base}/v1/models`, `${base}/models`];
+          let status: number | undefined;
+          for (const endpoint of endpoints) {
+            const res = await fetch(endpoint, { headers: { Authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(15000) });
+            if (res.ok) return { ok: true };
+            status = res.status;
+            if (status !== 404) break;
+          }
+          return { ok: false, error: `API compatível retornou ${status ?? 'sem resposta'} ao consultar /v1/models ou /models.` };
         }
         case 'tavily':
           return await this.testTavily(apiKey);
@@ -36,7 +44,7 @@ export class AiProviderTestService {
           // geracao real.
           return { ok: true };
         case 'sanpost-api':
-          return { ok: true, error: 'Chave salva; validação ficará disponível quando a rota do gateway estiver ativa.' };
+          return await this.testSanPost(apiKey, options);
         default:
           return {
             ok: false,
@@ -95,5 +103,15 @@ export class AiProviderTestService {
       };
     }
     return { ok: true };
+  }
+
+  private async testSanPost(apiKey: string, options?: Record<string, unknown>): Promise<AiProviderTestResult> {
+    const baseURL = options?.apiBaseURL;
+    if (typeof baseURL !== 'string') return { ok: false, error: 'Configure a URL base da API SanPost.' };
+    const res = await fetch(`${baseURL.replace(/\\/+$/, '')}/v1/models`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(15000),
+    });
+    return res.ok ? { ok: true } : { ok: false, error: `API SanPost retornou ${res.status} ao listar modelos.` };
   }
 }

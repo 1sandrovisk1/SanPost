@@ -126,6 +126,7 @@ export const AiProviderSettingsSection: React.FC = () => {
             { value: 'openrouter', label: 'OpenRouter' },
             { value: 'openai', label: 'OpenAI' },
             { value: 'custom', label: 'Compatível com OpenAI' },
+            { value: 'sanpost-api', label: 'SanPost API' },
           ]}
         />
 

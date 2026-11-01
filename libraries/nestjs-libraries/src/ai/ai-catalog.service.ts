@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { HttpException, Injectable, Logger } from '@nestjs/common';
 import { AiKind } from '@prisma/client';
 import { ioRedis } from '@gitroom/nestjs-libraries/redis/redis.service';
 import { getStaticCatalog } from './ai-catalog.static';
@@ -53,6 +53,36 @@ export class AiCatalogService {
 
     await this.writeCache(cacheKey, response);
     return response;
+  }
+
+  async discoverModels(provider: string, kind: AiKind, baseURL: string, apiKey: string): Promise<CatalogResponse> {
+    let parsed: URL;
+    try { parsed = new URL(baseURL); } catch { throw new HttpException('URL base inválida.', 400); }
+    if (!['https:', 'http:'].includes(parsed.protocol) || !apiKey) throw new HttpException('URL e API key são obrigatórias.', 400);
+    const base = baseURL.replace(/\/+$/, '');
+    const endpoints = base.endsWith('/v1') ? [`${base}/models`] : [`${base}/v1/models`, `${base}/models`];
+    let response: Response | undefined;
+    for (const endpoint of endpoints) {
+      try {
+        response = await fetch(endpoint, { headers: { Authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(15_000) });
+      } catch { continue; }
+      if (response.ok || response.status !== 404) break;
+    }
+    if (!response?.ok) throw new HttpException(`A API não listou os modelos (HTTP ${response?.status ?? 'sem resposta'}). Verifique URL, chave e rota de catálogo.`, 502);
+    const json = await response.json() as { data?: Array<Record<string, any>>; models?: Array<Record<string, any>> };
+    const list = Array.isArray(json.data) ? json.data : Array.isArray(json.models) ? json.models : [];
+    const models: CatalogModel[] = list.flatMap((item) => {
+      const id = typeof item.id === 'string' ? item.id : typeof item.name === 'string' ? item.name : '';
+      if (!id) return [];
+      return [{
+        id, displayName: typeof item.name === 'string' ? item.name : id, provider, kind,
+        contextLength: typeof item.context_length === 'number' ? item.context_length : undefined,
+        inputModalities: item.input_modalities ?? item.architecture?.input_modalities,
+        outputModalities: item.output_modalities ?? item.architecture?.output_modalities,
+        supportedParameters: item.supported_parameters,
+      }];
+    });
+    return { provider, kind, fetchedAt: new Date().toISOString(), models };
   }
 
   async refresh(): Promise<{ cleared: number }> {

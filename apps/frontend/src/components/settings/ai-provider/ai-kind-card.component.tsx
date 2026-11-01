@@ -43,6 +43,8 @@ interface KindCardProps {
 const PROVIDER_LABELS: Record<string, string> = {
   openrouter: 'OpenRouter',
   openai: 'OpenAI',
+  custom: 'Compatível com OpenAI',
+  'sanpost-api': 'SanPost API',
   kieai: 'KieAI',
   tavily: 'Tavily',
 };
@@ -474,6 +476,8 @@ const CredentialForm: React.FC<CredentialFormProps> = ({
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; error?: string } | null>(null);
+  const [discoveredModels, setDiscoveredModels] = useState<CatalogModel[]>([]);
+  const [discovering, setDiscovering] = useState(false);
   const [form, setForm] = useState<FormState>(emptyState);
 
   const configured = !!credential;
@@ -500,6 +504,8 @@ const CredentialForm: React.FC<CredentialFormProps> = ({
     () => modelOptions.filter((m) => m.value !== form.model),
     [modelOptions, form.model]
   );
+  const displayedModels = discoveredModels.length ? discoveredModels : models;
+  const displayedModelOptions = useMemo(() => displayedModels.map((m) => ({ value: m.id, label: m.displayName || m.id })), [displayedModels]);
 
   useEffect(() => {
     if (configured && credential) {
@@ -536,17 +542,45 @@ const CredentialForm: React.FC<CredentialFormProps> = ({
 
   const updateField = useCallback(
     <K extends keyof FormState>(key: K, value: FormState[K]) => {
+      if (key === 'provider' || key === 'apiKey') setDiscoveredModels([]);
       setForm((prev) => ({ ...prev, [key]: value }));
     },
     []
   );
 
   const updateOption = useCallback((key: string, value: any) => {
+    if (key === 'apiBaseURL') setDiscoveredModels([]);
     setForm((prev) => ({
       ...prev,
       options: { ...prev.options, [key]: value },
     }));
   }, []);
+
+  const handleDiscoverModels = useCallback(async () => {
+    const apiKey = form.apiKey === SENTINEL ? '' : form.apiKey;
+    if (!apiKey || !form.options.apiBaseURL) {
+      toaster.show(t('ai_provider_discover_requirements', 'Informe a URL base e a API key para carregar os modelos.'), 'warning');
+      return;
+    }
+    setDiscovering(true);
+    try {
+      const response = await fetch(`/ai/catalog/${kind}/discover`, {
+        method: 'POST',
+        body: JSON.stringify({ provider: form.provider, apiBaseURL: form.options.apiBaseURL, apiKey }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result?.message ?? result?.error?.message ?? result?.error ?? 'Falha ao listar modelos.');
+      const available = (result.models ?? []) as CatalogModel[];
+      setDiscoveredModels(available);
+      if (!available.length) throw new Error('A API respondeu sem modelos disponíveis para esta chave.');
+      toaster.show(`${available.length} modelo(s) liberado(s) carregado(s).`, 'success');
+      if (!available.some((item) => item.id === form.model)) updateField('model', available[0].id);
+    } catch (error) {
+      toaster.show(error instanceof Error ? error.message : 'Falha ao listar modelos.', 'warning');
+    } finally {
+      setDiscovering(false);
+    }
+  }, [fetch, form.apiKey, form.model, form.options.apiBaseURL, form.provider, kind, toaster, t, updateField]);
 
   // Reusa o `mutate` retornado pelo hook do parent (vinculado a key SWR
   // correta). Garantimos que o estado local e resetado ANTES da revalidacao
@@ -584,7 +618,7 @@ const CredentialForm: React.FC<CredentialFormProps> = ({
     }
     if (
       (form.provider === 'custom' ||
-        (kind === 'VIDEO' && form.provider === 'sanpost-api')) &&
+        (form.provider === 'sanpost-api' && kind !== 'WEB_SEARCH')) &&
       !form.model.trim()
     ) {
       toaster.show(
@@ -786,10 +820,18 @@ const CredentialForm: React.FC<CredentialFormProps> = ({
         )}
       </FieldRow>
 
-      {form.provider && kind !== 'WEB_SEARCH' && form.provider !== 'sanpost-api' && (
+      {form.provider && kind !== 'WEB_SEARCH' && (
         <>
           <FieldRow label={t('ai_provider_model', 'Modelo principal')}>
-            {form.provider === 'custom' || (kind === 'VIDEO' && form.provider === 'sanpost-api') ? (
+            {form.provider === 'custom' && discoveredModels.length > 0 ? (
+              <SearchableModelSelect
+                value={form.model}
+                options={displayedModelOptions}
+                placeholder={t('ai_provider_model', 'Selecione um modelo')}
+                disabled={isLocked || discovering}
+                onChange={(v) => updateField('model', v)}
+              />
+            ) : form.provider === 'custom' || (kind === 'VIDEO' && form.provider === 'sanpost-api') ? (
               <input
                 type="text"
                 className="bg-newBgColorInner h-[42px] border-newTableBorder border rounded-[8px] px-[16px] outline-none text-[14px] w-full"
@@ -797,6 +839,14 @@ const CredentialForm: React.FC<CredentialFormProps> = ({
                 disabled={isLocked}
                 placeholder={t('ai_provider_model_name', 'Informe o identificador do modelo')}
                 onChange={(e) => updateField('model', e.target.value)}
+              />
+            ) : (form.provider === 'sanpost-api' && kind === 'IMAGE') ? (
+              <SearchableModelSelect
+                value={form.model}
+                options={displayedModelOptions}
+                placeholder={t('ai_provider_discover_models_first', 'Carregue os modelos da API')}
+                disabled={isLocked || discovering}
+                onChange={(v) => updateField('model', v)}
               />
             ) : kind === 'VIDEO' && form.provider === 'kieai' ? (
               // Para VIDEO+kieai o backend NAO tem fallback aceitavel: a
@@ -865,6 +915,11 @@ const CredentialForm: React.FC<CredentialFormProps> = ({
             onChange={(e) => updateOption('apiBaseURL', e.target.value)}
           />
         </FieldRow>
+      )}
+      {(form.provider === 'custom' || (form.provider === 'sanpost-api' && kind === 'IMAGE')) && (
+        <Button onClick={handleDiscoverModels} loading={discovering} disabled={isLocked} secondary={true as any}>
+          {t('ai_provider_discover_models', 'Carregar modelos liberados')}
+        </Button>
       )}
       {form.provider && (
         <DynamicOptions

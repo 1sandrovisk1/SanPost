@@ -1,5 +1,6 @@
 import {
   Controller,
+  Body,
   Get,
   HttpException,
   Param,
@@ -40,6 +41,19 @@ export class AiCatalogController {
       throw new HttpException('query param provider e obrigatorio.', 400);
     }
     return this._catalogService.getCatalog(provider, kind);
+  }
+
+  @Post('/:kind/discover')
+  @CheckPolicies([AuthorizationActions.Create, Sections.ADMIN])
+  async discoverModels(
+    @Param('kind') kindRaw: string,
+    @Body() body: { provider?: string; apiBaseURL?: string; apiKey?: string }
+  ) {
+    const kind = parseKindParam(kindRaw);
+    if (!body.provider || !body.apiBaseURL || !body.apiKey) {
+      throw new HttpException('Provedor, URL base e API key são obrigatórios.', 400);
+    }
+    return this._catalogService.discoverModels(body.provider, kind, body.apiBaseURL, body.apiKey);
   }
 
   @Post('/refresh')

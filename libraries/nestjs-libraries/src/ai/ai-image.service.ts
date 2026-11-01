@@ -144,7 +144,22 @@ export class AiImageService {
     let base64: string;
     let modelUsed: string;
 
-    if (credential.provider === 'openai' || credential.provider === 'custom') {
+    if (
+      credential.provider === 'sanpost-api' ||
+      (credential.provider === 'custom' && (credential.model ?? '').startsWith('raphael/'))
+    ) {
+      if (!options.apiBaseURL) throw new HttpException('Configure a URL base da API SanPost.', 400);
+      modelUsed = credential.model ?? '';
+      base64 = await this.generateSanPostImage(
+        credential.apiKey,
+        credential.model ?? '',
+        prompt,
+        options,
+        aspectRatio,
+        mode,
+        opts.referenceImageUrl
+      );
+    } else if (credential.provider === 'openai' || credential.provider === 'custom') {
       if (credential.provider === 'custom' && !options.apiBaseURL) throw new HttpException('Configure uma URL base compatível.', 400);
       modelUsed = credential.model ?? DEFAULT_OPENAI_MODEL;
       base64 =
@@ -192,6 +207,41 @@ export class AiImageService {
       model: modelUsed,
       credentialId: credential.id,
     };
+  }
+
+  private async generateSanPostImage(
+    apiKey: string,
+    model: string,
+    prompt: string,
+    options: ImageOptions,
+    aspectRatio: AiAspectRatio,
+    mode: ImageMode,
+    referenceImageUrl?: string
+  ): Promise<string> {
+    const baseURL = options.apiBaseURL as string;
+    const references: string[] = [];
+    if (mode === 'I2I' && referenceImageUrl) {
+      const image = await this.loadReferenceImage(referenceImageUrl);
+      references.push(`data:${image.contentType};base64,${image.buffer.toString('base64')}`);
+    }
+    let response: Response;
+    try {
+      response = await fetch(`${baseURL.replace(/\\/+$/, '')}/v1/images/generations`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model, prompt, aspect_ratio: aspectRatio, n: options.numImages ?? 1, references, enhance_prompt: true, style: null, fast: false }),
+        signal: AbortSignal.timeout(120_000),
+      });
+    } catch {
+      throw new HttpException('API SanPost indisponível para geração de imagem.', 502);
+    }
+    if (!response.ok) throw new HttpException(`API SanPost imagem recusou a solicitação (HTTP ${response.status}).`, 502);
+    const payload = await response.json() as { data?: Array<{ url?: string; b64_json?: string }> };
+    const image = payload.data?.[0];
+    if (image?.b64_json) return image.b64_json;
+    if (!image?.url) throw new HttpException('API SanPost não retornou a imagem gerada.', 502);
+    const fetched = await fetchPublicUrl(image.url, { maxBytes: MAX_REFERENCE_IMAGE_BYTES });
+    return fetched.buffer.toString('base64');
   }
 
   private async generateOpenAi(
