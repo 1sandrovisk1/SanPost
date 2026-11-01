@@ -10,6 +10,7 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 ### Corrigido
 
 - Build Docker agora recebe `NEXT_PUBLIC_BACKEND_URL` derivado de `SANPOST_PUBLIC_URL`; sem o argumento de build, o navegador podia chamar `localhost:3000` em vez da API publica.
+- Em producao, valores vazios ou locais de `NEXT_PUBLIC_BACKEND_URL` usam `/api` na mesma origem, que o Nginx encaminha ao backend.
 
 ### Alterado
 
